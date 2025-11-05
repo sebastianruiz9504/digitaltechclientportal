@@ -1,0 +1,321 @@
+﻿@model List<DigitalTechClientPortal.Models.ProductVm>
+
+@{
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    ViewData["Title"] = "Inicio";
+
+    var resumen = ViewBag.Summary as DigitalTechClientPortal.Models.ResumenDto ?? new DigitalTechClientPortal.Models.ResumenDto();
+    var selectedRange = (DigitalTechClientPortal.Models.RangoResumen)(ViewBag.SelectedRange ?? DigitalTechClientPortal.Models.RangoResumen.Mes);
+
+    string RangeToString(DigitalTechClientPortal.Models.RangoResumen r) => r switch
+    {
+        DigitalTechClientPortal.Models.RangoResumen.Mes => "mes",
+        DigitalTechClientPortal.Models.RangoResumen.Anio => "anio",
+        DigitalTechClientPortal.Models.RangoResumen.Total => "total",
+        _ => "mes"
+    };
+}
+
+@section Head {
+    <!-- Swiper CSS solo para esta vista -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@9/swiper-bundle.min.css" />
+    <style>
+        .grad-assessment { background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #3b82f6 100%); }
+        .card { position: relative; overflow: hidden; border-radius: 1rem; border: 1px solid #e5e7eb; background: #ffffff; }
+        .card-overlay { position: absolute; inset: 0; opacity: 0.08; }
+        .card-content { position: relative; z-index: 1; }
+        .tag { display:inline-block; padding:.375rem .75rem; font-size:.75rem; border-radius:.375rem; }
+        .tag-blue { background:#dbeafe; color:#1e40af; }
+        .tag-blue:hover { background:#bfdbfe; }
+        .ratio-16-9 { aspect-ratio: 16 / 9; }
+        #promoSwiper { background:#fff; }
+        /* Nuevo: tarjetas resumen */
+        .metric { display:flex; flex-direction:column; gap:.25rem; }
+        .metric .label { color:#475569; font-size:.75rem; }
+        .metric .value { color:#0f172a; font-weight:600; font-size:1.25rem; }
+        .range-tab { padding:.375rem .625rem; border:1px solid #e5e7eb; border-radius:.5rem; font-size:.75rem; color:#334155; background:#fff; }
+        .range-tab.active { background:#f1f5f9; border-color:#cbd5e1; }
+    </style>
+}
+
+@section Main {
+<!-- Encabezado -->
+<div class="w-full px-4 sm:px-6 lg:px-8 py-8">
+  <header class="mb-6">
+    <h1 class="text-3xl font-semibold tracking-tight text-slate-900">Bienvenido a tu Digital App</h1>
+    <p class="mt-2 text-slate-500">Conoce en detalle todos tus productos y servicios</p>
+  </header>
+</div>
+
+<!-- Resumen y métricas -->
+<section class="rounded-2xl border border-neutral-200 bg-white w-full px-6 py-5 mb-6">
+  <div class="flex items-center justify-between mb-4">
+    <h2 class="text-base font-semibold text-slate-900">Resumen ejecutivo</h2>
+    <div class="flex items-center gap-2">
+      @{
+          var currentRange = RangeToString(selectedRange);
+          string baseUrl = Url.Action("Index", "Home") ?? "/Home/Index";
+      }
+      <a class="range-tab @(currentRange=="mes" ? "active" : "")" href="@($"{baseUrl}?range=mes")">Este mes</a>
+      <a class="range-tab @(currentRange=="anio" ? "active" : "")" href="@($"{baseUrl}?range=anio")">Este año</a>
+      <a class="range-tab @(currentRange=="total" ? "active" : "")" href="@($"{baseUrl}?range=total")">Total</a>
+    </div>
+  </div>
+
+  @if (TempData["SummaryError"] != null)
+  {
+    <div class="text-sm text-slate-600 mb-3">@TempData["SummaryError"]</div>
+  }
+
+  <!-- 1) Tarjeta grande arriba -->
+  <a href="@Url.Action("Index","Soporte")" class="block w-full mb-6 rounded-xl border border-slate-200 bg-white shadow-sm p-6 hover:bg-slate-50 transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2" aria-label="Ir a Soporte: detalle de horas entregadas">
+    <div class="flex items-center justify-between">
+      <div>
+        <div class="text-lg font-semibold text-slate-900">Horas entregadas</div>
+        <div class="text-sm text-slate-500">
+          (Capacitaciones - Tickets - Implementaciones - Consultorias)
+        </div>
+      </div>
+      <div class="text-4xl font-extrabold text-slate-900">@resumen.HorasEntregadas</div>
+    </div>
+  </a>
+
+  <!-- 2) Fila intermedia: Tickets -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+    <a href="@Url.Action("Index","Soporte")" class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:bg-slate-50 transition-colors cursor-pointer block focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2" aria-label="Ir a Soporte: Tickets Cloud">
+      <div class="metric">
+        <span class="label">Tickets Cloud</span>
+        <span class="value">@resumen.TicketsCloud</span>
+      </div>
+    </a>
+
+    <a href="@Url.Action("Index","Soporte")" class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:bg-slate-50 transition-colors cursor-pointer block focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2" aria-label="Ir a Soporte: Tickets Copiers">
+      <div class="metric">
+        <span class="label">Tickets Copiers</span>
+        <span class="value">@resumen.TicketsCopiers</span>
+      </div>
+    </a>
+  </div>
+
+  <!-- 3) Fila inferior: Capacitaciones y Reportes -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+    <a href="@Url.Action("Index","Capacitaciones")" class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:bg-slate-50 transition-colors cursor-pointer block focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2" aria-label="Ir a Capacitaciones">
+      <div class="metric">
+        <span class="label">Capacitaciones dictadas</span>
+        <span class="value">@resumen.Capacitaciones</span>
+      </div>
+    </a>
+
+    <a href="@Url.Action("Index","Reportes")" class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:bg-slate-50 transition-colors cursor-pointer block focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2" aria-label="Ir a Reportes Cloud">
+      <div class="metric">
+        <span class="label">Reportes Cloud</span>
+        <span class="value">@resumen.Reportes</span>
+      </div>
+    </a>
+  </div>
+</section>
+<!-- Verticales de Negocio -->
+<section class="rounded-2xl p-0 w-full">
+  <h2 class="text-sm font-semibold text-slate-900 mb-4">Tus Productos</h2>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <!-- Copiers dinámico -->
+    @{
+      var copiers = ViewBag.Copiers as List<DigitalTechClientPortal.Models.ProductVm>;
+    }
+    <section class="rounded-xl border border-neutral-200" style="background:#ffffff;">
+      <div class="p-5">
+        <div class="flex items-center gap-3 mb-4">
+          <img
+            src="https://logo.clearbit.com/kyocera.com"
+            alt="Kyocera"
+            class="h-8 w-auto max-w-[140px] object-contain"
+            referrerpolicy="no-referrer"
+            onerror="
+              this.onerror=null;
+              this.src=`data:image/svg+xml;utf8,
+              <svg xmlns='http://www.w3.org/2000/svg' width='140' height='32'>
+                <rect width='140' height='32' fill='%23e60012'/>
+                <text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle'
+                      font-family='Helvetica, Arial' font-size='14' fill='white'>KYOCERA</text>
+              </svg>`;
+            "
+          />
+          <h3 class="text-base font-semibold text-slate-900">Copiers</h3>
+        </div>
+
+        <div class="text-sm text-slate-700 space-y-1.5 mb-5 max-h-40 overflow-y-auto pr-1">
+          @if (TempData["CopiersError"] != null)
+          {
+            <div class="text-slate-600">@TempData["CopiersError"]</div>
+          }
+          else if (copiers == null || copiers.Count == 0)
+          {
+            <div class="text-slate-600">No hay productos para mostrar.</div>
+          }
+          else
+          {
+            <ul class="space-y-1.5">
+              @foreach (var p in copiers)
+              {
+                <li class="flex items-center justify-between">
+                  <span>🖨️ @p.ProductName</span>
+                  <span class="tag tag-blue text-[11px]">@p.Quantity</span>
+                </li>
+              }
+            </ul>
+          }
+        </div>
+
+        <a href="https://wa.me/573153405758" target="_blank" rel="noopener noreferrer"
+           class="btn-unified btn-unified-light text-xs">
+          Solicitar más productos
+        </a>
+      </div>
+    </section>
+
+    <!-- Cloud dinámico -->
+    <section class="rounded-xl border border-neutral-200" style="background:#ffffff;">
+      <div class="p-5">
+        <div class="flex items-center gap-3 mb-4">
+          <img
+            src="https://logo.clearbit.com/microsoft.com"
+            alt="Microsoft"
+            class="h-8 w-auto max-w-[140px] object-contain"
+            referrerpolicy="no-referrer"
+            onerror="
+              this.onerror=null;
+              this.src=`data:image/svg+xml;utf8,
+              <svg xmlns='http://www.w3.org/2000/svg' width='140' height='32'>
+                <rect x='0' y='0' width='32' height='32' fill='%23f25022'/>
+                <rect x='36' y='0' width='32' height='32' fill='%2373cf14'/>
+                <rect x='0' y='36' width='32' height='32' fill='%2300a4ef'/>
+                <rect x='36' y='36' width='32' height='32' fill='%23ffb900'/>
+                <text x='90' y='21' font-family='Helvetica, Arial' font-size='14' fill='%23000'>Microsoft</text>
+              </svg>`;
+            "
+          />
+          <h3 class="text-base font-semibold text-slate-900">Cloud</h3>
+        </div>
+
+        <div class="text-sm text-slate-700 space-y-1.5 mb-5 max-h-40 overflow-y-auto pr-1">
+          @if (TempData["HomeError"] != null)
+          {
+            <div class="text-slate-600">@TempData["HomeError"]</div>
+          }
+          else if (Model == null || Model.Count == 0)
+          {
+            <div class="text-slate-600">No hay productos para mostrar.</div>
+          }
+          else
+          {
+            <ul class="space-y-1.5">
+              @foreach (var p in Model)
+              {
+                <li class="flex items-center justify-between">
+                  <span>☁️ @p.ProductName</span>
+                  <span class="tag tag-blue text-[11px]">@p.Quantity</span>
+                </li>
+              }
+            </ul>
+          }
+        </div>
+
+        <a href="https://wa.me/573153405758" target="_blank" rel="noopener noreferrer"
+           class="btn-unified btn-unified-light text-xs">
+          Solicitar más productos
+        </a>
+      </div>
+    </section>
+  </div>
+</section>
+
+<!-- Noticias / Promociones -->
+<section class="rounded-xl border border-neutral-200 mt-6 bg-white">
+  <div class="p-6 w-full overflow-hidden">
+    <div class="mb-4 flex items-center justify-between">
+      <h2 class="text-base font-semibold text-slate-900">Noticias y promociones</h2>
+      <div class="flex items-center gap-2">
+        <div class="swiper-pagination !static"></div>
+        <button class="promo-prev rounded-md border px-2 py-1 text-xs text-slate-700 hover:bg-slate-50" aria-label="Anterior">◀</button>
+        <button class="promo-next rounded-md border px-2 py-1 text-xs text-slate-700 hover:bg-slate-50" aria-label="Siguiente">▶</button>
+      </div>
+    </div>
+
+    <div id="promoSwiper" class="swiper rounded-lg overflow-hidden w-full max-w-full">
+      <div class="swiper-wrapper">
+        <!-- Slide 1 -->
+        <div class="swiper-slide">
+          <div class="relative w-full pt-[42.857%] bg-white">
+            <img
+              class="absolute inset-0 w-full h-full object-contain"
+              src="https://41741943.fs1.hubspotusercontent-na1.net/hubfs/41741943/3%201.png"
+              alt="Promoción Kyocera 2025"
+              loading="lazy"
+              decoding="async"
+              onerror="this.src='https://placehold.co/1200x515/eeeeee/999999?text=Imagen+no+disponible';"
+            />
+          </div>
+        </div>
+
+        <!-- Slide 2 -->
+        <div class="swiper-slide">
+          <div class="relative w-full pt-[42.857%] bg-white">
+            <img
+              class="absolute inset-0 w-full h-full object-contain"
+              src="https://41741943.fs1.hubspotusercontent-na1.net/hubfs/41741943/2%201.png"
+              alt="Licenciamiento Microsoft 365"
+              loading="lazy"
+              decoding="async"
+              onerror="this.src='https://placehold.co/1200x515/eeeeee/999999?text=Imagen+no+disponible';"
+            />
+          </div>
+        </div>
+
+        <!-- Slide 3 -->
+        <div class="swiper-slide">
+          <div class="relative w-full pt-[42.857%] bg-white">
+            <img
+              class="absolute inset-0 w-full h-full object-contain"
+              src="https://41741943.fs1.hubspotusercontent-na1.net/hubfs/41741943/1-Oct-15-2025-04-07-41-8388-PM.png"
+              alt="Azure Backup 50% Off"
+              loading="lazy"
+              decoding="async"
+              onerror="this.src='https://placehold.co/1200x515/eeeeee/999999?text=Imagen+no+disponible';"
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Swiper JS -->
+<script defer src="https://cdn.jsdelivr.net/npm/swiper@9/swiper-bundle.min.js"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const swiper = new Swiper('#promoSwiper', {
+      slidesPerView: 1,
+      spaceBetween: 0,
+      loop: true,
+      observer: true,
+      observeParents: true,
+      autoplay: { delay: 4000, disableOnInteraction: false },
+      pagination: { el: '.swiper-pagination', clickable: true },
+      navigation: { nextEl: '.promo-next', prevEl: '.promo-prev' },
+      lazy: true,
+      on: {
+        imagesReady() { swiper.update(); },
+        resize() { swiper.update(); }
+      }
+    });
+
+    document.querySelectorAll('#promoSwiper img').forEach(img => {
+      img.addEventListener('error', () => {
+        img.src = 'https://placehold.co/1200x515/eeeeee/999999?text=Imagen+no+disponible';
+        img.alt = 'Imagen no disponible';
+      });
+    });
+  });
+</script>
+}

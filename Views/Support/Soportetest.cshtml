@@ -1,0 +1,224 @@
+@model DigitalTechApp.Models.SoporteModel
+@{
+    ViewData["Title"] = "CloudIA";
+}
+
+<!-- Contenedor encapsulado para no alterar tu layout global -->
+<div class="ai-support">
+    <div class="ai-support__header">
+        <div class="ai-support__title">@ViewData["Title"]</div>
+        <div class="ai-support__status">
+            <span class="ai-support__dot"></span> Online
+           
+        </div>
+    </div>
+
+    <div class="ai-support__grid">
+        <section class="ai-support__panel">
+            <div class="ai-support__panel-header">
+                <h3>¿En qué puedo ayudarte?</h3>
+                
+            </div>
+            <div class="ai-support__panel-body">
+                @if (Model?.Suggestions?.Count > 0)
+                {
+                    <div class="ai-support__block">
+                        <h4>Temas sugeridos</h4>
+                        <div class="ai-support__chips">
+                            @foreach (var s in Model.Suggestions)
+                            {
+                                <span class="ai-support__chip-pill">@s</span>
+                            }
+                        </div>
+                    </div>
+                }
+
+                <form method="post">
+                    <label for="UserMessage">Prompt</label>
+                    <textarea id="UserMessage" name="UserMessage" rows="6" placeholder="Escribe tu consulta basada en la base de conocimiento...">@Model?.UserMessage</textarea>
+                    <div class="ai-support__actions">
+                        <button type="submit" class="ai-support__btn">Enviar</button>
+                        <button type="reset" class="ai-support__btn ai-support__btn--secondary">Limpiar</button>
+                    </div>
+                </form>
+            </div>
+        </section>
+
+        <section class="ai-support__panel">
+            <div class="ai-support__panel-header">
+                <h3>Salida del agente</h3>
+              
+            </div>
+            <div class="ai-support__panel-body">
+                @if (!string.IsNullOrWhiteSpace(Model?.AgentResponse) || !string.IsNullOrWhiteSpace(Model?.SearchJson))
+                {
+                    <div class="ai-support__block">
+                        <h4>Respuesta basada en documentos</h4>
+                        <pre class="ai-support__pre">@Model.AgentResponse</pre>
+                    </div>
+
+                    @if (!string.IsNullOrWhiteSpace(Model?.SearchJson))
+                    {
+                        <div class="ai-support__block">
+                            <h4>Resultados de búsqueda (diagnóstico)</h4>
+                            <pre class="ai-support__pre">@Model.SearchJson</pre>
+                        </div>
+                    }
+                }
+
+                @if (Model?.Errors?.Count > 0)
+                {
+                    <div class="ai-support__errors">
+                        <h5>Diagnóstico</h5>
+                        <ul>
+                        @foreach (var e in Model.Errors)
+                        {
+                            <li>@e</li>
+                        }
+                        </ul>
+                    </div>
+                }
+
+                <div class="ai-support__note">
+                    <span class="ai-support__lamp"></span>
+                </div>
+            </div>
+        </section>
+    </div>
+</div>
+
+<style>
+/* Paleta suave y legible: gris + azul claro (traslúcido) */
+.ai-support {
+    --primary: #4f7ebd;          /* azul medio suave */
+    --primary-light: #8fb6e9;     /* azul claro */
+    --accent: #78a4d8;            /* azul intermedio */
+    --bg: #ffffff;                /* fondo base */
+    --card: #f7fafc;              /* panel claro */
+    --border: #e6edf7;            /* borde gris-azul */
+    --text: #1b2440;              /* texto principal (oscuro) */
+    --muted: #6b7aa6;             /* texto secundario */
+    --ok: #12d67f;                /* estado OK dot */
+    --err: #ff4d6d;               /* error */
+    display: block;
+    padding: 16px;
+    color: var(--text);
+    background: var(--bg);
+    border-radius: 12px;
+}
+
+/* Header con degradados muy traslúcidos y gris-azul */
+.ai-support__header {
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 14px; padding: 12px 16px;
+    border: 1px solid var(--border); border-radius: 12px;
+    background:
+      radial-gradient(800px 200px at 0% 0%, rgba(143,182,233,0.12) 0%, transparent 70%),
+      radial-gradient(600px 180px at 100% 100%, rgba(120,164,216,0.10) 0%, transparent 70%),
+      linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+}
+.ai-support__title {
+    font-size: 1.05rem; font-weight: 800; letter-spacing: 0.3px;
+    background: linear-gradient(90deg, #1b2440 0%, #3c4a63 50%, #6e93c4 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.ai-support__status {
+    margin-left: auto; display: flex; align-items: center; gap: 8px;
+    color: var(--muted); font-weight: 600;
+}
+.ai-support__dot { width: 10px; height: 10px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 10px var(--ok); }
+.ai-support__chip {
+    padding: 6px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--card);
+    color: var(--text); font-weight: 700;
+}
+
+/* Grid y paneles con degradados gris-azul traslúcidos */
+.ai-support__grid { display: flex; gap: 16px; flex-wrap: wrap; }
+.ai-support__panel {
+    flex: 1 1 360px; border: 1px solid var(--border); border-radius: 16px;
+    background:
+      radial-gradient(1000px 300px at 10% -10%, rgba(143,182,233,0.10) 0%, transparent 70%),
+      radial-gradient(900px 280px at 110% 120%, rgba(120,164,216,0.08) 0%, transparent 70%),
+      linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+    box-shadow: 0 10px 32px rgba(78,108,150,0.10);
+}
+.ai-support__panel-header {
+    padding: 12px 16px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 8px;
+}
+.ai-support__panel-header h3 { margin: 0; font-size: 0.98rem; font-weight: 800; color: #2b3560; }
+
+/* Badge sin morado/azul oscuro: degradado gris-azul claro, texto oscuro para legibilidad */
+.ai-support__badge {
+    padding: 6px 10px; border-radius: 12px; font-size: .78rem; font-weight: 800;
+    color: #1b2440;
+    background: linear-gradient(90deg, #eef3fa 0%, #e6f0fb 50%, #deebf9 100%);
+    box-shadow: 0 6px 14px rgba(143,182,233,0.25);
+    border: 1px solid var(--border);
+}
+
+.ai-support__panel-body { padding: 16px; }
+
+.ai-support label { display: inline-block; margin-bottom: 6px; font-weight: 800; color: #2b3560; }
+.ai-support textarea {
+    width: 100%; min-height: 140px; border: 2px solid #dbe6f7; border-radius: 14px;
+    padding: 14px 16px; font-size: 1rem; color: #253058; background: #fff;
+    transition: border-color .25s, box-shadow .25s;
+}
+.ai-support textarea::placeholder { color: #93a1c8; }
+.ai-support textarea:focus {
+    outline: none; border-color: var(--primary);
+    box-shadow: 0 0 0 6px rgba(143,182,233,0.28);
+}
+
+.ai-support__actions { display: flex; gap: 10px; margin-top: 12px; }
+
+/* Botones con degradado gris-azul claro, alto contraste de texto */
+.ai-support__btn {
+    appearance: none; border: none; cursor: pointer; font-weight: 800;
+    border-radius: 12px; padding: 12px 18px; color: #0f172a;
+    background: linear-gradient(90deg, #eef3fa 0%, #e6f0fb 50%, #deebf9 100%);
+    box-shadow: 0 12px 24px rgba(143,182,233,0.25);
+    transition: transform .12s ease, box-shadow .2s ease, filter .2s ease;
+    border: 1px solid var(--border);
+}
+.ai-support__btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 14px 28px rgba(120,164,216,0.28);
+    filter: brightness(1.03);
+}
+.ai-support__btn--secondary {
+    background: linear-gradient(90deg, #f5f7fb 0%, #e9eff8 100%);
+    color: #1b2440;
+}
+
+/* Bloques y pre con diseño claro legible */
+.ai-support__block {
+    margin-bottom: 12px; background: #ffffff; border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px;
+}
+.ai-support__block h4 { margin: 0 0 8px 0; color: #253058; font-size: .98rem; font-weight: 800; }
+.ai-support__pre {
+    margin: 0; white-space: pre-wrap; word-wrap: break-word;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    font-size: .94rem; line-height: 1.55; color: #1e274a;
+    background: #fbfdff; border: 1px solid var(--border); border-radius: 10px; padding: 10px;
+}
+
+/* Chips sin morado oscuro: degradado muy suave gris-azul y texto oscuro */
+.ai-support__chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.ai-support__chip-pill {
+    display: inline-block; padding: 6px 10px; border-radius: 10px;
+    background: linear-gradient(90deg, #eef3fa 0%, #e6f0fb 100%);
+    color: #1b2440; font-weight: 700; font-size: .82rem; border: 1px solid var(--border);
+}
+
+/* Errores con estilo claro (sin saturación excesiva) */
+.ai-support__errors {
+    margin-top: 10px; border: 1px dashed rgba(255,77,109,0.4);
+    border-radius: 12px; background: #fff7f9; color: #a3122e; padding: 10px 12px;
+}
+
+/* Nota y lámpara con acento azul claro */
+.ai-support__note { margin-top: 10px; color: var(--muted); font-size: .86rem; display: flex; align-items: center; gap: 8px; }
+.ai-support__lamp { width: 10px; height: 10px; border-radius: 50%; background: var(--primary-light); box-shadow: 0 0 12px var(--primary-light); }
+</style>

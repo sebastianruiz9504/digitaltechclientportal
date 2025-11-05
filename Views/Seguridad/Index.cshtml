@@ -1,0 +1,320 @@
+@{
+    ViewData["Title"] = "Seguridad (Demo)";
+
+    // Datos demo (ajústalos luego con datos reales)
+    var secureScoreCurrent = 74;
+    var secureScoreDelta = +6;
+    var adoptionScoreCurrent = 62;
+    var adoptionScoreDelta = +3;
+
+    string[] timelineLabels = new[] { "Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic" };
+    int[] secureScoreSeries   = new[] { 55, 57, 60, 61, 63, 65, 66, 68, 69, 70, 72, 74 };
+    int[] adoptionScoreSeries = new[] { 48, 50, 51, 52, 54, 55, 56, 58, 59, 60, 61, 62 };
+
+    var threats = new[] {
+        new { Fecha = DateTime.Today.AddDays(-3).ToString("dd/MM/yyyy"), Tipo = "Phishing (Exchange Online)",      Severidad = "Alta",  Estado = "Mitigada" },
+        new { Fecha = DateTime.Today.AddDays(-6).ToString("dd/MM/yyyy"), Tipo = "Inicio sospechoso (Entra ID)",    Severidad = "Media", Estado = "En investigación" },
+        new { Fecha = DateTime.Today.AddDays(-10).ToString("dd/MM/yyyy"),Tipo = "Endpoint sin EDR (Defender)",     Severidad = "Alta",  Estado = "Pendiente" },
+        new { Fecha = DateTime.Today.AddDays(-14).ToString("dd/MM/yyyy"),Tipo = "App sin políticas (MCAS)",        Severidad = "Baja",  Estado = "Mitigada" }
+    };
+
+    var recommendations = new[] {
+        new { Title = "Habilitar MFA para todas las cuentas",                 ImpactPts = +8 },
+        new { Title = "Enforzar políticas de acceso condicional",             ImpactPts = +6 },
+        new { Title = "Hardening con Intune en dispositivos corporativos",    ImpactPts = +5 },
+        new { Title = "Activar DLP para datos sensibles en M365",             ImpactPts = +4 }
+    };
+
+    var mfaEnabledUsers     = 81;
+    var healthyDevices      = 76;
+    var appsWithPolicies    = 68;
+    var leastPrivilegeRatio = 87;
+}
+
+<section class="space-y-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+  <!-- Encabezado -->
+  <header class="mb-8">
+    <h1 class="text-4xl font-bold tracking-tight text-slate-900">Seguridad del tenant (Demo)</h1>
+    <p class="mt-2 text-slate-600 text-base">Postura actual, evolución y hallazgos clave. Datos ilustrativos.</p>
+  </header>
+
+  <!-- Tarjetas principales -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+    <!-- Secure Score -->
+    <div class="relative overflow-hidden rounded-2xl bg-slate-900 p-6 shadow-xl">
+      <div class="relative z-10 text-white">
+        <div class="flex items-center justify-between">
+          <h3 class="text-sm font-semibold uppercase">Secure score</h3>
+          <span class="text-xs px-2 py-1 rounded-full bg-emerald-600 text-white border border-emerald-500">
+            @(secureScoreDelta >= 0 ? "+" : "")@secureScoreDelta pts
+          </span>
+        </div>
+
+        <div class="mt-5 grid grid-cols-3 gap-6 items-center">
+          <div class="col-span-1 flex justify-center">
+            <canvas id="secureGauge" class="h-36 w-36"></canvas>
+          </div>
+          <div class="col-span-2">
+            <div class="text-5xl font-extrabold leading-none">@secureScoreCurrent%</div>
+            <p class="mt-2 text-sm">Estado actual del puntaje</p>
+            <div class="mt-3 h-2 bg-slate-800 rounded-full overflow-hidden">
+              <div class="h-2 bg-emerald-500" style="width:@secureScoreCurrent%"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Adoption Score -->
+    <div class="relative overflow-hidden rounded-2xl bg-slate-900 p-6 shadow-xl">
+      <div class="relative z-10 text-white">
+        <div class="flex items-center justify-between">
+          <h3 class="text-sm font-semibold uppercase">Adoption score</h3>
+          <span class="text-xs px-2 py-1 rounded-full bg-sky-600 text-white border border-sky-500">
+            @(adoptionScoreDelta >= 0 ? "+" : "")@adoptionScoreDelta pts
+          </span>
+        </div>
+
+        <div class="mt-5 grid grid-cols-3 gap-6 items-center">
+          <div class="col-span-1 flex justify-center">
+            <canvas id="adoptionGauge" class="h-36 w-36"></canvas>
+          </div>
+          <div class="col-span-2">
+            <div class="text-5xl font-extrabold leading-none">@adoptionScoreCurrent%</div>
+            <p class="mt-2 text-sm">Estado actual del puntaje</p>
+            <div class="mt-3 h-2 bg-slate-800 rounded-full overflow-hidden">
+              <div class="h-2 bg-sky-500" style="width:@adoptionScoreCurrent%"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Indicadores de postura (más anchos) -->
+  <div class="rounded-2xl bg-white border border-slate-200 shadow-sm p-6">
+    <h3 class="text-sm font-semibold text-slate-800">Indicadores de postura</h3>
+    <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div class="rounded-xl bg-slate-50 border border-slate-200 p-5">
+        <div class="text-xs text-slate-600">MFA habilitado</div>
+        <div class="mt-1 text-2xl font-bold text-slate-900">@mfaEnabledUsers%</div>
+        <div class="mt-3 h-3 bg-slate-200 rounded-full overflow-hidden">
+          <div class="h-3 bg-emerald-500" style="width:@mfaEnabledUsers%"></div>
+        </div>
+      </div>
+      <div class="rounded-xl bg-slate-50 border border-slate-200 p-5">
+        <div class="text-xs text-slate-600">Dispositivos saludables</div>
+        <div class="mt-1 text-2xl font-bold text-slate-900">@healthyDevices%</div>
+        <div class="mt-3 h-3 bg-slate-200 rounded-full overflow-hidden">
+          <div class="h-3 bg-sky-500" style="width:@healthyDevices%"></div>
+        </div>
+      </div>
+      <div class="rounded-xl bg-slate-50 border border-slate-200 p-5">
+        <div class="text-xs text-slate-600">Apps con políticas</div>
+        <div class="mt-1 text-2xl font-bold text-slate-900">@appsWithPolicies%</div>
+        <div class="mt-3 h-3 bg-slate-200 rounded-full overflow-hidden">
+          <div class="h-3 bg-indigo-500" style="width:@appsWithPolicies%"></div>
+        </div>
+      </div>
+      <div class="rounded-xl bg-slate-50 border border-slate-200 p-5">
+        <div class="text-xs text-slate-600">Identidades no privilegiadas</div>
+        <div class="mt-1 text-2xl font-bold text-slate-900">@leastPrivilegeRatio%</div>
+        <div class="mt-3 h-3 bg-slate-200 rounded-full overflow-hidden">
+          <div class="h-3 bg-violet-500" style="width:@leastPrivilegeRatio%"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Gráficas de evolución nítidas -->
+  <div class="rounded-2xl bg-white border border-slate-200 shadow-sm p-6">
+    <h3 class="text-lg font-semibold text-slate-800 mb-4">Evolución del Secure Score</h3>
+    <div class="h-80">
+      <canvas id="secureScoreChart"></canvas>
+    </div>
+  </div>
+
+  <div class="rounded-2xl bg-white border border-slate-200 shadow-sm p-6">
+    <h3 class="text-lg font-semibold text-slate-800 mb-4">Evolución del Adoption Score</h3>
+    <div class="h-80">
+      <canvas id="adoptionScoreChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Amenazas recientes -->
+  <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+    <h3 class="text-lg font-semibold text-slate-800 mb-4">Amenazas recientes</h3>
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-sm text-slate-700 border border-slate-200 rounded-lg overflow-hidden">
+        <thead class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide">
+          <tr>
+            <th class="px-4 py-3 text-left">Fecha</th>
+            <th class="px-4 py-3 text-left">Tipo</th>
+            <th class="px-4 py-3 text-left">Severidad</th>
+            <th class="px-4 py-3 text-left">Estado</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-200">
+          @foreach (var t in threats)
+          {
+            var sevClass = t.Severidad == "Alta" ? "bg-red-100 text-red-800" :
+                           t.Severidad == "Media" ? "bg-yellow-100 text-yellow-800" :
+                           "bg-slate-100 text-slate-700";
+            var dotClass = t.Severidad == "Alta" ? "bg-red-600" :
+                           t.Severidad == "Media" ? "bg-yellow-600" : "bg-slate-600";
+            <tr class="hover:bg-slate-50 transition-colors">
+              <td class="px-4 py-3">@t.Fecha</td>
+              <td class="px-4 py-3">@t.Tipo</td>
+              <td class="px-4 py-3">
+                <span class="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium @sevClass">
+                  <span class="inline-block h-1.5 w-1.5 rounded-full @dotClass"></span>
+                  @t.Severidad
+                </span>
+              </td>
+              <td class="px-4 py-3">@t.Estado</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Recomendaciones -->
+  <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+    <h3 class="text-lg font-semibold text-slate-800 mb-4">Recomendaciones prioritarias</h3>
+    <ul class="divide-y divide-slate-200 text-sm">
+      @foreach (var r in recommendations)
+      {
+        var badgeClass = r.ImpactPts >= 0 ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700";
+        <li class="py-3 flex items-center justify-between">
+          <div class="text-slate-800">@r.Title</div>
+          <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium @badgeClass">
+            @(r.ImpactPts >= 0 ? "+" : "")@r.ImpactPts pts
+          </span>
+        </li>
+      }
+    </ul>
+  </div>
+
+</section>
+
+@section Scripts {
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script>
+    // Datos Razor -> JS
+    const labels       = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(timelineLabels));
+    const secureData   = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(secureScoreSeries));
+    const adoptionData = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(adoptionScoreSeries));
+    const secureScoreCurrent   = @secureScoreCurrent;
+    const adoptionScoreCurrent = @adoptionScoreCurrent;
+
+    // Gauges semicirculares con etiqueta central contrastada
+    function createGauge(canvasId, value, colorTrack) {
+      const canvas = document.getElementById(canvasId);
+      const ctx = canvas.getContext('2d');
+
+      new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          datasets: [{
+            data: [value, 100 - value],
+            backgroundColor: [colorTrack, '#0f172a'], // trail oscuro constante
+            borderWidth: 0
+          }]
+        },
+        options: {
+          rotation: -90,
+          circumference: 180,
+          cutout: '70%',
+          plugins: { legend: { display: false }, tooltip: { enabled: false } }
+        }
+      });
+
+      // Etiqueta central visible
+      const label = document.createElement('div');
+      label.style.position = 'absolute';
+      label.style.left = '50%';
+      label.style.top = '50%';
+      label.style.transform = 'translate(-50%, -50%)';
+      label.style.color = '#ffffff';
+      label.style.fontWeight = '700';
+      label.style.textShadow = '0 1px 2px rgba(0,0,0,0.6)';
+      label.textContent = value + '%';
+      canvas.parentElement.style.position = 'relative';
+      canvas.parentElement.appendChild(label);
+    }
+
+    createGauge('secureGauge',   secureScoreCurrent,   '#10b981'); // verde
+    createGauge('adoptionGauge', adoptionScoreCurrent, '#0ea5e9'); // azul
+
+    // Gráficas de línea visibles y modernas (sin perder nitidez)
+    function createLineChart(canvasId, data, label, color) {
+      const canvas = document.getElementById(canvasId);
+      const ctx = canvas.getContext('2d');
+
+      // Gradiente con opacidad controlada (visible sobre blanco)
+      const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height || 320);
+      gradient.addColorStop(0, color + '88'); // relleno más visible
+      gradient.addColorStop(1, color + '10'); // atenuado
+
+      new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [{
+            label,
+            data,
+            borderColor: color,
+            backgroundColor: gradient,
+            fill: true,
+            tension: 0.35,
+            borderWidth: 2,
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            pointBackgroundColor: color,
+            pointBorderColor: '#ffffff',
+            pointBorderWidth: 1.2
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              enabled: true,
+              backgroundColor: 'rgba(15,23,42,0.92)',
+              titleColor: '#e2e8f0',
+              bodyColor: '#cbd5e1',
+              borderColor: 'rgba(148,163,184,0.3)',
+              borderWidth: 1,
+              padding: 10,
+              displayColors: false,
+              callbacks: { label: c => `${c.dataset.label}: ${c.parsed.y}%` }
+            }
+          },
+          scales: {
+            x: {
+              grid: { color: 'rgba(148,163,184,0.18)', drawBorder: false },
+              ticks: { color: '#475569' }
+            },
+            y: {
+              grid: { color: 'rgba(148,163,184,0.18)', drawBorder: false },
+              ticks: { color: '#475569', callback: v => v + '%' },
+              suggestedMin: 0,
+              suggestedMax: 100
+            }
+          }
+        }
+      });
+    }
+
+    // Colores sólidos y contrastados
+    createLineChart('secureScoreChart',   secureData,   'Secure Score',   '#10b981');
+    createLineChart('adoptionScoreChart', adoptionData, 'Adoption Score', '#0ea5e9');
+  </script>
+}

@@ -1,0 +1,53 @@
+﻿{
+  "$schema": "http://json.schemastore.org/launchsettings.json",
+  "iisSettings": {
+    "windowsAuthentication": false,
+    "anonymousAuthentication": true,
+    "iisExpress": {
+      "applicationUrl": "http://localhost:12658",
+      "sslPort": 44386
+    }
+  },
+  "profiles": {
+  
+    "https": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": true,
+      "applicationUrl": "https://localhost:7061;http://localhost:5128",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "AZURE_SEARCH_ENDPOINT": "https://appdigitaltech.search.windows.net",
+  "AZURE_SEARCH_INDEX": "rag-1758912843588",
+  "AZURE_OPENAI_ENDPOINT": "https://aidigitaltech.openai.azure.com",
+  "AZURE_OPENAI_CHAT_DEPLOYMENT": "o4-mini",
+  "AZURE_OPENAI_EMBED_DEPLOYMENT": "text-embedding-3-large"
+      }
+    },
+      "http": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": true,
+      "applicationUrl": "http://localhost:5128",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "AZURE_SEARCH_ENDPOINT": "https://appdigitaltech.search.windows.net",
+  "AZURE_SEARCH_INDEX": "rag-1758912843588",
+  "AZURE_OPENAI_ENDPOINT": "https://aidigitaltech.openai.azure.com",
+  "AZURE_OPENAI_CHAT_DEPLOYMENT": "o4-mini",
+  "AZURE_OPENAI_EMBED_DEPLOYMENT": "text-embedding-3-large"
+}
+
+      }
+    },
+    "IIS Express": {
+      "commandName": "IISExpress",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    }
+    
+  }
+  
+

@@ -1,0 +1,60 @@
+@model List<DigitalTechClientPortal.Models.ReporteCloudDto>
+@{
+    ViewData["Title"] = "Reportes de Seguridad";
+}
+
+    <div class="w-full px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Encabezado -->
+    <header class="mb-6">
+        <h1 class="text-3xl font-semibold tracking-tight text-slate-900">Reportes de Seguridad</h1>
+        <p class="mt-2 text-slate-500">Listado de reportes generados para tu organización.</p>
+    </header>
+    </div>
+<section class="space-y-8 max-w-3xl mx-auto">
+
+
+    @if (Model == null || !Model.Any())
+    {
+        <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 text-center text-slate-500">
+            No hay reportes disponibles.
+        </div>
+    }
+    else
+    {
+        <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+            <div class="overflow-x-auto">
+                <table class="min-w-full text-sm text-slate-700 border border-slate-200 rounded-lg overflow-hidden">
+                    <thead class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide">
+                        <tr>
+                            <th class="px-4 py-3 text-left">Título</th>
+                            <th class="px-4 py-3 text-left">Fecha</th>
+                            <th class="px-4 py-3 text-left">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200">
+                        @foreach (var r in Model)
+                        {
+                            <tr class="hover:bg-slate-50 transition-colors">
+                                <td class="px-4 py-3 font-medium text-slate-900">@r.Titulo</td>
+                                <td class="px-4 py-3">@r.Fecha.ToString("dd/MM/yyyy")</td>
+                                <td class="px-4 py-3">
+                                    @if (r.AdjuntoId != Guid.Empty)
+                                    {
+                                        <a asp-action="Descargar" asp-route-id="@r.Id"
+                                           class="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition">
+                                            Descargar PDF
+                                        </a>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-slate-400 text-xs">No disponible</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+</section>

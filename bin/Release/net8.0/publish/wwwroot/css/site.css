@@ -1,0 +1,51 @@
+body {
+    font-family: 'Helvetica', 'Arial', sans-serif;
+    background-color: #ffffff;
+    color: #000000;
+}
+
+.card {
+    border-radius: 12px;
+    background-color: #ffffff;
+    color: #000000;
+}
+
+.card-header {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #000000;
+}
+
+.btn-outline-primary {
+    border-color: #000000;
+    color: #000000;
+    font-weight: 500;
+    background-color: #ffffff;
+}
+
+.btn-outline-primary:hover {
+    background-color: #000000;
+    color: #ffffff;
+}
+
+h1, h2, h3 {
+    font-weight: 600;
+    color: #000000;
+}
+
+p, a, label {
+    font-size: 1rem;
+    color: #000000;
+}
+
+.nav-link {
+    font-size: 0.95rem;
+    font-weight: 500;
+    padding: 0.5rem 1rem;
+    color: #000000;
+}
+
+.nav-link:hover {
+    background-color: #000000;
+    color: #ffffff;
+}

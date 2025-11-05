@@ -1,0 +1,194 @@
+@{
+    Layout = null;
+}
+<div class="p-3">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <div class="d-flex align-items-center gap-2">
+            <!-- Botón Agenda con fondo más claro -->
+            <span class="badge bg-gradient-agenda">Agenda</span>
+            <h4 class="mb-0 fw-bold text-slate-900">Disponibilidad semanal</h4>
+        </div>
+        <div class="text-muted small">Gestione sus reservaciones y confirme franjas de forma rápida</div>
+    </div>
+
+    <!-- Controles de navegación -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div class="btn-group">
+            <button id="btnPrev" class="btn btn-outline-primary btn-sm">⟨ Anterior</button>
+            <button id="btnToday" class="btn btn-outline-secondary btn-sm">Hoy</button>
+            <button id="btnNext" class="btn btn-outline-primary btn-sm">Siguiente ⟩</button>
+        </div>
+        <div id="weekLabel" class="fw-bold text-primary-emphasis"></div>
+    </div>
+
+    <!-- Tabla -->
+    <div class="table-responsive card shadow-sm border-0">
+        <div class="card-body p-0">
+            <table id="tabla-disponibilidad" class="calendario-disponibilidad w-100">
+                <thead>
+                    <tr id="headerDias">
+                        <th style="width: 10%">Hora</th>
+                    </tr>
+                </thead>
+                <tbody id="bodyHoras"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de reserva -->
+<div class="modal fade" id="reservaModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow-lg">
+      <div class="modal-header border-0 bg-gradient-modal">
+        <h5 class="modal-title text-white">Confirmar reserva</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted mb-1">Has seleccionado la franja:</p>
+        <p class="fw-bold h5 text-primary" id="reservaHora"></p>
+
+        <div class="mb-3">
+          <label for="temaSelect" class="form-label text-slate-700">Tema a tratar</label>
+          <select id="temaSelect" class="form-select">
+            <option value="">-- Selecciona un tema --</option>
+            <option value="Introducción a Microsoft 365">Introducción a Microsoft 365</option>
+            <option value="Seguridad en la nube">Seguridad en la nube</option>
+            <option value="Power Platform: Power Automate y Power Apps">Power Platform: Power Automate y Power Apps</option>
+            <option value="Microsoft Teams avanzado">Microsoft Teams avanzado</option>
+            <option value="Administración de Azure AD">Administración de Azure AD</option>
+          </select>
+        </div>
+
+        <div class="mb-3">
+          <label for="observaciones" class="form-label text-slate-700">Observaciones</label>
+          <textarea id="observaciones" class="form-control" rows="3" placeholder="Escribe aquí cualquier detalle adicional..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer border-0">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancelar</button>
+        <button id="btnConfirmarReserva" type="button" class="btn btn-success">Confirmar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast de confirmación -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+  <div id="successToast" class="toast align-items-center text-bg-success border-0 shadow-lg" role="alert">
+    <div class="d-flex">
+      <div class="toast-body">
+        ✅ Su reserva ha sido exitosa. Revise su calendario para compartir la invitación con su personal.
+      </div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+  </div>
+</div>
+
+<style>
+  :root {
+    --slate-900: #0f172a;
+    --slate-700: #334155;
+    --slate-600: #475569;
+    --slate-100: #f1f5f9;
+    --primary-600: #0284c7;
+    --primary-700: #0369a1;
+  }
+
+  .text-slate-900 { color: var(--slate-900); }
+  .text-slate-700 { color: var(--slate-700); }
+
+  /* Gradiente más claro para el badge Agenda */
+  .bg-gradient-agenda {
+    background: linear-gradient(135deg, #67e8f9 0%, #38bdf8 50%, #818cf8 100%);
+    color: #0f172a;
+    font-weight: 600;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.5rem;
+  }
+
+  .bg-gradient-modal {
+    background: linear-gradient(135deg, #0ea5e9 0%, #6366f1 100%);
+  }
+
+  table.calendario-disponibilidad {
+    border-collapse: collapse;
+    table-layout: fixed;
+    width: 100%;
+    font-size: 0.95rem;
+    color: var(--slate-700);
+  }
+
+  table.calendario-disponibilidad thead th {
+    background: #f8fafc;
+    color: var(--slate-700);
+    font-weight: 700;
+    border-bottom: 1px solid #e2e8f0;
+    padding: 10px;
+  }
+
+  table.calendario-disponibilidad tbody td {
+    border: 1px solid #e2e8f0;
+    padding: 10px;
+    text-align: center;
+    vertical-align: middle;
+    background: #ffffff;
+  }
+
+  td.disponible {
+    background: #eef6ff;
+    color: var(--slate-900);
+    cursor: pointer;
+    transition: background-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  td.disponible:hover {
+    background: #e0f2fe;
+    box-shadow: inset 0 0 0 2px #93c5fd;
+  }
+
+  td.ocupado {
+    background: #fee2e2;
+    color: #7f1d1d;
+  }
+
+  td.vacio {
+    background: #f8fafc;
+    color: var(--slate-600);
+  }
+
+  table.calendario-disponibilidad tbody tr:hover td {
+    background: #f9fbff;
+  }
+
+  .btn-outline-primary {
+    border-color: var(--primary-600);
+    color: var(--primary-700);
+  }
+  .btn-outline-primary:hover {
+    background: var(--primary-600);
+    color: #fff;
+  }
+
+  .btn-outline-secondary {
+    border-color: #64748b;
+    color: var(--slate-700);
+  }
+  .btn-outline-secondary:hover {
+    background: #64748b;
+    color: #fff;
+  }
+
+  .card {
+    border-radius: 1rem;
+    background: #fff;
+  }
+  .modal-content {
+    border-radius: 1rem;
+  }
+  .form-label {
+    font-weight: 600;
+  }
+  .toast {
+    border-radius: 0.75rem;
+  }
+</style>

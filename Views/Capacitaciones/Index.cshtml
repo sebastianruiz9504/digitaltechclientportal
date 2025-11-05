@@ -1,0 +1,96 @@
+@model List<DigitalTechClientPortal.Models.CapacitacionDto>
+
+    <div class="w-full px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Encabezado -->
+    <header class="mb-6">
+        <h1 class="text-3xl font-semibold tracking-tight text-slate-900">Capacitaciones</h1>
+        <p class="mt-2 text-slate-500">Listado de sesiones programadas con detalles y acceso a cuestionarios.</p>
+    </header>
+    </div>
+<section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+    
+
+    <div class="overflow-x-auto">
+        <table class="min-w-full border-collapse text-sm text-slate-700">
+            <thead>
+                <tr class="bg-slate-50 text-slate-600 text-xs uppercase tracking-wide">
+                    <th class="px-4 py-3 text-left font-medium">Fecha</th>
+                    <th class="px-4 py-3 text-left font-medium">Duración</th>
+                    <th class="px-4 py-3 text-left font-medium">Asistentes</th>
+                    <th class="px-4 py-3 text-left font-medium">Tema</th>
+                    <th class="px-4 py-3 text-left font-medium">Cuestionario</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-200">
+                @foreach (var c in Model)
+                {
+                    <tr class="hover:bg-slate-50 transition-colors">
+                        <td class="px-4 py-3">@c.Fecha.ToString("dd MMM yyyy")</td>
+                        <td class="px-4 py-3">@c.DuracionHoras Mins</td>
+                        <td class="px-4 py-3">
+                            <span class="inline-flex items-center justify-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-700">
+                                @c.CantidadAsistentes
+                            </span>
+                        </td>
+                        <td class="px-4 py-3 font-medium text-slate-900">@c.Tema</td>
+                        <td class="px-4 py-3">
+                            @if (!string.IsNullOrEmpty(c.CuestionarioUrl))
+                            {
+                                <a href="@c.CuestionarioUrl"
+                                   class="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition">
+                                    Descargar
+                                </a>
+                            }
+                            else
+                            {
+                                <span class="text-slate-400 text-xs">No disponible</span>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="mt-6 text-right">
+        <button id="btnAbrirReserva"
+                class="inline-flex items-center rounded-lg bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-500 px-4 py-2 text-sm font-medium text-white shadow-md hover:shadow-lg hover:scale-[1.02] transition-all duration-300">
+            Reservar capacitación
+        </button>
+    </div>
+</section>
+
+<!-- Modal flotante para disponibilidad -->
+<div class="modal fade" id="modalReservaCapacitacion" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-body p-0" id="contenidoReserva">
+        <script src="~/js/Capacitaciones-calendar.js"></script>
+      </div>
+    </div>
+  </div>
+</div>
+
+@section Scripts {
+    <script>
+        document.getElementById("btnAbrirReserva").addEventListener("click", async () => {
+            const modalBody = document.getElementById("contenidoReserva");
+            modalBody.innerHTML = "<div class='p-5 text-center'><div class='spinner-border'></div></div>";
+
+            try {
+                const resp = await fetch("/Calendario/DisponibilidadModal");
+                const html = await resp.text();
+                modalBody.innerHTML = html;
+
+                if (window.initDisponibilidad) {
+                    window.initDisponibilidad(modalBody);
+                }
+
+                new bootstrap.Modal(document.getElementById("modalReservaCapacitacion")).show();
+            } catch (err) {
+                modalBody.innerHTML = "<div class='p-5 text-danger text-center'>Error al cargar disponibilidad.</div>";
+                console.error(err);
+            }
+        });
+    </script>
+}

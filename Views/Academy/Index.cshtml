@@ -1,0 +1,48 @@
+<div class="w-full px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Encabezado -->
+    <header class="mb-6">
+        <h1 class="text-3xl font-semibold tracking-tight text-slate-900">Digital Academy</h1>
+        <p class="mt-2 text-slate-500">Aprende de los expertos, capacita a todo tu equipo con Digital Tech.</p>
+    </header>
+</div>
+
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" id="video-grid">
+    <!-- Aquí se insertarán dinámicamente las tarjetas -->
+</div>
+
+@section Scripts {
+<script>
+    async function loadVideos() {
+        const res = await fetch('/Academy/Videos');
+        const videos = await res.json();
+        const grid = document.getElementById('video-grid');
+
+        grid.innerHTML = '';
+
+        videos.forEach(v => {
+            const card = document.createElement('article');
+            card.className = 'bg-white rounded-xl overflow-hidden shadow-soft flex flex-col';
+
+            card.innerHTML = `
+                <a href="javascript:void(0)" class="relative block bg-slate-100 aspect-video">
+                    <img src="${v.thumbnailUrl}" alt="${v.title}" class="absolute inset-0 w-full h-full object-cover" />
+                </a>
+                <div class="p-3 flex flex-col gap-2 flex-1">
+                    <h3 class="text-slate-900 font-semibold text-sm leading-tight">${v.title}</h3>
+                    <p class="text-slate-500 text-xs">${v.description.substring(0, 80)}...</p>
+                    <div class="mt-auto flex gap-2">
+                        <a href="https://www.youtube.com/watch?v=${v.videoId}" target="_blank"
+                            class="inline-flex items-center gap-2 text-sm px-3 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-black">
+                            Ver en YouTube
+                        </a>
+                    </div>
+                </div>
+            `;
+
+            grid.appendChild(card);
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', loadVideos);
+</script>
+}

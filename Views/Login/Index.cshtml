@@ -1,0 +1,89 @@
+@{
+    Layout = null;
+    var returnUrl = Context.Request.Query["returnUrl"].FirstOrDefault() ?? "/";
+}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Iniciar sesión</title>
+
+  <!-- Inter -->
+  <link rel="preconnect" href="https://rsms.me" />
+  <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
+
+  <!-- Tailwind CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'ui-sans-serif', 'system-ui'] },
+          colors: {
+            ink: '#0a2540',
+            subtle: '#6b7280'
+          },
+          boxShadow: {
+            soft: '0 2px 6px rgba(0,0,0,.15)'
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    ::selection { background:#e5e7eb; }
+    body {
+      background: url('https://41741943.fs1.hubspotusercontent-na1.net/hubfs/41741943/Copia%20de%20Portafolio%20Unificado%20(Nuevo).jpg') no-repeat center center fixed;
+      background-size: cover;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex items-center justify-center font-sans antialiased">
+
+  <div class="w-full max-w-md">
+    <!-- Tarjeta -->
+    <div class="rounded-2xl bg-white p-8 shadow-soft border border-slate-200">
+      
+      <!-- Logo -->
+      <div class="flex justify-center mb-6">
+        <img src="~/logosloganblack.png" alt="Logo" class="h-14">
+      </div>
+
+      <h1 class="text-2xl font-semibold text-ink text-center">Bienvenido</h1>
+      <p class="mt-1 text-center text-subtle text-sm">Accede con tu cuenta Microsoft</p>
+
+      <!-- Botón Microsoft -->
+      <div class="mt-8">
+        <a href="@Url.Action("SignIn","Login", new { returnUrl })"
+           class="group inline-flex w-full items-center justify-center gap-3 rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-ink hover:bg-slate-50 transition">
+          <span class="inline-block h-5 w-5" aria-hidden="true">
+            <!-- Logotipo Microsoft (4 cuadros) -->
+            <svg viewBox="0 0 23 23" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5">
+              <rect width="10" height="10" x="0"  y="0"  fill="#F35325"/>
+              <rect width="10" height="10" x="12" y="0"  fill="#81BC06"/>
+              <rect width="10" height="10" x="0"  y="12" fill="#05A6F0"/>
+              <rect width="10" height="10" x="12" y="12" fill="#FFBA08"/>
+            </svg>
+          </span>
+          <span>Entrar con Microsoft</span>
+        </a>
+      </div>
+
+      <!-- Ayuda -->
+      <div class="mt-6 text-center">
+        <a href="https://account.microsoft.com/account" target="_blank" rel="noopener"
+           class="text-sm text-subtle hover:text-ink transition">
+          ¿Problemas para iniciar sesión?
+        </a>
+      </div>
+    </div>
+
+    <!-- Pie -->
+    <p class="mt-6 text-center text-xs text-white/80">
+      © @DateTime.UtcNow.Year Digital Tech
+    </p>
+  </div>
+
+</body>
+</html>

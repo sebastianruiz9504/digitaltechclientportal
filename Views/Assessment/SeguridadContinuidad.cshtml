@@ -1,0 +1,98 @@
+@{
+    ViewData["Title"] = "Assessment Seguridad + Continuidad de negocio";
+}
+
+<div class="max-w-4xl mx-auto py-6" id="assessmentRoot">
+    <h2 class="text-2xl font-bold text-slate-900 mb-2">Assessment Seguridad + Continuidad de negocio</h2>
+    <p class="text-slate-600 mb-6">
+        Evalúa la postura de seguridad de tu organización y sus capacidades de continuidad del negocio.
+        Responde con honestidad; te daremos un puntaje y acciones concretas para mejorar.
+    </p>
+
+    <!-- Datos del responsable -->
+    <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-4 mb-6">
+        <h5 class="text-lg font-semibold text-slate-800 mb-3">Datos del responsable</h5>
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label for="respNombre" class="form-label text-slate-700">Nombre completo</label>
+                <input type="text" class="form-control" id="respNombre" placeholder="Nombre de quien responde" />
+            </div>
+            <div class="col-md-6">
+                <label for="respEmpresa" class="form-label text-slate-700">Empresa</label>
+                <input type="text" class="form-control" id="respEmpresa" placeholder="Nombre de la empresa" />
+            </div>
+        </div>
+        <small class="text-slate-500">Estos datos aparecerán en el PDF y en el envío por correo.</small>
+    </div>
+
+    <!-- Barra de progreso -->
+    <div class="w-full h-3 bg-slate-200 rounded-full overflow-hidden mb-6">
+        <div id="progressBar" class="h-3 bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-500 transition-all duration-300" style="width:0%"></div>
+    </div>
+
+    <!-- Encabezado de sección -->
+    <div class="flex items-center justify-between mb-4">
+        <h5 id="sectionTitle" class="text-lg font-semibold text-slate-800"></h5>
+        <span id="sectionCounter" class="text-slate-500 text-sm"></span>
+    </div>
+
+    <!-- Contenedor de preguntas -->
+    <form id="questionsForm" class="space-y-4 mb-6"></form>
+
+    <!-- Navegación -->
+    <div class="flex gap-3">
+        <button id="btnPrev" type="button" class="btn-unified btn-unified-light">Anterior</button>
+        <button id="btnNext" type="button" class="btn-unified bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-500 text-white ms-auto">Siguiente</button>
+        <button id="btnFinish" type="button" class="btn-unified bg-green-600 text-white d-none">Finalizar</button>
+    </div>
+
+    <hr class="my-8 border-slate-200">
+
+    <!-- Resumen -->
+    <div id="summaryPanel" class="d-none">
+        <h4 class="text-xl font-bold text-slate-900 mb-4">Resumen de resultados</h4>
+
+        <!-- Puntaje global -->
+        <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-4 mb-6">
+            <div class="flex items-center justify-between">
+                <div>
+                    <div class="text-slate-500 text-sm">Puntaje global</div>
+                    <div id="overallScore" class="text-4xl font-extrabold text-slate-900">0</div>
+                    <div id="overallBand" class="inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-medium bg-slate-200 text-slate-700">—</div>
+                </div>
+                <div class="w-2/5 min-w-[280px]">
+                    <div class="w-full h-3 bg-slate-200 rounded-full overflow-hidden">
+                        <div id="overallProgress" class="h-3 bg-gradient-to-r from-green-400 to-green-600 transition-all duration-300" style="width:0%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Puntaje por dominio -->
+        <h5 class="text-lg font-semibold text-slate-800 mb-3">Puntaje por dominio</h5>
+        <div id="domainScores" class="space-y-3 mb-6"></div>
+
+        <!-- Acciones recomendadas -->
+        <h5 class="text-lg font-semibold text-slate-800 mb-2">Acciones recomendadas</h5>
+        <p class="text-slate-500 text-sm mb-3">Priorizadas según tus resultados por dominio.</p>
+        <ul id="recommendations" class="list-group mb-4"></ul>
+
+        <div class="text-end">
+            <button id="btnExportPdf" class="btn-unified border border-red-500 text-red-600 hover:bg-red-50">
+                <i class="bi bi-file-earmark-pdf-fill me-1"></i> Exportar a PDF
+            </button>
+        </div>
+    </div>
+</div>
+
+<style>
+    #questionsForm .card { border: 1px solid #e5e7eb; border-radius: .75rem; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+    .likert-label { font-size: 0.9rem; color: #64748b; }
+    .domain-row .progress { height: 10px; }
+</style>
+
+@section Scripts {
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="~/js/assessment-seguridad.js"></script>
+}

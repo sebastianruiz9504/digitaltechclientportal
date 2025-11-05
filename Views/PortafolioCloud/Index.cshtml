@@ -1,0 +1,104 @@
+@model DigitalTechClientPortal.Web.Models.PortfolioCloudViewModel
+@{
+    ViewData["Title"] = "Portafolio Cloud";
+}
+
+@section Head {
+  <style>
+    .card-ring{ box-shadow:0 1px 0 rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.08) }
+    .grad-assessment{ background-image: linear-gradient(to right, #06b6d4, #3b82f6, #6366f1); }
+  </style>
+}
+
+<section class="relative overflow-hidden rounded-2xl border bg-white">
+  <div class="absolute inset-0 opacity-10 grad-assessment"></div>
+  <div class="relative px-6 py-12 sm:px-10">
+    <p class="text-xs uppercase tracking-wider text-slate-500">Portafolio</p>
+    <h1 class="mt-2 text-3xl font-semibold tracking-tight text-ink">@Model.HeroTitle</h1>
+    <p class="mt-3 max-w-2xl text-slate-600">@Model.HeroSubtitle</p>
+
+    <div class="mt-6 flex flex-wrap gap-2">
+      @foreach (var card in Model.Cards)
+      {
+        <a href="#@card.Slug" class="rounded-full border px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">@card.Title</a>
+      }
+    </div>
+  </div>
+</section>
+
+<section class="mt-8 grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+  @foreach (var c in Model.Cards)
+  {
+    <article id="@c.Slug" class="card-ring rounded-2xl border bg-white p-6">
+      <div class="flex items-start gap-3">
+        <div class="h-10 w-10 rounded-lg bg-slate-100 grid place-content-center text-slate-700">
+          @switch (c.IconKind)
+          {
+            case "apps":
+              @:<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="7" height="7" rx="2" stroke-width="1.5"/><rect x="14" y="3" width="7" height="7" rx="2" stroke-width="1.5"/><rect x="3" y="14" width="7" height="7" rx="2" stroke-width="1.5"/><rect x="14" y="14" width="7" height="7" rx="2" stroke-width="1.5"/></svg>
+              break;
+            case "shield-check":
+              @:<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3l7 4v5a9 9 0 1 1-14 0V7l7-4z" stroke-width="1.5"/><path d="M9 12l2 2 4-4" stroke-width="1.5"/></svg>
+              break;
+            case "lock":
+              @:<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="4" y="10" width="16" height="10" rx="2" stroke-width="1.5"/><path d="M8 10V7a4 4 0 1 1 8 0v3" stroke-width="1.5"/></svg>
+              break;
+            case "spark":
+              @:<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 2v6M12 16v6M2 12h6M16 12h6M5 5l4 4M15 15l4 4M19 5l-4 4M9 15l-4 4" stroke-width="1.5"/></svg>
+              break;
+            case "stars":
+              @:<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3l2.4 4.9L20 9l-4 3.9.9 5.1L12 16.8 7.1 18l.9-5.1L4 9l5.6-1.1L12 3z" stroke-width="1.5"/></svg>
+              break;
+            default:
+              @:<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="4" y="4" width="16" height="16" rx="3" stroke-width="1.5"/></svg>
+              break;
+          }
+        </div>
+
+        <div class="flex-1">
+          <h3 class="text-base font-semibold text-slate-900">@c.Title</h3>
+          <p class="mt-0.5 text-sm text-slate-600">@c.Subtitle</p>
+
+          <ul class="mt-3 space-y-1.5">
+            @foreach (var b in c.Bullets)
+            {
+              <li class="flex items-start gap-2 text-sm text-slate-700">
+                <svg class="mt-0.5 h-4 w-4 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M20 6L9 17l-5-5" stroke-width="1.5"/></svg>
+                <span>@b</span>
+              </li>
+            }
+          </ul>
+
+          <div class="mt-4 flex flex-wrap gap-2">
+            @if (!string.IsNullOrWhiteSpace(c.CtaPrimaryHref))
+            {
+              <a href="@c.CtaPrimaryHref" target="@(c.CtaPrimaryHref.StartsWith("http") ? "_blank" : "_self")" rel="@(c.CtaPrimaryHref.StartsWith("http") ? "noopener" : null)"
+                 class="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium text-white grad-assessment shadow-md shadow-blue-500/30 border border-white/20 hover:shadow-lg hover:shadow-blue-500/40 hover:scale-[1.02] transition-all">
+                @c.CtaPrimaryText
+              </a>
+            }
+            @if (!string.IsNullOrWhiteSpace(c.CtaSecondaryHref))
+            {
+              <a href="@c.CtaSecondaryHref"
+                 class="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium text-slate-700 border border-slate-300 bg-white hover:bg-slate-50 transition">
+                @c.CtaSecondaryText
+              </a>
+            }
+          </div>
+        </div>
+      </div>
+    </article>
+  }
+</section>
+
+<section id="contacto" class="mt-10 rounded-2xl border bg-white p-6 text-center">
+  <h3 class="text-lg font-semibold text-slate-900">¿Listo para modernizar tu nube?</h3>
+  <p class="mt-2 text-slate-600">Agendemos una sesión para dimensionar licenciamiento, arquitectura y seguridad, y proponerte un plan claro.</p>
+  <div class="mt-4">
+    <a href="https://wa.me/573001234567?text=Hola%20Digital%20Tech%2C%20quiero%20conocer%20el%20Portafolio%20Cloud"
+       target="_blank" rel="noopener"
+       class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white grad-assessment shadow-md shadow-blue-500/30 border border-white/20 hover:shadow-lg hover:shadow-blue-500/40 hover:scale-[1.02] transition-all">
+      Hablar por WhatsApp
+    </a>
+  </div>
+</section>

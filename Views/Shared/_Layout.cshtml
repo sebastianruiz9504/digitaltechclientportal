@@ -1,0 +1,233 @@
+﻿@using System.Security.Claims
+@inject DigitalTechClientPortal.Services.DataverseClienteService ClienteService
+
+@{
+    var title = ViewData["Title"]?.ToString() ?? "Dashboard · iCloudIA";
+    var currentController = Context.Request.RouteValues["controller"]?.ToString() ?? "";
+    var currentAction = Context.Request.RouteValues["action"]?.ToString() ?? "";
+
+    Func<string,string,bool> isActive = (ctrl, act) =>
+        string.Equals(currentController, ctrl, StringComparison.OrdinalIgnoreCase)
+        && string.Equals(currentAction, act, StringComparison.OrdinalIgnoreCase);
+
+    // Navegación: enlaces con realce sutil sobre sidebar transparente
+    Func<string,string,string> navClasses = (ctrl, act) =>
+        "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium " +
+        (isActive(ctrl, act)
+            ? "bg-white/[0.08] text-white shadow-soft"
+            : "hover:bg-white/[0.06] text-white");
+
+    // Resolver email del usuario
+    var email =
+        User.FindFirst(ClaimTypes.Email)?.Value
+        ?? User.FindFirst("preferred_username")?.Value
+        ?? User.FindFirst("email")?.Value
+        ?? User.FindFirst("emails")?.Value
+        ?? User.FindFirst("upn")?.Value;
+
+    // Traer cliente desde Dataverse (silenciar errores para no romper layout)
+    dynamic? cliente = null;
+    if (!string.IsNullOrWhiteSpace(email))
+    {
+        try { cliente = await ClienteService.GetClienteByEmailAsync(email); }
+        catch { }
+    }
+
+    var companyName = (string)(cliente?.Nombre ?? "Digital Tech");
+    var workspaceName = email ?? string.Empty;
+}
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>@title</title>
+
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      fontFamily: { sans: ['Helvetica','Arial','ui-sans-serif','system-ui'] },
+      boxShadow: {
+        card: '0 2px 8px rgba(0,0,0,.18)',
+        soft: '0 1px 2px rgba(0,0,0,.08), 0 2px 6px rgba(0,0,0,.12)'
+      }
+    }
+  }
+}
+</script>
+
+<style>
+/* Tipografía global Helvetica */
+html, body, button, input, select, textarea { font-family: Helvetica, Arial, ui-sans-serif, system-ui; }
+
+/* Fondo global con imagen (cubre y fija) */
+body {
+  background: url('https://41741943.fs1.hubspotusercontent-na1.net/hubfs/41741943/Copia%20de%20Portafolio%20Unificado%20(Nuevo).jpg') no-repeat center center fixed;
+  background-size: cover;
+  color: #fff; /* texto por defecto en blanco para sidebar y área exterior */
+}
+
+/* Selección y scrollbar */
+::selection { background:#222; color:#fff; }
+.thin-scroll::-webkit-scrollbar { height:10px; width:10px }
+.thin-scroll::-webkit-scrollbar-thumb { background:#444; border-radius:8px }
+
+/* Botones unificados */
+.btn-unified {
+  display:inline-flex; align-items:center; gap:.5rem;
+  border-radius:.5rem; padding:.375rem .75rem;
+  font-size:.875rem; font-weight:600; line-height:1.25rem;
+  transition:transform .15s ease, box-shadow .15s ease, background-color .15s ease, color .15s ease, border-color .15s ease;
+  text-decoration:none;
+}
+.btn-unified-light { background:#ffffff; color:#000000; border:1px solid #e5e7eb; box-shadow:0 1px 2px rgba(0,0,0,.08); }
+.btn-unified-light:hover { box-shadow:0 2px 6px rgba(0,0,0,.12); transform:scale(1.02); }
+.btn-unified-dark-outline { background:#000000; color:#ffffff; border:1px solid #6b7280; }
+.btn-unified-dark-outline:hover { background:#ffffff; color:#000000; border-color:#000000; }
+
+/* Sidebar completamente transparente (sin fondo ni borde) */
+.sidebar {
+  background: transparent;
+  border-right: none;
+  backdrop-filter: none; /* si necesitas contraste, cambia a blur(4px) */
+}
+
+/* Super tarjeta blanca sólida (contenedor principal) */
+.super-card {
+  background: #ffffff;           /* blanco sólido pedido */
+  border: 2px solid #0a0a0a;     /* borde negro visible */
+  border-radius: 1rem;           /* rounded-2xl */
+  margin: 1.25rem;               /* marco alrededor para ver el fondo */
+  box-shadow: 0 2px 12px rgba(0,0,0,.25);
+}
+
+/* Topbar interna dentro de la super-card: blanco sólido */
+.super-card header {
+  background: #ffffff;
+  border-bottom: 1px solid #e5e7eb;
+  border-top-left-radius: 0.95rem;
+  border-top-right-radius: 0.95rem;
+}
+
+/* Panel derecho gris claro sólido (no translúcido) */
+.right-panel {
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  padding: 1rem;
+}
+
+/* Texto oscuro dentro de la super-card para buen contraste */
+.super-card h1, .super-card h2, .super-card h3, .super-card p, .super-card span, .super-card li {
+  color:#0f172a; /* slate-900 */
+}
+
+/* Pequeños ajustes de color para elementos del sidebar transparente */
+.sidebar .section-label { color: rgba(255,255,255,0.85); }
+.sidebar .brand-muted { color: rgba(255,255,255,0.75); }
+.sidebar .brand-strong { color: #ffffff; }
+</style>
+
+@RenderSection("Head", required: false)
+</head>
+
+<body class="text-white antialiased font-sans">
+<div class="mx-auto max-w-screen-2xl">
+  <div class="flex min-h-[100vh]">
+
+    <!-- Sidebar izquierda transparente -->
+    <aside class="w-64 shrink-0 text-white thin-scroll sidebar">
+      <!-- Marca -->
+      <div class="flex items-center gap-3 px-4 py-4">
+        <div class="h-9 w-9 rounded-lg overflow-hidden">
+          <img src="~/favicon.png" alt="Logo" class="h-9 w-9 object-contain" />
+        </div>
+        <div>
+          <div class="text-xs brand-muted">Digital Tech</div>
+          <div class="text-sm font-medium brand-strong">@companyName</div>
+          <div class="text-xs brand-muted">@workspaceName</div>
+        </div>
+      </div>
+
+      <nav class="p-3">
+        <p class="px-2 py-2 text-xs uppercase tracking-wide section-label">Menú</p>
+        <ul class="space-y-1">
+          <li><a class="@navClasses("Home","Index")" href='@Url.Action("Index","Home")'>Inicio</a></li>
+          <li><a class='@navClasses("Facturacion","Index")' href='@Url.Action("Index", "Facturacion", new {email = email})'>Facturación</a></li>
+          <li><a class='@navClasses("Capacitaciones","Index")' href='@Url.Action("Index","Capacitaciones")'>Capacitaciones</a></li>
+          <li><a class='@navClasses("Academy","Index")' href='@Url.Action("Index","Academy")'>Academy</a></li>
+          <li><a class='@navClasses("Reportes","Index")' href='@Url.Action("Index","Reportes")'>Reportes</a></li>
+          <li><a class='@navClasses("Soporte","Index")' href='@Url.Action("Index","Soporte")'>Soporte</a></li>
+          <li><a class='@navClasses("Seguridad","Index")' href='@Url.Action("Index","Seguridad")'>Seguridad</a></li>
+        </ul>
+
+        <p class="mt-5 px-2 py-2 text-xs uppercase tracking-wide section-label">Productos</p>
+        <ul class="space-y-1">
+          <li><a class="@navClasses("PortafolioCloud","Index")" href='@Url.Action("Index", "PortafolioCloud")'>Cloud</a></li>
+          <li><a class='@navClasses("PortafolioCopiers","Index")' href='@Url.Action("Index", "PortafolioCopiers")'>Impresión</a></li>
+          <li><a class='@navClasses("ServiciosProfesionales","Index")' href='@Url.Action("Index", "ServiciosProfesionales")'>Servicios Profesionales</a></li>
+        </ul>
+
+        <div class="mt-6 px-2">
+          <a href='@Url.Action("SeguridadContinuidad","Assessment")' class="btn-unified btn-unified-light">Assessment</a>
+        </div>
+      </nav>
+    </aside>
+
+    <!-- Columna derecha: super tarjeta blanca sólida que contiene todo -->
+    <div class="flex-1 super-card">
+      <!-- Topbar interna de la super tarjeta -->
+      <header class="sticky top-0 z-20 px-4 py-3 flex items-center">
+        <a href="/Support/SoporteTest" class="btn-unified btn-unified-light" title="Accede a tu asistente inteligente">CloudIA</a>
+        <span class="ml-2 text-xs text-slate-700">Accede a tu asistente inteligente</span>
+
+        <div class="ml-auto flex items-center gap-4">
+          @if (User.Identity?.IsAuthenticated ?? false)
+          {
+            <span class="text-sm font-medium text-slate-700">@User.Identity.Name</span>
+            <form method="post" action='@Url.Action("SignOutUser","Login")' class="inline-block">
+              @Html.AntiForgeryToken()
+              <button type="submit" class="btn-unified btn-unified-dark-outline">Salir</button>
+            </form>
+          }
+          else
+          {
+            <a href='@Url.Action("SignIn","Login")' class="btn-unified btn-unified-light">Entrar</a>
+          }
+        </div>
+      </header>
+
+      <!-- Grid principal dentro de la super tarjeta -->
+      <div class="grid grid-cols-12 gap-6 p-6">
+        <!-- Contenido central -->
+        <section class="col-span-12 lg:col-span-8">
+          <main role="main" class="pb-3">
+            @RenderBody()
+            @RenderSection("Main", required: false)
+          </main>
+        </section>
+
+        <!-- Panel derecho: gris claro sólido con los contactos -->
+        <aside class="col-span-12 lg:col-span-4">
+          <div class="right-panel">
+            <div class="contacts-content">
+              @await Component.InvokeAsync("RightContacts")
+            </div>
+          </div>
+        </aside>
+      </div>
+
+      <!-- Scripts específicos de vistas -->
+      @RenderSection("Scripts", required: false)
+    </div>
+
+  </div>
+</div>
+</body>
+</html>

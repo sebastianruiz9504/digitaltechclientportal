@@ -1,0 +1,139 @@
+@model DigitalTechClientPortal.Models.SoporteVm
+
+@{
+    ViewData["Title"] = "Soporte";
+
+    Func<string, string> BadgeCloud = estado => estado switch
+    {
+        "Abierto" => "bg-red-100 text-red-800",
+        "En Proceso" => "bg-yellow-100 text-yellow-800",
+        "Cerrado" => "bg-green-100 text-green-800",
+        _ => "bg-slate-100 text-slate-700"
+    };
+
+    Func<string, string> BadgeCopiers = estado => estado switch
+    {
+        "Pendiente" => "bg-yellow-100 text-yellow-800",
+        "Completado" => "bg-green-100 text-green-800",
+        _ => "bg-slate-100 text-slate-700"
+    };
+}
+  <div class="w-full px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Encabezado -->
+    <header class="mb-6">
+        <h1 class="text-3xl font-semibold tracking-tight text-slate-900">Soporte</h1>
+        <p class="mt-2 text-slate-500">Consulta el estado de tus tickets y mantenimientos.</p>
+    </header>
+    </div>
+<section class="space-y-8">
+    
+
+    @if (TempData["SoporteError"] != null)
+    {
+        <div class="rounded-lg bg-yellow-50 border border-yellow-200 p-4 text-sm text-yellow-800">
+            @TempData["SoporteError"]
+        </div>
+    }
+
+    <!-- Tickets Cloud -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200">
+        <div class="px-6 py-4 border-b border-slate-200">
+            <h2 class="text-base font-semibold text-slate-800">Tickets Cloud</h2>
+        </div>
+        <div class="p-0">
+            @if (Model.CloudTickets == null || !Model.CloudTickets.Any())
+            {
+                <div class="p-6 text-sm text-slate-500">No hay tickets de Cloud para mostrar.</div>
+            }
+            else
+            {
+                <div class="overflow-y-auto max-h-[400px]">
+                    <table class="min-w-full border-collapse text-sm text-slate-700">
+                        <thead class="bg-slate-50 text-slate-600 text-xs uppercase tracking-wide sticky top-0">
+                            <tr>
+                                <th class="px-4 py-3 text-left font-medium">Título</th>
+                                <th class="px-4 py-3 text-left font-medium">Descripción</th>
+                                <th class="px-4 py-3 text-left font-medium">Fecha creación</th>
+                                <th class="px-4 py-3 text-left font-medium">Estado</th>
+                                <th class="px-4 py-3 text-left font-medium">Fecha cierre</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-200">
+                            @foreach (var t in Model.CloudTickets)
+                            {
+                                <tr class="hover:bg-slate-50 transition-colors">
+                                    <td class="px-4 py-3 font-medium text-slate-900">@t.Titulo</td>
+                                    <td class="px-4 py-3">@t.Descripcion</td>
+                                    <td class="px-4 py-3">@t.FechaCreacion.ToString("dd/MM/yyyy")</td>
+                                    <td class="px-4 py-3">
+                                        <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium @BadgeCloud(t.Estado)">
+                                            @t.Estado
+                                        </span>
+                                    </td>
+                                    <td class="px-4 py-3">@((t.FechaCierre.HasValue ? t.FechaCierre.Value.ToString("dd/MM/yyyy") : "—"))</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- Mantenimientos Copiers -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200">
+        <div class="px-6 py-4 border-b border-slate-200">
+            <h2 class="text-base font-semibold text-slate-800">Mantenimientos Copiers</h2>
+        </div>
+        <div class="p-0">
+            @if (Model.Copiers == null || !Model.Copiers.Any())
+            {
+                <div class="p-6 text-sm text-slate-500">No hay mantenimientos de Copiers para mostrar.</div>
+            }
+            else
+            {
+                <div class="overflow-y-auto max-h-[400px]">
+                    <table class="min-w-full border-collapse text-sm text-slate-700">
+                        <thead class="bg-slate-50 text-slate-600 text-xs uppercase tracking-wide sticky top-0">
+                            <tr>
+                                <th class="px-4 py-3 text-left font-medium">Nombre</th>
+                                <th class="px-4 py-3 text-left font-medium">ID Equipo</th>
+                                <th class="px-4 py-3 text-left font-medium">Fecha mantenimiento</th>
+                                <th class="px-4 py-3 text-left font-medium">Descripción</th>
+                                <th class="px-4 py-3 text-left font-medium">Estado</th>
+                                <th class="px-4 py-3 text-left font-medium">Acta de entrega</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-200">
+                            @foreach (var c in Model.Copiers)
+                            {
+                                <tr class="hover:bg-slate-50 transition-colors">
+                                    <td class="px-4 py-3 font-medium text-slate-900">@c.Nombre</td>
+                                    <td class="px-4 py-3">@c.IdEquipo</td>
+                                    <td class="px-4 py-3">@c.FechaMantenimiento.ToString("dd/MM/yyyy")</td>
+                                    <td class="px-4 py-3">@c.Descripcion</td>
+                                    <td class="px-4 py-3">
+                                        <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium @BadgeCopiers(c.Estado)">
+                                            @c.Estado
+                                        </span>
+                                    </td>
+                                    <td class="px-4 py-3">
+                                        <a class="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition"
+                                           asp-controller="Soporte"
+                                           asp-action="DescargarActa"
+                                           asp-route-id="@c.ActaId">
+                                            Descargar
+                                        </a>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <div class="px-6 py-3 text-xs text-slate-500 border-t border-slate-100">
+                    Nota: si el acta no está disponible, el botón puede no devolver archivo (404).
+                </div>
+            }
+        </div>
+    </div>
+</section>

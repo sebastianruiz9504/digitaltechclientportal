@@ -1,0 +1,78 @@
+@model DigitalTechClientPortal.Web.Models.RightContactsModel
+
+@functions {
+    // Small helper to render a single contact item with consistent avatar and layout
+    void RenderContact(DigitalTechClientPortal.Web.Models.ContactCard contact)
+    {
+@:<li>
+@:  <div class="bg-gray-50 rounded-lg p-3 shadow-sm flex items-start gap-3">
+@:      <!-- Avatar container: perfect circle, consistent size, hides overflow -->
+@:      <div class="h-12 w-12 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center shrink-0">
+            if (!string.IsNullOrWhiteSpace(contact.PhotoUrl))
+            {
+@:              <img src="@contact.PhotoUrl"
+@:                   alt="@contact.FullName"
+@:                   class="h-full w-full object-cover"
+@:                   loading="lazy"
+@:                   decoding="async"
+@:                   onerror="this.style.display='none'; const f=this.nextElementSibling; if(f) { f.style.display='flex'; }" />
+@:              <!-- Hidden fallback initials; shown only if the image fails -->
+@:              <div class="hidden h-full w-full items-center justify-center">
+@:                  <span class="text-sm font-semibold text-slate-700">@contact.Initials</span>
+@:              </div>
+            }
+            else
+            {
+@:              <span class="text-sm font-semibold text-slate-700">@contact.Initials</span>
+            }
+@:      </div>
+
+@:      <!-- Content -->
+@:      <div class="flex-1 min-w-0">
+@:          <div class="text-sm font-medium text-slate-900 truncate">@contact.FullName</div>
+@:          <div class="text-xs text-slate-700">@contact.RoleLabel</div>
+
+@:          <div class="mt-1 text-xs text-slate-600 break-all">@contact.Email</div>
+
+            if (!string.IsNullOrWhiteSpace(contact.Phone))
+            {
+@:              <div class="text-xs text-slate-600">@contact.Phone</div>
+            }
+            else
+            {
+@:              <div class="text-xs text-slate-400 italic">Sin teléfono</div>
+            }
+
+            if (!string.IsNullOrWhiteSpace(contact.WhatsAppLink))
+            {
+@:              <a href="@contact.WhatsAppLink"
+@:                 target="_blank" rel="noopener"
+@:                 class="mt-2 inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium text-white
+@:                        bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-500
+@:                        shadow-md shadow-blue-500/30 border border-white/20
+@:                        hover:shadow-lg hover:shadow-blue-500/40 hover:scale-[1.02] transition-all duration-300">
+@:                  Contáctame
+@:              </a>
+            }
+@:      </div>
+@:  </div>
+@:</li>
+    }
+}
+
+<section class="contacts-content">
+    <h2 class="text-sm font-semibold text-slate-900 mb-4">Contactos</h2>
+
+    @if (Model == null)
+    {
+        <div class="text-xs text-slate-500">No hay contactos disponibles.</div>
+    }
+    else
+    {
+        <ul class="space-y-4">
+            @if (Model.CloudSupport != null)  { RenderContact(Model.CloudSupport); }
+            @if (Model.CopiersSupport != null){ RenderContact(Model.CopiersSupport); }
+            @if (Model.AccountManager != null){ RenderContact(Model.AccountManager); }
+        </ul>
+    }
+</section>
