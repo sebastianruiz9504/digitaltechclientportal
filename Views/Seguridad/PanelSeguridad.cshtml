@@ -1,0 +1,486 @@
+@model DigitalTechClientPortal.Models.SeguridadVM
+@using System.Globalization
+@{
+    ViewData["Title"] = "Panel de Seguridad";
+
+    // Cultura para fechas
+    var es = CultureInfo.GetCultureInfo("es-ES");
+
+    // Secure Score mensual: calculamos % a partir de CurrentScore y MaxScore
+    var secureMonthly = Model.SecureScoreMensual?.ToList() ?? new List<DigitalTechClientPortal.Models.SecureScoreMonthly>();
+    var labels = secureMonthly.Select(m => m.Label ?? "-").ToArray();
+    var valuesPct = secureMonthly.Select(m =>
+    {
+        var current = m.CurrentScore ?? 0;
+        var max = Math.Max(m.MaxScore ?? 0, 1); // evita división por cero
+        var pct = 100.0 * current / max;
+        return Math.Round(Math.Clamp(pct, 0, 100), 2);
+    }).ToArray();
+
+    // KPI Secure Score actual en % (usa el último registro si existe)
+    double secureScoreActualPct = 0;
+    if (secureMonthly.Count > 0)
+    {
+        var last = secureMonthly.Last();
+        var lastCurrent = last.CurrentScore ?? 0;
+        var lastMax = Math.Max(last.MaxScore ?? 0, 1);
+        secureScoreActualPct = Math.Round(Math.Clamp(100.0 * lastCurrent / lastMax, 0, 100), 2);
+    }
+
+    // Top-N elementos para tarjetas
+    int TOP = 10;
+    var alertasTop = (Model.Alertas ?? new List<DigitalTechClientPortal.Models.SecurityAlert>())
+        .OrderByDescending(a => a.CreatedDateTime ?? a.LastUpdatedDateTime)
+        .Take(TOP)
+        .ToList();
+
+    var incidentesTop = (Model.Incidentes ?? new List<DigitalTechClientPortal.Models.SecurityIncident>())
+        .OrderByDescending(i => i.CreatedDateTime ?? i.LastUpdatedDateTime)
+        .Take(TOP)
+        .ToList();
+
+    var usuariosTop = (Model.UsuariosRiesgo ?? new List<DigitalTechClientPortal.Models.RiskyUser>())
+        .OrderByDescending(u => u.LastUpdatedDateTime)
+        .Take(TOP)
+        .ToList();
+
+    var dispositivosTop = (Model.DispositivosRiesgo ?? new List<DigitalTechClientPortal.Models.DeviceSecurityState>())
+        .OrderByDescending(d => d.LastSeenDateTime)
+        .Take(TOP)
+        .ToList();
+
+    var controlesTop = (Model.SecureScoreControles ?? new List<DigitalTechClientPortal.Models.SecureScoreControl>())
+        .OrderByDescending(c => c.MaxScore ?? 0)
+        .Take(TOP)
+        .ToList();
+
+    var simulacionesTop = (Model.SimulacionesAtaque ?? new List<DigitalTechClientPortal.Models.AttackSimulation>())
+        .OrderByDescending(s => s.LaunchDateTime ?? s.CompletionDateTime)
+        .Take(TOP)
+        .ToList();
+
+    // Helpers visuales (Bootstrap badges sencillos)
+    Func<string?, string> SeverityClass = sev => (sev ?? "").ToLowerInvariant() switch
+    {
+        "critical" or "crítico" or "alta" => "text-bg-danger",
+        "high" or "alto" or "media" => "text-bg-warning",
+        "medium" or "medio" => "text-bg-warning",
+        "low" or "baja" => "text-bg-success",
+        _ => "text-bg-secondary"
+    };
+
+    Func<string?, string> RiskLevelClass = level => (level ?? "").ToLowerInvariant() switch
+    {
+        "critical" or "crítico" or "alto" => "text-bg-danger",
+        "high" => "text-bg-danger",
+        "medium" or "medio" => "text-bg-warning",
+        "low" or "bajo" => "text-bg-success",
+        _ => "text-bg-secondary"
+    };
+}
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" crossorigin="anonymous">
+
+<div class="container-fluid py-4">
+
+  <!-- Encabezado + acciones -->
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0">Panel de Seguridad</h2>
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-secondary" href="javascript:location.reload()">Actualizar</a>
+      <a class="btn btn-primary" href='@Url.Action("SeguridadContinuidad","Assessment")'>Assessment</a>
+    </div>
+  </div>
+
+  <!-- KPIs principales -->
+  <div class="row g-3 mb-4">
+    <div class="col-md-3">
+      <div class="card shadow-sm border-0">
+        <div class="card-body">
+          <div class="d-flex justify-content-between">
+            <h6 class="text-muted">Alertas</h6>
+            <span class="badge text-bg-danger">Crítico</span>
+          </div>
+          <div class="fs-3 fw-semibold">@((Model.KpiAlertasTotal ?? Model.Alertas?.Count ?? 0))</div>
+          <small class="text-muted">Total de alertas.</small>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-3">
+      <div class="card shadow-sm border-0">
+        <div class="card-body">
+          <div class="d-flex justify-content-between">
+            <h6 class="text-muted">Usuarios en Riesgo</h6>
+            <span class="badge text-bg-warning">Atención</span>
+          </div>
+          <div class="fs-3 fw-semibold">@((Model.KpiUsuariosRiesgoTotal ?? Model.UsuariosRiesgo?.Count ?? 0))</div>
+          <small class="text-muted">Cuentas con riesgo activo.</small>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-3">
+      <div class="card shadow-sm border-0">
+        <div class="card-body">
+          <div class="d-flex justify-content-between">
+            <h6 class="text-muted">Dispositivos en Riesgo</h6>
+            <span class="badge text-bg-info">Vigilancia</span>
+          </div>
+          <div class="fs-3 fw-semibold">@((Model.KpiDispositivosRiesgoTotal ?? Model.DispositivosRiesgo?.Count ?? 0))</div>
+          <small class="text-muted">Endpoints con hallazgos.</small>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-3">
+      <div class="card shadow-sm border-0">
+        <div class="card-body">
+          <div class="d-flex justify-content-between">
+            <h6 class="text-muted">Secure Score actual</h6>
+            <span class="badge text-bg-success">Salud</span>
+          </div>
+          <div class="fs-3 fw-semibold">@($"{secureScoreActualPct:0.##}%")</div>
+          <small class="text-muted">Basado en Current/Max.</small>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Gráfica: evolución mensual del Secure Score en % -->
+  <div class="card shadow-sm border-0 mb-4">
+    <div class="card-header bg-white">
+      <strong>Evolución mensual del Secure Score (%)</strong>
+    </div>
+    <div class="card-body">
+      <div class="position-relative" style="height:260px">
+        <canvas id="secureScoreChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tarjetas en dos columnas desde aquí hacia abajo -->
+  <div class="row g-3">
+    <!-- Alertas -->
+    <div class="col-12 col-md-6">
+      <div class="card shadow-sm border-0 h-100">
+        <div class="card-header bg-white d-flex align-items-center justify-content-between">
+          <strong>Alertas recientes</strong>
+          <a class="btn btn-outline-primary btn-sm" href='@Url.Action("Alertas","Seguridad")'>Ver todas</a>
+        </div>
+        <div class="card-body">
+          @if (alertasTop.Any())
+          {
+            <div class="table-responsive">
+              <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>Título</th>
+                    <th>Severidad</th>
+                    <th>Categoría</th>
+                    <th>Estado</th>
+                    <th>Proveedor</th>
+                    <th>Creada</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @foreach (var a in alertasTop)
+                  {
+                    <tr>
+                      <td>@a.Title</td>
+                      <td><span class="badge @SeverityClass(a.Severity)">@a.Severity</span></td>
+                      <td>@(string.IsNullOrWhiteSpace(a.Category) ? "-" : a.Category)</td>
+                      <td>@(string.IsNullOrWhiteSpace(a.Status) ? "-" : a.Status)</td>
+                      <td>@(string.IsNullOrWhiteSpace(a.Provider) ? "-" : a.Provider)</td>
+                      <td>@(a.CreatedDateTime?.ToLocalTime().ToString("dd MMM yyyy HH:mm", es) ?? "-")</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+            <p class="text-muted mt-2 mb-0">Mostrando @alertasTop.Count de @((Model.Alertas?.Count ?? alertasTop.Count)) alerta(s).</p>
+          }
+          else
+          {
+            <div class="text-muted">Sin alertas recientes.</div>
+          }
+        </div>
+      </div>
+    </div>
+
+    <!-- Incidentes -->
+    <div class="col-12 col-md-6">
+      <div class="card shadow-sm border-0 h-100">
+        <div class="card-header bg-white">
+          <strong>Incidentes</strong>
+        </div>
+        <div class="card-body">
+          @if (incidentesTop.Any())
+          {
+            <div class="table-responsive">
+              <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>Título</th>
+                    <th>Severidad</th>
+                    <th>Estado</th>
+                    <th>Creado</th>
+                    <th># Alertas</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @foreach (var i in incidentesTop)
+                  {
+                    <tr>
+                      <td>@i.Title</td>
+                      <td><span class="badge @SeverityClass(i.Severity)">@i.Severity</span></td>
+                      <td>@(string.IsNullOrWhiteSpace(i.Status) ? "-" : i.Status)</td>
+                      <td>@(i.CreatedDateTime?.ToLocalTime().ToString("dd MMM yyyy HH:mm", es) ?? "-")</td>
+                      <td>@(i.AlertCount?.ToString() ?? "-")</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+            <p class="text-muted mt-2 mb-0">Mostrando @incidentesTop.Count de @((Model.Incidentes?.Count ?? incidentesTop.Count)) incidente(s).</p>
+          }
+          else
+          {
+            <div class="text-muted">Sin incidentes.</div>
+          }
+        </div>
+      </div>
+    </div>
+
+    <!-- Usuarios en riesgo -->
+    <div class="col-12 col-md-6">
+      <div class="card shadow-sm border-0 h-100">
+        <div class="card-header bg-white">
+          <strong>Usuarios en riesgo</strong>
+        </div>
+        <div class="card-body">
+          @if (usuariosTop.Any())
+          {
+            <div class="table-responsive">
+              <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>Usuario</th>
+                    <th>UPN</th>
+                    <th>Nivel de Riesgo</th>
+                    <th>Estado</th>
+                    <th>Detalle</th>
+                    <th>Actualizado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @foreach (var u in usuariosTop)
+                  {
+                    <tr>
+                      <td>@u.UserDisplayName</td>
+                      <td>@u.UserPrincipalName</td>
+                      <td><span class="badge @RiskLevelClass(u.RiskLevel)">@u.RiskLevel</span></td>
+                      <td>@(string.IsNullOrWhiteSpace(u.RiskState) ? "-" : u.RiskState)</td>
+                      <td>@(string.IsNullOrWhiteSpace(u.RiskDetail) ? "-" : u.RiskDetail)</td>
+                      <td>@(u.LastUpdatedDateTime?.ToLocalTime().ToString("dd MMM yyyy HH:mm", es) ?? "-")</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+            <p class="text-muted mt-2 mb-0">Mostrando @usuariosTop.Count de @((Model.UsuariosRiesgo?.Count ?? usuariosTop.Count)) usuario(s).</p>
+          }
+          else
+          {
+            <div class="text-muted">Sin usuarios en riesgo.</div>
+          }
+        </div>
+      </div>
+    </div>
+
+    <!-- Dispositivos en riesgo -->
+    <div class="col-12 col-md-6">
+      <div class="card shadow-sm border-0 h-100">
+        <div class="card-header bg-white">
+          <strong>Dispositivos en riesgo</strong>
+        </div>
+        <div class="card-body">
+          @if (dispositivosTop.Any())
+          {
+            <div class="table-responsive">
+              <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>Dispositivo</th>
+                    <th>Usuarios</th>
+                    <th>Riesgo</th>
+                    <th>Estado de malware</th>
+                    <th>Sistema operativo</th>
+                    <th>Último visto</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @foreach (var d in dispositivosTop)
+                  {
+                    <tr>
+                      <td>@d.DeviceName</td>
+                      <td>@d.LoggedOnUsers</td>
+                      <td>@(string.IsNullOrWhiteSpace(d.RiskScore) ? "-" : d.RiskScore)</td>
+                      <td>@(string.IsNullOrWhiteSpace(d.MalwareState) ? "-" : d.MalwareState)</td>
+                      <td>@(string.IsNullOrWhiteSpace(d.OS) ? "-" : d.OS)</td>
+                      <td>@(d.LastSeenDateTime?.ToLocalTime().ToString("dd MMM yyyy HH:mm", es) ?? "-")</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+            <p class="text-muted mt-2 mb-0">Mostrando @dispositivosTop.Count de @((Model.DispositivosRiesgo?.Count ?? dispositivosTop.Count)) dispositivo(s).</p>
+          }
+          else
+          {
+            <div class="text-muted">Sin dispositivos en riesgo.</div>
+          }
+        </div>
+      </div>
+    </div>
+
+    <!-- Controles de Secure Score -->
+    <div class="col-12 col-md-6">
+      <div class="card shadow-sm border-0 h-100">
+        <div class="card-header bg-white">
+          <strong>Controles de Secure Score</strong>
+        </div>
+        <div class="card-body">
+          @if (controlesTop.Any())
+          {
+            <div class="table-responsive">
+              <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>Título</th>
+                    <th>Categoría</th>
+                    <th>Tipo de acción</th>
+                    <th>Score máximo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @foreach (var c in controlesTop)
+                  {
+                    <tr>
+                      <td>@c.Title</td>
+                      <td>@(string.IsNullOrWhiteSpace(c.ControlCategory) ? "-" : c.ControlCategory)</td>
+                      <td>@(string.IsNullOrWhiteSpace(c.ActionType) ? "-" : c.ActionType)</td>
+                      <td>@(c.MaxScore?.ToString("0.##") ?? "-")</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+            <p class="text-muted mt-2 mb-0">Mostrando @controlesTop.Count de @((Model.SecureScoreControles?.Count ?? controlesTop.Count)) control(es).</p>
+          }
+          else
+          {
+            <div class="text-muted">Sin controles disponibles.</div>
+          }
+        </div>
+      </div>
+    </div>
+
+    <!-- Simulaciones de ataque -->
+    <div class="col-12 col-md-6">
+      <div class="card shadow-sm border-0 h-100">
+        <div class="card-header bg-white">
+          <strong>Simulaciones de ataque</strong>
+        </div>
+        <div class="card-body">
+          @if (simulacionesTop.Any())
+          {
+            <div class="table-responsive">
+              <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>Nombre</th>
+                    <th>Estado</th>
+                    <th>Técnica</th>
+                    <th>Lanzada</th>
+                    <th>Completada</th>
+                    <th>Payload</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @foreach (var a in simulacionesTop)
+                  {
+                    <tr>
+                      <td>@a.DisplayName</td>
+                      <td>@a.Status</td>
+                      <td>@a.SimulationType</td>
+                      <td>@(a.LaunchDateTime?.ToLocalTime().ToString("dd MMM yyyy HH:mm", es) ?? "-")</td>
+                      <td>@(a.CompletionDateTime?.ToLocalTime().ToString("dd MMM yyyy HH:mm", es) ?? "-")</td>
+                      <td>@(string.IsNullOrWhiteSpace(a.Payload) ? "-" : a.Payload)</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+            <p class="text-muted mt-2 mb-0">Mostrando @simulacionesTop.Count de @((Model.SimulacionesAtaque?.Count ?? simulacionesTop.Count)) simulación(es).</p>
+          }
+          else
+          {
+            <div class="text-muted">Sin simulaciones.</div>
+          }
+        </div>
+      </div>
+    </div>
+  </div> <!-- row g-3 -->
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+  (function() {
+    const labels = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(labels));
+    const values = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(valuesPct));
+    const ctx = document.getElementById('secureScoreChart');
+    if (!ctx) return;
+
+    // Gradiente suave
+    const gctx = ctx.getContext('2d');
+    const gradient = gctx.createLinearGradient(0, 0, 0, ctx.parentElement.clientHeight || 260);
+    gradient.addColorStop(0, 'rgba(25,135,84,0.18)');
+    gradient.addColorStop(1, 'rgba(25,135,84,0.02)');
+
+    new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Secure Score (%)',
+          data: values,
+          tension: 0.35,
+          borderColor: '#198754',
+          backgroundColor: gradient,
+          fill: true,
+          pointRadius: 0,
+          borderWidth: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { enabled: true } },
+        scales: {
+          y: {
+            beginAtZero: true,
+            max: 100,
+            ticks: { stepSize: 20 },
+            grid: { display: false } // sin líneas de fondo
+          },
+          x: {
+            ticks: { autoSkip: true },
+            grid: { display: false } // sin líneas de fondo
+          }
+        }
+      }
+    });
+  })();
+</script>

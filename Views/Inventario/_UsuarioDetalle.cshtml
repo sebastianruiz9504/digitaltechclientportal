@@ -1,0 +1,232 @@
+@using DigitalTechClientPortal.Models
+@model UserDetailVm
+
+@functions {
+    // Mapeo de skuPartNumber -> nombre comercial amigable
+    private static readonly Dictionary<string, string> SkuMap = new(StringComparer.OrdinalIgnoreCase)
+{
+    // Office 365 / Microsoft 365
+    { "ENTERPRISEPACK", "Office 365 E3" },
+    { "ENTERPRISEPREMIUM", "Office 365 E5" },
+    { "BUSINESS_ESSENTIALS", "Office 365 Business Essentials (antiguo)" },
+    { "BUSINESS_PREMIUM", "Office 365 Business Premium (antiguo)" },
+    { "O365_BUSINESS", "Office 365 Business" },
+    { "SPE_E3", "Microsoft 365 E3" },
+    { "SPE_E5", "Microsoft 365 E5" },
+    { "SPE_F1", "Microsoft 365 F1/F3" },
+    { "O365_BUSINESS_PREMIUM", "Microsoft 365 Business Standard" },
+    { "SPB", "Microsoft 365 Business Premium" },
+    { "SMB_BUSINESS", "Microsoft 365 Business Standard" },
+    { "M365_F3", "Microsoft 365 F3" },
+
+    // Exchange / SharePoint / Teams
+    { "EXCHANGEDESKLESS", "Exchange Online Kiosk" },
+    { "EXCHANGE_S_ESSENTIALS", "Exchange Online Plan 1" },
+    { "EXCHANGE_S_STANDARD", "Exchange Online Plan 2" },
+    { "MCOSTANDARD", "Microsoft Teams (incluido)" },
+    { "SHAREPOINTSTANDARD", "SharePoint Online Plan 1" },
+    { "SHAREPOINTENTERPRISE", "SharePoint Online Plan 2" },
+
+    // Seguridad y otros
+    { "STANDARDPACK", "Enterprise Mobility + Security E3" },
+    { "EMSPREMIUM", "Enterprise Mobility + Security E5" },
+    { "EMS", "Enterprise Mobility + Security E3" },
+    { "AAD_PREMIUM", "Azure AD Premium P1" },
+    { "AAD_PREMIUM_P2", "Azure AD Premium P2" },
+
+    // Project / Visio
+    { "PROJECTPROFESSIONAL", "Project Plan 3" },
+    { "PROJECTONLINE_PLAN_1", "Project Plan 1" },
+    { "PROJECTONLINE_PLAN_2", "Project Plan 5" },
+    { "VISIOONLINE_PLAN1", "Visio Plan 1" },
+    { "VISIOONLINE_PLAN2", "Visio Plan 2" },
+
+    // Nuevas entradas
+    { "EXCHANGESTANDARD", "Exchange Online (Plan 1)" },
+    { "EXCHANGEENTERPRISE", "Exchange Online (Plan 2)" },
+    { "EXCHANGEARCHIVE_ADDON", "Exchange Online Archiving for Exchange Online" },
+    { "EXCHANGEARCHIVE", "Exchange Online Archiving for Exchange Server" },
+    { "EXCHANGEESSENTIALS", "Exchange Online Essentials" },
+    { "EXCHANGETELCO", "Exchange Online POP" },
+
+    { "INTUNE_A", "Microsoft Intune" },
+
+    { "M365EDU_A1", "Microsoft 365 A1" },
+    { "M365EDU_A3_FACULTY", "Microsoft 365 A3 (Faculty)" },
+    { "M365EDU_A3_STUDENT", "Microsoft 365 A3 (Student)" },
+    { "M365EDU_A5_FACULTY", "Microsoft 365 A5 (Faculty)" },
+    { "M365EDU_A5_STUDENT", "Microsoft 365 A5 (Student)" },
+
+    { "OFFICESUBSCRIPTION", "Microsoft 365 Apps for Enterprise" },
+
+    { "O365_BUSINESS_ESSENTIALS", "Microsoft 365 Business Basic" },
+    { "SMB_BUSINESS_ESSENTIALS", "Microsoft 365 Business Basic" },
+
+    { "SMB_BUSINESS_PREMIUM", "Microsoft 365 Business Standard" },
+
+    { "SPE_E3_USGOV_DOD", "Microsoft 365 E3 (US Gov DoD)" },
+    { "SPE_E3_USGOV_GCCHIGH", "Microsoft 365 E3 (US Gov GCC High)" },
+
+    { "INFORMATION_PROTECTION_COMPLIANCE", "Microsoft 365 E5 Compliance" },
+    { "IDENTITY_THREAT_PROTECTION", "Microsoft 365 E5 Security" },
+    { "IDENTITY_THREAT_PROTECTION_FOR_EMS_E5", "Microsoft 365 E5 Security for EMS E5" },
+
+    { "M365_F1", "Microsoft 365 F1" }
+};
+
+    private static string ToFriendlyProduct(string? skuPartNumber)
+    {
+        if (string.IsNullOrWhiteSpace(skuPartNumber)) return "";
+        return SkuMap.TryGetValue(skuPartNumber, out var name) ? name : skuPartNumber;
+    }
+}
+
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+  <div class="rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
+    <div class="p-4 text-center">
+      @if (!string.IsNullOrWhiteSpace(Model.PhotoBase64))
+      {
+        <img src="data:image/jpeg;base64=@Model.PhotoBase64" class="w-28 h-28 rounded-full mx-auto mb-3 ring-2 ring-slate-300" alt="Foto de perfil" />
+      }
+      else
+      {
+        <div class="w-28 h-28 rounded-full mx-auto mb-3 bg-slate-100 flex items-center justify-center">
+          <svg class="w-12 h-12 text-slate-500" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.67 0 8 1.34 8 4v2H4v-2c0-2.66 5.33-4 8-4zm0-2a4 4 0 110-8 4 4 0 010 8z"/></svg>
+        </div>
+      }
+      <div class="font-semibold text-black">@Model.DisplayName</div>
+      <div class="text-xs text-slate-700 break-all">@Model.Id</div>
+    </div>
+  </div>
+
+  <div class="md:col-span-2 space-y-4">
+    <!-- Perfil -->
+    <div class="rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
+      <div class="px-4 py-3 border-b border-slate-200 font-semibold text-black">Perfil</div>
+      <div class="p-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <div class="text-xs text-slate-700">UPN</div>
+          <div class="font-medium break-all text-black">@Model.UserPrincipalName</div>
+        </div>
+        <div>
+          <div class="text-xs text-slate-700">Correo</div>
+          <div class="font-medium break-all text-black">@Model.Mail</div>
+        </div>
+        <div>
+          <div class="text-xs text-slate-700">Cargo</div>
+          <div class="font-medium text-black">@Model.JobTitle</div>
+        </div>
+        <div>
+          <div class="text-xs text-slate-700">Departamento</div>
+          <div class="font-medium text-black">@Model.Department</div>
+        </div>
+        <div>
+          <div class="text-xs text-slate-700">Móvil</div>
+          <div class="font-medium text-black">@Model.MobilePhone</div>
+        </div>
+        <div>
+          <div class="text-xs text-slate-700">Tel. oficina</div>
+          <div class="font-medium text-black">@Model.BusinessPhones</div>
+        </div>
+        <div class="sm:col-span-2">
+          <div class="text-xs text-slate-700">Ubicación</div>
+          <div class="font-medium text-black">@Model.OfficeLocation</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Licencias: contenedor con alto máximo y scroll -->
+    <div class="rounded-lg bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+      <div class="px-4 py-3 border-b border-slate-200 font-semibold text-black">Licencias</div>
+      @if (Model.Licenses == null || Model.Licenses.Count == 0)
+      {
+        <div class="p-4 text-slate-800">Sin licencias asignadas.</div>
+      }
+      else
+      {
+        <!-- Alto máximo para evitar desborde del modal y permitir desplazamiento -->
+        <div class="max-h-64 overflow-y-auto">
+          <table class="min-w-full table-auto">
+            <thead class="bg-slate-100 text-black text-sm sticky top-0">
+              <tr>
+                <th class="px-4 py-2 text-left">SKU Id</th>
+                <th class="px-4 py-2 text-left">Producto</th>
+                <th class="px-4 py-2 text-left">Estado</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              @foreach (var lic in Model.Licenses)
+              {
+                var friendly = ToFriendlyProduct(lic.SkuPartNumber);
+                <tr class="hover:bg-slate-50">
+                  <td class="px-4 py-2"><span class="font-mono text-sm text-black">@lic.SkuId</span></td>
+                  <td class="px-4 py-2 font-medium text-black">@friendly</td>
+                  <td class="px-4 py-2">
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-sky-100 text-sky-800 ring-1 ring-sky-300">@lic.CapabilityStatus</span>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+      <div class="px-4 py-2 text-xs text-slate-600">
+        Nota: se muestra solo el nombre del producto (SKU) y estado. Los planes individuales quedan ocultos.
+      </div>
+    </div>
+
+    <!-- Dispositivos asignados -->
+    <div class="rounded-lg bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+      <div class="px-4 py-3 border-b border-slate-200 font-semibold text-black">Dispositivos asignados</div>
+      @if (Model.EquiposAsignados == null || Model.EquiposAsignados.Count == 0)
+      {
+        <div class="p-4 text-slate-800">No hay equipos asignados a este usuario.</div>
+      }
+      else
+      {
+        <div class="overflow-x-auto">
+          <table class="min-w-full table-auto">
+            <thead class="bg-slate-100 text-black text-sm">
+              <tr>
+                <th class="px-4 py-2 text-left">Marca</th>
+                <th class="px-4 py-2 text-left">Modelo</th>
+                <th class="px-4 py-2 text-left">Serial</th>
+                <th class="px-4 py-2 text-left">Estado</th>
+                <th class="px-4 py-2 text-left">Compra</th>
+                <th class="px-4 py-2 text-left">Ubicación</th>
+                <th class="px-4 py-2 text-left">Notas</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              @foreach (var e in Model.EquiposAsignados)
+              {
+                <tr class="hover:bg-slate-50">
+                  <td class="px-4 py-2 text-black">@e.Marca</td>
+                  <td class="px-4 py-2 text-slate-800">@e.Modelo</td>
+                  <td class="px-4 py-2"><span class="font-mono text-sm text-black">@e.Serial</span></td>
+                  <td class="px-4 py-2">
+                    @{
+                      var cls = "bg-slate-200 text-black";
+                      if (!string.IsNullOrWhiteSpace(e.Estado))
+                      {
+                          if (e.Estado.Contains("Activo", System.StringComparison.OrdinalIgnoreCase)) cls = "bg-green-100 text-green-800 ring-1 ring-green-300";
+                          else if (e.Estado.Contains("mantenimiento", System.StringComparison.OrdinalIgnoreCase)) cls = "bg-yellow-100 text-yellow-800 ring-1 ring-yellow-300";
+                          else if (e.Estado.Contains("Retirado", System.StringComparison.OrdinalIgnoreCase)) cls = "bg-red-100 text-red-800 ring-1 ring-red-300";
+                      }
+                    }
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium @cls">@e.Estado</span>
+                  </td>
+                  <td class="px-4 py-2 text-slate-800">@(e.FechaCompra.HasValue ? e.FechaCompra.Value.ToString("yyyy-MM-dd") : "-")</td>
+                  <td class="px-4 py-2">
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-sky-100 text-sky-800 ring-1 ring-sky-300">@e.Ubicacion</span>
+                  </td>
+                  <td class="px-4 py-2 text-slate-800">@e.Notas</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </div>
+  </div>
+</div>

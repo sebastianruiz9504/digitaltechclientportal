@@ -1,0 +1,1010 @@
+@using DigitalTechClientPortal.Models
+@model InventarioVm
+
+@{
+    ViewData["Title"] = "Inventario";
+    var ok = TempData["InventarioOk"] as string;
+    var err = TempData["InventarioError"] as string;
+
+    string EstadoClase(string estado)
+    {
+        if (string.IsNullOrWhiteSpace(estado)) return "bg-slate-200 text-black";
+        if (estado.Contains("Activo", System.StringComparison.OrdinalIgnoreCase)) return "bg-green-100 text-green-800 ring-1 ring-green-300";
+        if (estado.Contains("mantenimiento", System.StringComparison.OrdinalIgnoreCase)) return "bg-yellow-100 text-yellow-800 ring-1 ring-yellow-300";
+        if (estado.Contains("Retirado", System.StringComparison.OrdinalIgnoreCase)) return "bg-red-100 text-red-800 ring-1 ring-red-300";
+        return "bg-slate-200 text-black";
+    }
+}
+
+<div class="flex items-center justify-between mb-6">
+    <div>
+        <h2 class="text-2xl font-semibold tracking-tight text-black">Inventario</h2>
+        <p class="text-sm text-slate-800">Gestión de equipos, usuarios y ubicaciones</p>
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(ok))
+{
+    <div class="mb-4 rounded-md bg-green-50 p-3 ring-1 ring-green-300 text-green-800">
+        <div class="flex items-center gap-2">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17l-3.59-3.58-1.41 1.41L9 19 20.59 7.41 19.17 6z"/></svg>
+            <span>@ok</span>
+        </div>
+    </div>
+}
+@if (!string.IsNullOrEmpty(err))
+{
+    <div class="mb-4 rounded-md bg-red-50 p-3 ring-1 ring-red-300 text-red-800">
+        <div class="flex items-center gap-2">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
+            <span>@err</span>
+        </div>
+    </div>
+}
+
+@if (Model.Categorias == null || !Model.Categorias.Any())
+{
+    <div class="rounded-lg bg-white p-6 shadow-sm ring-1 ring-slate-200">
+        <div class="flex items-center gap-3 text-slate-900">
+            <svg class="w-6 h-6 text-[#040d1c]" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L2 7l10 5 10-5-10-5zm0 7l-10 5 10 5 10-5-10-5z"/></svg>
+            <div>
+                <div class="font-semibold text-black">No hay categorías configuradas</div>
+                <div class="text-sm text-slate-800">Añade categorías en Dataverse para empezar</div>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <!-- Tabs -->
+    <div class="flex items-center gap-2 mb-4 flex-wrap">
+        @for (int i = 0; i < Model.Categorias.Count; i++)
+        {
+            var cat = Model.Categorias[i];
+            <button class="tab-btn px-3 py-1.5 rounded-full text-sm font-medium @(i == 0 ? "bg-[#040d1c] text-white" : "bg-white text-black ring-1 ring-slate-300 hover:bg-slate-50")"
+                    data-target="panel-@cat.Id" data-group="invTabs">
+                @cat.Nombre
+            </button>
+        }
+        <span class="flex-1"></span>
+        <button class="tab-btn px-3 py-1.5 rounded-full text-sm font-medium bg-white text-black ring-1 ring-slate-300 hover:bg-slate-50"
+                data-target="panel-usuarios" data-group="invTabs">
+            Usuarios
+        </button>
+        <button class="tab-btn px-3 py-1.5 rounded-full text-sm font-medium bg-white text-black ring-1 ring-slate-300 hover:bg-slate-50"
+                data-target="panel-ubicaciones" data-group="invTabs">
+            Ubicaciones
+        </button>
+    </div>
+
+    <!-- Panels -->
+    <div class="space-y-6">
+        @for (int i = 0; i < Model.Categorias.Count; i++)
+        {
+            var cat = Model.Categorias[i];
+            var equipos = (Model.EquiposPorCategoria != null && Model.EquiposPorCategoria.ContainsKey(cat.Id))
+                ? Model.EquiposPorCategoria[cat.Id]
+                : new List<EquipoVm>();
+
+            <div id="panel-@cat.Id" class="tab-panel @(i == 0 ? "" : "hidden")">
+                <div class="rounded-lg bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+                    <!-- Header con buscador por serial dentro de la categoría -->
+                    <div class="px-4 py-3 border-b border-slate-200">
+                        <div class="flex items-center justify-between gap-3">
+                            <div class="flex items-center gap-2">
+                                <svg class="w-5 h-5 text-[#040d1c]" viewBox="0 0 24 24" fill="currentColor"><path d="M4 6h16v2H4zM4 11h16v2H4zM4 16h16v2H4z"/></svg>
+                                <span class="font-semibold text-black">@cat.Nombre</span>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <div class="relative">
+                                    <input type="text"
+                                           class="cat-serial-search w-64 rounded-md border-slate-300 focus:border-[#040d1c] focus:ring-[#040d1c] px-3 py-2 text-sm text-black placeholder:text-slate-500"
+                                           placeholder="Buscar por serial..."
+                                           data-cat-id="@cat.Id" />
+                                    <span class="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 text-xs">Serial</span>
+                                </div>
+                                <button class="inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium bg-[#040d1c] text-white hover:brightness-110"
+                                        data-modal="addEquipoModal" data-categoria="@cat.Id">
+                                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13H5v-2h14v2z"/></svg>
+                                    Agregar equipo
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    @if (equipos == null || equipos.Count == 0)
+                    {
+                        <div class="p-6 text-slate-900">Sin equipos en esta categoría.</div>
+                    }
+                    else
+                    {
+                        <!-- Tabla simplificada: Marca, Serial, Ubicación, Asignado, Acciones -->
+                        <div class="overflow-x-auto max-w-full">
+                            <table class="w-full table-auto text-sm">
+                                <thead class="bg-slate-100 text-black">
+                                    <tr class="whitespace-nowrap">
+                                        <th class="px-4 py-2 text-left">Marca</th>
+                                        <th class="px-4 py-2 text-left">Serial</th>
+                                        <th class="px-4 py-2 text-left">Ubicación</th>
+                                        <th class="px-4 py-2 text-left">Asignado</th>
+                                        <th class="px-4 py-2 text-right">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100" data-cat-table="@cat.Id">
+                                    @foreach (var e in equipos)
+                                    {
+                                        <tr class="hover:bg-slate-50 align-top cat-row" data-serial="@e.Serial">
+                                            <td class="px-4 py-2 text-black break-words">@e.Marca</td>
+                                            <td class="px-4 py-2"><span class="font-mono text-sm text-black break-all">@e.Serial</span></td>
+                                            <td class="px-4 py-2">
+                                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-sky-100 text-sky-800 ring-1 ring-sky-300 break-words">@e.Ubicacion</span>
+                                            </td>
+                                            <td class="px-4 py-2 break-words">
+                                                @if (!string.IsNullOrWhiteSpace(e.AsignadoA))
+                                                {
+                                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-slate-900 text-white break-all">@e.AsignadoA</span>
+                                                }
+                                                else { <span class="text-slate-500 text-sm">—</span> }
+                                            </td>
+                                            <td class="px-4 py-2">
+                                                <div class="flex justify-end gap-2 flex-wrap">
+                                                    <button type="button"
+                                                            class="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium bg-white text-black ring-1 ring-slate-300 hover:bg-slate-50 btn-ver-detalle-equipo"
+                                                            data-id="@e.Id">
+                                                        <svg class="w-4 h-4 text-[#040d1c]" viewBox="0 0 24 24" fill="currentColor"><path d="M12 6a9.77 9.77 0 019 6 9.77 9.77 0 01-9 6 9.77 9.77 0 01-9-6 9.77 9.77 0 019-6zm0 10a4 4 0 100-8 4 4 0 000 8z"/></svg>
+                                                        Ver detalle
+                                                    </button>
+                                                    <form asp-action="EliminarEquipo" asp-controller="Inventario" method="post" onsubmit="return confirm('¿Eliminar este equipo?');">
+                                                        @Html.AntiForgeryToken()
+                                                        <input type="hidden" name="id" value="@e.Id" />
+                                                        <button type="submit" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium bg-red-600 text-white hover:bg-red-700">
+                                                            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8a2 2 0 002-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+                                                            Eliminar
+                                                        </button>
+                                                    </form>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+
+        <!-- Usuarios: búsqueda global + paginación -->
+        <div id="panel-usuarios" class="tab-panel hidden">
+            <div class="rounded-lg bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+                <!-- Header: título + buscador global -->
+                <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <svg class="w-5 h-5 text-[#040d1c]" viewBox="0 0 24 24" fill="currentColor"><path d="M16 11c1.65 0 3-1.35 3-3s-1.35-3-3-3-3 1.35-3 3 1.35 3 3 3zm-8 0c1.65 0 3-1.35 3-3S9.65 5 8 5 5 6.35 5 8s1.35 3 3 3zm0 2c-2.67 0-8 1.34-8 4v2h10v-2c0-2.66-3.33-4-6-4zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.95 1.97 3.45v2h8v-2c0-2.66-3.33-4-6-4z"/></svg>
+                        <span class="font-semibold text-black">Usuarios del tenant</span>
+                    </div>
+
+                    <!-- Buscador global -->
+                    <div class="flex items-center gap-2">
+                        <div class="relative">
+                            <input
+                                type="text"
+                                id="usuariosSearchInput"
+                                class="w-72 rounded-md border-slate-300 focus:border-[#040d1c] focus:ring-[#040d1c] px-3 py-2 text-sm text-black placeholder:text-slate-500"
+                                placeholder="Buscar por nombre en todo el tenant..."
+                            />
+                            <span class="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 text-xs">Nombre</span>
+                        </div>
+                        <button
+                            type="button"
+                            id="usuariosSearchClear"
+                            class="inline-flex items-center px-3 py-2 rounded-md text-sm font-medium bg-white text-black ring-1 ring-slate-300 hover:bg-slate-50"
+                            title="Limpiar búsqueda"
+                        >
+                            Limpiar
+                        </button>
+                    </div>
+                </div>
+
+                @if (Model.UsuariosTenant == null || Model.UsuariosTenant.Count == 0)
+                {
+                    <div class="p-6 text-slate-900">Sin usuarios para mostrar.</div>
+                }
+                else
+                {
+                    <div class="overflow-x-auto max-w-full">
+                        <table class="w-full table-auto text-sm" id="usuariosTable">
+                            <thead class="bg-slate-100 text-black">
+                                <tr class="whitespace-nowrap">
+                                    <th class="px-4 py-2 text-left">Nombre</th>
+                                    <th class="px-4 py-2 text-left">UPN</th>
+                                    <th class="px-4 py-2 text-left">Correo</th>
+                                    <th class="px-4 py-2 text-left">Departamento</th>
+                                    <th class="px-4 py-2 text-right">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100" id="usuariosTbody">
+                                @foreach (var u in Model.UsuariosTenant)
+                                {
+                                    <tr class="hover:bg-slate-50 align-top">
+                                        <td class="px-4 py-2 font-semibold text-black break-words">@u.DisplayName</td>
+                                        <td class="px-4 py-2 text-slate-900 break-all">@u.UserPrincipalName</td>
+                                        <td class="px-4 py-2 text-black break-all">@u.Mail</td>
+                                        <td class="px-4 py-2 text-slate-900 break-words">@u.Department</td>
+                                        <td class="px-4 py-2">
+                                            <div class="flex justify-end">
+                                                <button
+                                                    type="button"
+                                                    class="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium bg-[#040d1c] text-white hover:brightness-110 btn-ver-detalle"
+                                                    data-user-id="@u.Id"
+                                                    data-upn="@u.UserPrincipalName"
+                                                >
+                                                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 6a9.77 9.77 0 019 6 9.77 9.77 0 01-9 6 9.77 9.77 0 01-9-6 9.77 9.77 0 019-6zm0 10a4 4 0 100-8 4 4 0 000 8z"/></svg>
+                                                    Ver detalle
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Paginación (Anterior/Siguiente) -->
+                    <div class="flex items-center justify-between px-4 py-3 border-t border-slate-200" id="usuariosPager"
+                         data-page="1" data-pagesize="25" data-skiptoken="">
+                        <div class="text-sm text-slate-700">
+                            Página <span id="usuariosPageLabel">1</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button type="button"
+                                    id="usuariosPrevBtn"
+                                    class="inline-flex items-center px-3 py-2 rounded-md text-sm font-medium bg-white text-black ring-1 ring-slate-300 hover:bg-slate-50 disabled:opacity-50"
+                                    disabled>
+                                Anterior
+                            </button>
+                            <button type="button"
+                                    id="usuariosNextBtn"
+                                    class="inline-flex items-center px-3 py-2 rounded-md text-sm font-medium bg-[#040d1c] text-white hover:brightness-110">
+                                Siguiente
+                            </button>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(Model.UsuarioSeleccionadoUpn))
+            {
+                <div class="mt-6 rounded-lg bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+                    <div class="px-4 py-3 border-b border-slate-200">
+                        <span class="font-semibold text-black">Dispositivos de @Model.UsuarioSeleccionadoUpn</span>
+                    </div>
+                    @if (Model.EquiposDelUsuarioSeleccionado == null || Model.EquiposDelUsuarioSeleccionado.Count == 0)
+                    {
+                        <div class="p-6 text-slate-900">Este usuario no tiene dispositivos asignados.</div>
+                    }
+                    else
+                    {
+                        <div class="overflow-x-auto max-w-full">
+                            <table class="w-full table-auto text-sm">
+                                <thead class="bg-slate-100 text-black">
+                                    <tr class="whitespace-nowrap">
+                                        <th class="px-4 py-2 text-left">Marca</th>
+                                        <th class="px-4 py-2 text-left">Modelo</th>
+                                        <th class="px-4 py-2 text-left">Serial</th>
+                                        <th class="px-4 py-2 text-left">Estado</th>
+                                        <th class="px-4 py-2 text-left">Compra</th>
+                                        <th class="px-4 py-2 text-left">Ubicación</th>
+                                        <th class="px-4 py-2 text-left">Notas</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100">
+                                    @foreach (var e in Model.EquiposDelUsuarioSeleccionado)
+                                    {
+                                        <tr class="hover:bg-slate-50 align-top">
+                                            <td class="px-4 py-2 text-black break-words">@e.Marca</td>
+                                            <td class="px-4 py-2 text-slate-900 break-words">@e.Modelo</td>
+                                            <td class="px-4 py-2"><span class="font-mono text-sm text-black break-all">@e.Serial</span></td>
+                                            <td class="px-4 py-2">
+                                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium @(EstadoClase(e.Estado))">@e.Estado</span>
+                                            </td>
+                                            <td class="px-4 py-2 text-slate-900">@((e.FechaCompra.HasValue) ? e.FechaCompra.Value.ToString("yyyy-MM-dd") : "-")</td>
+                                            <td class="px-4 py-2">
+                                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-sky-100 text-sky-800 ring-1 ring-sky-300 break-words">@e.Ubicacion</span>
+                                            </td>
+                                            <td class="px-4 py-2 text-slate-900 break-words">@e.Notas</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        <!-- Ubicaciones (sin cambios de lógica) -->
+        <div id="panel-ubicaciones" class="tab-panel hidden">
+            <div class="rounded-lg bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+                <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <svg class="w-5 h-5 text-[#040d1c]" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7zm0 9.5c-1.4 0-2.5-1.1-2.5-2.5S10.6 6.5 12 6.5s2.5 1.1 2.5 2.5S13.4 11.5 12 11.5z"/></svg>
+                        <span class="font-semibold text-black">Ubicaciones</span>
+                    </div>
+                    <button class="inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium bg-[#040d1c] text-white hover:brightness-110"
+                            data-modal="addUbicacionModal">
+                        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13H5v-2h14v2z"/></svg>
+                        Crear ubicación
+                    </button>
+                </div>
+
+                @if (Model.Ubicaciones == null || Model.Ubicaciones.Count == 0)
+                {
+                    <div class="p-6 text-slate-900">No hay ubicaciones registradas.</div>
+                }
+                else
+                {
+                    <div class="overflow-x-auto max-w-full">
+                        <table class="w-full table-auto text-sm">
+                            <thead class="bg-slate-100 text-black">
+                                <tr class="whitespace-nowrap">
+                                    <th class="px-4 py-2 text-left">Nombre</th>
+                                    <th class="px-4 py-2 text-left">Descripción</th>
+                                    <th class="px-4 py-2 text-right">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100">
+                                @foreach (var u in Model.Ubicaciones)
+                                {
+                                    <tr class="hover:bg-slate-50 align-top">
+                                        <td class="px-4 py-2 font-semibold text-black break-words">@u.Nombre</td>
+                                        <td class="px-4 py-2 text-slate-900 break-words">@u.Descripcion</td>
+                                        <td class="px-4 py-2">
+                                            <div class="flex justify-end gap-2 flex-wrap">
+                                                <a class="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium bg-white text-black ring-1 ring-slate-300 hover:bg-slate-50"
+                                                   asp-action="EquiposPorUbicacion" asp-route-ubicacionId="@u.Id">
+                                                    Ver detalle
+                                                </a>
+                                                <button type="button" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium bg-white text-black ring-1 ring-slate-300 hover:bg-slate-50 btn-edit-ubicacion" data-id="@u.Id">
+                                                    Editar
+                                                </button>
+                                                <form asp-action="EliminarUbicacion" asp-controller="Inventario" method="post" onsubmit="return confirm('¿Eliminar esta ubicación?');">
+                                                    @Html.AntiForgeryToken()
+                                                    <input type="hidden" name="id" value="@u.Id" />
+                                                    <button type="submit" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium bg-red-600 text-white hover:bg-red-700">
+                                                        Eliminar
+                                                    </button>
+                                                </form>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+
+            @if (Model.UbicacionSeleccionadaId.HasValue && Model.UbicacionSeleccionadaId.Value != Guid.Empty)
+            {
+                <div class="mt-6 rounded-lg bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+                    <div class="px-4 py-3 border-b border-slate-200">
+                        <span class="font-semibold text-black">Dispositivos en la ubicación seleccionada</span>
+                    </div>
+                    @if (Model.EquiposPorUbicacionSeleccionada == null || Model.EquiposPorUbicacionSeleccionada.Count == 0)
+                    {
+                        <div class="p-6 text-slate-900">No hay dispositivos en esta ubicación.</div>
+                    }
+                    else
+                    {
+                        <div class="overflow-x-auto max-w-full">
+                            <table class="w-full table-auto text-sm">
+                                <thead class="bg-slate-100 text-black">
+                                    <tr class="whitespace-nowrap">
+                                        <th class="px-4 py-2 text-left">Marca</th>
+                                        <th class="px-4 py-2 text-left">Modelo</th>
+                                        <th class="px-4 py-2 text-left">Serial</th>
+                                        <th class="px-4 py-2 text-left">Estado</th>
+                                        <th class="px-4 py-2 text-left">Compra</th>
+                                        <th class="px-4 py-2 text-left">Asignado</th>
+                                        <th class="px-4 py-2 text-left">Notas</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100">
+                                    @foreach (var e in Model.EquiposPorUbicacionSeleccionada)
+                                    {
+                                        <tr class="hover:bg-slate-50 align-top">
+                                            <td class="px-4 py-2 text-black break-words">@e.Marca</td>
+                                            <td class="px-4 py-2 text-slate-900 break-words">@e.Modelo</td>
+                                            <td class="px-4 py-2"><span class="font-mono text-sm text-black break-all">@e.Serial</span></td>
+                                            <td class="px-4 py-2">
+                                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium @(EstadoClase(e.Estado))">@e.Estado</span>
+                                            </td>
+                                            <td class="px-4 py-2 text-slate-900">@((e.FechaCompra.HasValue) ? e.FechaCompra.Value.ToString("yyyy-MM-dd") : "-")</td>
+                                            <td class="px-4 py-2">
+                                                @if (!string.IsNullOrWhiteSpace(e.AsignadoA))
+                                                {
+                                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-slate-900 text-white break-all">@e.AsignadoA</span>
+                                                }
+                                                else { <span class="text-slate-500 text-sm">—</span> }
+                                            </td>
+                                            <td class="px-4 py-2 text-slate-900 break-words">@e.Notas</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+}
+
+<!-- Modales -->
+<div id="addEquipoModal" class="modal hidden fixed inset-0 z-50 bg-black/40 items-center justify-center">
+  <div class="modal-content w-full max-w-2xl mx-4 rounded-lg bg-white shadow-xl">
+    <div class="flex items-center justify-between px-4 py-3 border-b border-slate-200">
+      <div class="flex items-center gap-2">
+        <svg class="w-5 h-5 text-[#040d1c]" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13H5v-2h14v2z"/></svg>
+        <span class="font-semibold text-black">Agregar equipo</span>
+      </div>
+      <button class="modal-close p-2 rounded-md hover:bg-slate-100 text-black" aria-label="Cerrar">
+        <svg class="w-5 h-5 text-slate-700" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59z"/></svg>
+      </button>
+    </div>
+    <form asp-action="CrearEquipo" asp-controller="Inventario" method="post">
+      @Html.AntiForgeryToken()
+      <div class="px-4 py-4 space-y-4">
+        <input type="hidden" name="CategoriaId" id="categoriaIdField" />
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-black">Marca</label>
+            <input name="Marca" class="mt-1 w-full rounded-md border-slate-300 focus:border-[#040d1c] focus:ring-[#040d1c] text-black" required />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-black">Modelo</label>
+            <input name="Modelo" class="mt-1 w-full rounded-md border-slate-300 focus:border-[#040d1c] focus:ring-[#040d1c] text-black" required />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-black">Serial</label>
+            <input name="Serial" class="mt-1 w-full rounded-md border-slate-300 focus:border-[#040d1c] focus:ring-[#040d1c] text-black" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-black">Estado</label>
+            <select name="Estado" class="mt-1 w-full rounded-md border-slate-300 focus:border-[#040d1c] focus:ring-[#040d1c] text-black">
+              <option value="">(Sin estado)</option>
+              <option value="645250000">Activo</option>
+              <option value="645250001">En mantenimiento</option>
+              <option value="645250002">Retirado</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-black">Ubicación</label>
+            <select name="UbicacionId" class="mt-1 w-full rounded-md border-slate-300 focus:border-[#040d1c] focus:ring-[#040d1c] text-black">
+              <option value="">(Sin ubicación)</option>
+              @if (Model.Ubicaciones != null && Model.Ubicaciones.Count > 0)
+              {
+                  foreach (var u in Model.Ubicaciones)
+                  {
+                      <option value="@u.Id">@u.Nombre</option>
+                  }
+              }
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-black">Fecha de compra</label>
+            <input type="date" name="FechaCompra" class="mt-1 w-full rounded-md border-slate-300 focus:border-[#040d1c] focus:ring-[#040d1c] text-black" />
+          </div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-black">Asignar a (UPN)</label>
+          <div class="relative mt-1">
+            <input name="AsignadoA" id="asignadoAInput" class="w-full rounded-md border-slate-300 focus:border-[#040d1c] focus:ring-[#040d1c] text-black" placeholder="usuario@dominio.com" autocomplete="off" />
+            <div id="asignadoASuggestions" class="absolute z-50 mt-1 w-full rounded-md bg-white shadow ring-1 ring-slate-300 hidden"></div>
+          </div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-black">Notas</label>
+          <textarea name="Notas" rows="3" class="mt-1 w-full rounded-md border-slate-300 focus:border-[#040d1c] focus:ring-[#040d1c] text-black" placeholder="Detalles, condiciones, etc."></textarea>
+        </div>
+      </div>
+      <div class="px-4 py-3 bg-slate-100 flex items-center justify-end gap-2">
+        <button type="submit" class="inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-[#040d1c] text-white hover:brightness-110">
+          Guardar
+        </button>
+        <button type="button" class="modal-close inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-white text-black shadow-sm ring-1 ring-slate-300 hover:bg-slate-50">
+          Cancelar
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="detalleEquipoModal" class="modal hidden fixed inset-0 z-50 bg-black/40 items-center justify-center">
+  <div class="modal-content w-full max-w-4xl mx-4 rounded-lg bg-white shadow-xl">
+    <div class="flex items-center justify-between px-4 py-3 border-b border-slate-200">
+      <div class="flex items-center gap-2">
+        <svg class="w-5 h-5 text-[#040d1c]" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75l11-11-3.75-3.75-11 11z"/></svg>
+        <span class="font-semibold text-black">Detalle del equipo</span>
+      </div>
+      <button class="modal-close p-2 rounded-md hover:bg-slate-100 text-black" aria-label="Cerrar">
+        <svg class="w-5 h-5 text-slate-700" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59z"/></svg>
+      </button>
+    </div>
+    <form asp-action="EditarEquipo" asp-controller="Inventario" method="post" id="detalleEquipoForm">
+      @Html.AntiForgeryToken()
+      <div class="px-4 py-4 space-y-4">
+        <input type="hidden" name="Id" id="detEquipoId" />
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-black">Categoría</label>
+            <select name="CategoriaId" id="detCategoriaId" class="mt-1 w-full rounded-md border-slate-300 focus:border-[#040d1c] focus:ring-[#040d1c] text-black">
+              @foreach (var c in Model.Categorias)
+              {
+                <option value="@c.Id">@c.Nombre</option>
+              }
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-black">Estado</label>
+            <select name="Estado" id="detEstado" class="mt-1 w-full rounded-md border-slate-300 focus:border-[#040d1c] focus:ring-[#040d1c] text-black">
+              <option value="">(Sin estado)</option>
+              <option value="645250000">Activo</option>
+              <option value="645250001">En mantenimiento</option>
+              <option value="645250002">Retirado</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-black">Marca</label>
+            <input name="Marca" id="detMarca" class="mt-1 w-full rounded-md border-slate-300 focus:border-[#040d1c] focus:ring-[#040d1c] text-black" required />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-black">Modelo</label>
+            <input name="Modelo" id="detModelo" class="mt-1 w-full rounded-md border-slate-300 focus:border-[#040d1c] focus:ring-[#040d1c] text-black" required />
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-black">Serial</label>
+            <input name="Serial" id="detSerial" class="mt-1 w-full rounded-md border-slate-300 focus:border-[#040d1c] focus:ring-[#040d1c] text-black" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-black">Ubicación</label>
+            <select name="UbicacionId" id="detUbicacionId" class="mt-1 w-full rounded-md border-slate-300 focus:border-[#040d1c] focus:ring-[#040d1c] text-black">
+              <option value="">(Sin ubicación)</option>
+              @if (Model.Ubicaciones != null && Model.Ubicaciones.Count > 0)
+              {
+                foreach (var u in Model.Ubicaciones)
+                {
+                  <option value="@u.Id">@u.Nombre</option>
+                }
+              }
+            </select>
+          </div>
+
+          <div class="md:col-span-2">
+            <label class="block text-sm font-medium text-black">Asignado a (UPN)</label>
+            <div class="relative mt-1">
+              <input name="AsignadoA" id="detAsignadoA" class="w-full rounded-md border-slate-300 focus:border-[#040d1c] focus:ring-[#040d1c] text-black" autocomplete="off" placeholder="usuario@dominio.com" />
+              <div id="detAsignadoASuggestions" class="absolute z-50 mt-1 w-full rounded-md bg-white shadow ring-1 ring-slate-300 hidden"></div>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-black">Fecha de compra</label>
+            <input type="date" name="FechaCompra" id="detFechaCompra" class="mt-1 w-full rounded-md border-slate-300 focus:border-[#040d1c] focus:ring-[#040d1c] text-black" />
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-black">Hoja de vida / Notas</label>
+          <textarea name="Notas" id="detNotas" rows="8" class="mt-1 w-full rounded-md border-slate-300 focus:border-[#040d1c] focus:ring-[#040d1c] text-black" placeholder="Registro detallado, mantenimientos, accesorios, incidencias, etc."></textarea>
+          <p class="mt-2 text-xs text-slate-600">Este campo admite contenido extenso. Asegúrate de guardar los cambios.</p>
+        </div>
+      </div>
+      <div class="px-4 py-3 bg-slate-100 flex items-center justify-end gap-2">
+        <button type="submit" class="inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-[#040d1c] text-white hover:brightness-110">
+          Guardar cambios
+        </button>
+        <button type="button" class="modal-close inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-white text-black shadow-sm ring-1 ring-slate-300 hover:bg-slate-50">
+          Cancelar
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="addUbicacionModal" class="modal hidden fixed inset-0 z-50 bg-black/40 items-center justify-center">
+  <div class="modal-content w-full max-w-md mx-4 rounded-lg bg-white shadow-xl">
+    <div class="flex items-center justify-between px-4 py-3 border-b border-slate-200">
+      <div class="flex items-center gap-2">
+        <svg class="w-5 h-5 text-[#040d1c]" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7zm0 9.5c-1.4 0-2.5-1.1-2.5-2.5S10.6 6.5 12 6.5s2.5 1.1 2.5 2.5S13.4 11.5 12 11.5z"/></svg>
+        <span class="font-semibold text-black">Crear ubicación</span>
+      </div>
+      <button class="modal-close p-2 rounded-md hover:bg-slate-100 text-black" aria-label="Cerrar">
+        <svg class="w-5 h-5 text-slate-700" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59z"/></svg>
+      </button>
+    </div>
+    <form asp-action="CrearUbicacion" asp-controller="Inventario" method="post">
+      @Html.AntiForgeryToken()
+      <div class="px-4 py-4 space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-black">Nombre</label>
+          <input name="nombre" class="mt-1 w-full rounded-md border-slate-300 focus:border-[#040d1c] focus:ring-[#040d1c] text-black" required placeholder="Ej. Piso 8" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-black">Descripción</label>
+          <textarea name="descripcion" rows="3" class="mt-1 w-full rounded-md border-slate-300 focus:border-[#040d1c] focus:ring-[#040d1c] text-black" placeholder="Opcional"></textarea>
+        </div>
+      </div>
+      <div class="px-4 py-3 bg-slate-100 flex items-center justify-end gap-2">
+        <button type="submit" class="inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-[#040d1c] text-white hover:brightness-110">
+          Crear
+        </button>
+        <button type="button" class="modal-close inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-white text-black shadow-sm ring-1 ring-slate-300 hover:bg-slate-50">
+          Cancelar
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="usuarioDetalleModal" class="modal hidden fixed inset-0 z-50 bg-black/40 items-center justify-center">
+  <div class="modal-content w-full max-w-3xl mx-4 rounded-lg bg-white shadow-xl">
+    <div class="flex items-center justify-between px-4 py-3 border-b border-slate-200">
+      <div class="flex items-center gap-2">
+        <svg class="w-5 h-5 text-[#040d1c]" viewBox="0 0 24 24" fill="currentColor"><path d="M12 6a9.77 9.77 0 019 6 9.77 9.77 0 01-9 6 9.77 9.77 0 01-9-6 9.77 9.77 0 019-6zm0 10a4 4 0 100-8 4 4 0 000 8z"/></svg>
+        <span class="font-semibold text-black">Detalle de usuario</span>
+      </div>
+      <button class="modal-close p-2 rounded-md hover:bg-slate-100 text-black" aria-label="Cerrar">
+        <svg class="w-5 h-5 text-slate-700" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59z"/></svg>
+      </button>
+    </div>
+    <div id="usuarioDetalleContent" class="px-4 py-4"></div>
+  </div>
+</div>
+
+@section Scripts {
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  // Tabs
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = btn.getAttribute('data-target');
+      const group = btn.getAttribute('data-group');
+      document.querySelectorAll('.tab-btn').forEach(b => {
+        if (b.getAttribute('data-group') === group) {
+          b.classList.remove('bg-[#040d1c]','text-white');
+          b.classList.add('bg-white','text-black','ring-1','ring-slate-300');
+        }
+      });
+      btn.classList.add('bg-[#040d1c]','text-white');
+      btn.classList.remove('bg-white','text-black','ring-1','ring-slate-300');
+
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+      const panel = document.getElementById(target);
+      if (panel) panel.classList.remove('hidden');
+    });
+  });
+
+  // Abrir modales (crear)
+  document.querySelectorAll('[data-modal]').forEach(trigger => {
+    trigger.addEventListener('click', () => {
+      const id = trigger.getAttribute('data-modal');
+      const categoriaId = trigger.getAttribute('data-categoria');
+      const modal = document.getElementById(id);
+      if (!modal) return;
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+      if (categoriaId) {
+        const hiddenField = document.getElementById('categoriaIdField');
+        if (hiddenField) hiddenField.value = categoriaId;
+      }
+    });
+  });
+
+  // Cerrar modales
+  document.querySelectorAll('.modal').forEach(modal => {
+    modal.addEventListener('click', (e) => {
+      if (e.target.classList.contains('modal') || e.target.classList.contains('modal-close')) {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+      }
+    });
+  });
+
+  // Búsqueda por serial (por categoría, client-side)
+  document.querySelectorAll('.cat-serial-search').forEach(input => {
+    input.addEventListener('input', () => {
+      const term = input.value.trim().toLowerCase();
+      const catId = input.getAttribute('data-cat-id');
+      const tbody = document.querySelector(`tbody[data-cat-table="${catId}"]`);
+      if (!tbody) return;
+      tbody.querySelectorAll('tr.cat-row').forEach(row => {
+        const serial = (row.getAttribute('data-serial') || '').toLowerCase();
+        const match = term.length === 0 || serial.includes(term);
+        row.style.display = match ? '' : 'none';
+      });
+    });
+  });
+
+  // Ver detalle equipo (carga en modal amplio editable)
+  document.querySelectorAll('.btn-ver-detalle-equipo').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.getAttribute('data-id');
+      try {
+        const res = await fetch(`/Inventario/Equipo?id=${encodeURIComponent(id)}`, { headers: { 'Accept':'application/json' }});
+        if (!res.ok) { alert('No fue posible cargar el equipo.'); return; }
+        const e = await res.json();
+        document.getElementById('detEquipoId').value = e.id;
+        document.getElementById('detCategoriaId').value = e.categoriaId;
+        document.getElementById('detMarca').value = e.marca;
+        document.getElementById('detModelo').value = e.modelo;
+        document.getElementById('detSerial').value = e.serial;
+        document.getElementById('detEstado').value = e.estado ?? '';
+        document.getElementById('detUbicacionId').value = e.ubicacionId || '';
+        document.getElementById('detAsignadoA').value = e.asignadoA || '';
+        document.getElementById('detFechaCompra').value = e.fechaCompra ? e.fechaCompra.substring(0,10) : '';
+        document.getElementById('detNotas').value = e.notas || '';
+
+        const modal = document.getElementById('detalleEquipoModal');
+        modal.classList.remove('hidden'); modal.classList.add('flex');
+      } catch {
+        alert('Error cargando equipo.');
+      }
+    });
+  });
+
+  // Autocompletar UPN (Agregar equipo)
+  const asignadoInput = document.getElementById('asignadoAInput');
+  const suggestions = document.getElementById('asignadoASuggestions');
+  let debounceTimer = null;
+  const hideSuggestions = (el) => { el.classList.add('hidden'); el.innerHTML=''; };
+  const showSuggestions = (el, items, setValue) => {
+    el.innerHTML = '';
+    items.forEach(it => {
+      const a = document.createElement('button');
+      a.type = 'button';
+      a.className = 'w-full text-left px-3 py-2 text-sm hover:bg-slate-50 text-black';
+      a.textContent = `${it.displayName} — ${it.upn}`;
+      a.addEventListener('click', () => { setValue(it.upn); hideSuggestions(el); });
+      el.appendChild(a);
+    });
+    el.classList.toggle('hidden', items.length === 0);
+  };
+  if (asignadoInput && suggestions) {
+    asignadoInput.addEventListener('input', () => {
+      const term = asignadoInput.value.trim();
+      if (debounceTimer) clearTimeout(debounceTimer);
+      if (term.length < 2) { hideSuggestions(suggestions); return; }
+      debounceTimer = setTimeout(async () => {
+        try {
+          const res = await fetch(`/Inventario/BuscarUsuarios?term=${encodeURIComponent(term)}&top=8`, { headers: { 'Accept':'application/json' }});
+          if (!res.ok) { hideSuggestions(suggestions); return; }
+          const data = await res.json();
+          const items = (data && data.value) ? data.value : (data.users || []);
+          showSuggestions(suggestions, items, (v)=> asignadoInput.value = v);
+        } catch { hideSuggestions(suggestions); }
+      }, 250);
+    });
+    document.addEventListener('click', (e) => {
+      if (!suggestions.contains(e.target) && e.target !== asignadoInput) hideSuggestions(suggestions);
+    });
+  }
+
+  // Autocompletar UPN en modal detalle
+  const detAsignadoInput = document.getElementById('detAsignadoA');
+  const detSuggestions = document.getElementById('detAsignadoASuggestions');
+  let detDebounce = null;
+  if (detAsignadoInput && detSuggestions) {
+    detAsignadoInput.addEventListener('input', () => {
+      const term = detAsignadoInput.value.trim();
+      if (detDebounce) clearTimeout(detDebounce);
+      if (term.length < 2) { hideSuggestions(detSuggestions); return; }
+      detDebounce = setTimeout(async () => {
+        try {
+          const res = await fetch(`/Inventario/BuscarUsuarios?term=${encodeURIComponent(term)}&top=8`, { headers: { 'Accept':'application/json' }});
+          if (!res.ok) { hideSuggestions(detSuggestions); return; }
+          const data = await res.json();
+          const items = (data && data.value) ? data.value : (data.users || []);
+          showSuggestions(detSuggestions, items, (v)=> detAsignadoInput.value = v);
+        } catch { hideSuggestions(detSuggestions); }
+      }, 250);
+    });
+    document.addEventListener('click', (e) => {
+      if (!detSuggestions.contains(e.target) && e.target !== detAsignadoInput) hideSuggestions(detSuggestions);
+    });
+  }
+
+  // -------- Usuarios: Búsqueda global + Paginación incremental --------
+  const usuariosSearchInput = document.getElementById('usuariosSearchInput');
+  const usuariosSearchClear = document.getElementById('usuariosSearchClear');
+  const usuariosTbody       = document.getElementById('usuariosTbody');
+  const usuariosPager       = document.getElementById('usuariosPager');
+  const usuariosPageLabel   = document.getElementById('usuariosPageLabel');
+  const usuariosPrevBtn     = document.getElementById('usuariosPrevBtn');
+  const usuariosNextBtn     = document.getElementById('usuariosNextBtn');
+
+  let usuariosSearchTimer = null;
+  let usuariosSearchActive = false;
+  // Historial de skipTokens para botón "Anterior"
+  const skipStack = [];
+
+  const renderUsuariosRows = (items) => {
+    usuariosTbody.innerHTML = '';
+    items.forEach(u => {
+      const tr = document.createElement('tr');
+      tr.className = 'hover:bg-slate-50 align-top';
+      const upn = u.upn || u.userPrincipalName || '';
+      tr.innerHTML = `
+        <td class="px-4 py-2 font-semibold text-black break-words">${u.displayName || ''}</td>
+        <td class="px-4 py-2 text-slate-900 break-all">${upn}</td>
+        <td class="px-4 py-2 text-black break-all">${u.mail || ''}</td>
+        <td class="px-4 py-2 text-slate-900 break-words">${u.department || ''}</td>
+        <td class="px-4 py-2">
+          <div class="flex justify-end">
+            <button type="button"
+                    class="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium bg-[#040d1c] text-white hover:brightness-110 btn-ver-detalle"
+                    data-user-id="${u.id || ''}"
+                    data-upn="${upn}">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 6a9.77 9.77 0 019 6 9.77 9.77 0 01-9 6 9.77 9.77 0 01-9-6 9.77 9.77 0 019-6zm0 10a4 4 0 100-8 4 4 0 000 8z"/></svg>
+              Ver detalle
+            </button>
+          </div>
+        </td>
+      `;
+      usuariosTbody.appendChild(tr);
+    });
+    // Reenganchar "Ver detalle" en filas nuevas
+    document.querySelectorAll('.btn-ver-detalle').forEach(btn => {
+      btn.onclick = async () => {
+        const userId = btn.getAttribute('data-user-id');
+        const upn    = btn.getAttribute('data-upn');
+        const detalleContent = document.getElementById('usuarioDetalleContent');
+        detalleContent.innerHTML = '<div class="flex items-center gap-2 text-slate-800"><span class="animate-pulse">●</span> Cargando...</div>';
+        try {
+          const res  = await fetch(`/Inventario/UsuarioDetalle?userId=${encodeURIComponent(userId)}&upn=${encodeURIComponent(upn)}`, { headers: { 'X-Requested-With':'XMLHttpRequest' }});
+          const html = await res.text();
+          detalleContent.innerHTML = html;
+          const modal = document.getElementById('usuarioDetalleModal');
+          modal.classList.remove('hidden'); modal.classList.add('flex');
+        } catch {
+          detalleContent.innerHTML = '<div class="text-red-700">No fue posible cargar el detalle.</div>';
+          const modal = document.getElementById('usuarioDetalleModal');
+          modal.classList.remove('hidden'); modal.classList.add('flex');
+        }
+      };
+    });
+  };
+
+  const updatePagerUI = (page, hasPrev, hasNext, nextSkipToken) => {
+    usuariosPager?.setAttribute('data-page', String(page));
+    usuariosPager?.setAttribute('data-skiptoken', nextSkipToken || '');
+    if (usuariosPageLabel) usuariosPageLabel.textContent = String(page);
+    if (usuariosPrevBtn) usuariosPrevBtn.disabled = !hasPrev;
+    if (usuariosNextBtn) usuariosNextBtn.disabled = !hasNext;
+  };
+
+  // Página por skiptoken (Graph)
+  const fetchUsuariosPage = async (skipToken, pageSize, page, force = false) => {
+    if (usuariosSearchActive && !force) return;
+    try {
+      const url = `/Inventario/UsuariosPage?pageSize=${pageSize}&skipToken=${encodeURIComponent(skipToken || '')}`;
+      const res = await fetch(url, { headers: { 'Accept': 'application/json' }});
+      if (!res.ok) return;
+      const data = await res.json();
+      const items = (data && data.users) ? data.users : ((data.value) ? data.value : []);
+      const nextSkip = data.nextSkipToken || '';
+
+      renderUsuariosRows(items);
+
+      const hasPrev = skipStack.length > 0;
+      const hasNext = !!nextSkip;
+      updatePagerUI(page, hasPrev, hasNext, nextSkip);
+    } catch { /* silencioso */ }
+  };
+
+  // Botón Siguiente
+  if (usuariosNextBtn) {
+    usuariosNextBtn.addEventListener('click', async () => {
+      const pageSize = parseInt(usuariosPager?.getAttribute('data-pagesize') || '25', 10);
+      const page     = parseInt(usuariosPager?.getAttribute('data-page') || '1', 10);
+      const currentSkip = usuariosPager?.getAttribute('data-skiptoken') || '';
+      // Guardar skip actual para permitir "Anterior"
+      skipStack.push(currentSkip);
+      await fetchUsuariosPage(currentSkip, pageSize, page + 1);
+    });
+  }
+
+  // Botón Anterior
+  if (usuariosPrevBtn) {
+    usuariosPrevBtn.addEventListener('click', async () => {
+      if (skipStack.length === 0) return;
+      const pageSize = parseInt(usuariosPager?.getAttribute('data-pagesize') || '25', 10);
+      const page     = Math.max(parseInt(usuariosPager?.getAttribute('data-page') || '1', 10) - 1, 1);
+      const prevSkip = skipStack.pop() || '';
+      await fetchUsuariosPage(prevSkip, pageSize, page);
+    });
+  }
+
+  // Búsqueda global (por nombre o UPN en todo el tenant)
+  const doUsuariosSearch = async (term, top = 25) => {
+    try {
+      const res = await fetch(`/Inventario/BuscarUsuarios?term=${encodeURIComponent(term)}&top=${top}`, { headers: { 'Accept': 'application/json' }});
+      if (!res.ok) return;
+      const data = await res.json();
+      const items = (data && data.value) ? data.value : (data.users || []);
+      renderUsuariosRows(items);
+    } catch { /* silencioso */ }
+  };
+
+  if (usuariosSearchInput) {
+    usuariosSearchInput.addEventListener('input', () => {
+      const term = usuariosSearchInput.value.trim();
+      if (usuariosSearchTimer) clearTimeout(usuariosSearchTimer);
+      if (term.length < 2) {
+        usuariosSearchActive = false;
+        usuariosPager?.classList.remove('opacity-50', 'pointer-events-none');
+        // Volver a la primera página
+        skipStack.length = 0;
+        fetchUsuariosPage('', parseInt(usuariosPager?.getAttribute('data-pagesize') || '25', 10), 1, true);
+        return;
+      }
+      usuariosSearchTimer = setTimeout(async () => {
+        usuariosSearchActive = true;
+        usuariosPager?.classList.add('opacity-50', 'pointer-events-none');
+        await doUsuariosSearch(term, parseInt(usuariosPager?.getAttribute('data-pagesize') || '25', 10));
+      }, 250);
+    });
+  }
+
+  if (usuariosSearchClear) {
+    usuariosSearchClear.addEventListener('click', () => {
+      usuariosSearchInput.value = '';
+      usuariosSearchActive = false;
+      usuariosPager?.classList.remove('opacity-50', 'pointer-events-none');
+      skipStack.length = 0;
+      fetchUsuariosPage('', parseInt(usuariosPager?.getAttribute('data-pagesize') || '25', 10), 1, true);
+    });
+  }
+
+  // Ver detalle usuario (filas iniciales renderizadas por el servidor)
+  const detalleContent = document.getElementById('usuarioDetalleContent');
+  document.querySelectorAll('.btn-ver-detalle').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const userId = btn.getAttribute('data-user-id');
+      const upn = btn.getAttribute('data-upn');
+      detalleContent.innerHTML = '<div class="flex items-center gap-2 text-slate-800"><span class="animate-pulse">●</span> Cargando...</div>';
+      try {
+        const res = await fetch(`/Inventario/UsuarioDetalle?userId=${encodeURIComponent(userId)}&upn=${encodeURIComponent(upn)}`, { headers: { 'X-Requested-With':'XMLHttpRequest' }});
+        const html = await res.text();
+        detalleContent.innerHTML = html;
+        const modal = document.getElementById('usuarioDetalleModal');
+        modal.classList.remove('hidden'); modal.classList.add('flex');
+      } catch {
+        detalleContent.innerHTML = '<div class="text-red-700">No fue posible cargar el detalle.</div>';
+        const modal = document.getElementById('usuarioDetalleModal');
+        modal.classList.remove('hidden'); modal.classList.add('flex');
+      }
+    });
+  });
+
+  // Auto-open tabs from query
+  const params = new URLSearchParams(window.location.search);
+  if (params.has('upn')) {
+    document.querySelectorAll('.tab-btn').forEach(b => { if (b.getAttribute('data-target') === 'panel-usuarios') b.click(); });
+  }
+  if (params.has('ubicacionId')) {
+    document.querySelectorAll('.tab-btn').forEach(b => { if (b.getAttribute('data-target') === 'panel-ubicaciones') b.click(); });
+  }
+
+  // Carga inicial de usuarios: primera página sin skipToken
+  const usuariosPanel = document.getElementById('panel-usuarios');
+  if (usuariosPanel) {
+    const pageSize = parseInt(usuariosPager?.getAttribute('data-pagesize') || '25', 10);
+    fetchUsuariosPage('', pageSize, 1, true);
+  }
+});
+</script>
+}

@@ -1,0 +1,241 @@
+@model DigitalTechClientPortal.Models.SeguridadVM
+@using System.Globalization
+@{
+    ViewData["Title"] = "Alertas";
+    var es = CultureInfo.GetCultureInfo("es-ES");
+
+    // Query y filtros
+    var q = ViewContext?.HttpContext?.Request?.Query;
+    var fromQ = q?["from"].FirstOrDefault();
+    var toQ = q?["to"].FirstOrDefault();
+    var sevQ = q?["severity"].FirstOrDefault();
+    var searchQ = q?["search"].FirstOrDefault();
+
+    DateTime? from = null;
+    DateTime? to = null;
+    if (DateTime.TryParse(fromQ, out var fromDt)) from = fromDt;
+    if (DateTime.TryParse(toQ, out var toDt)) to = toDt;
+
+    // Base de datos (vista)
+    var alertas = Model.Alertas ?? new List<DigitalTechClientPortal.Models.SecurityAlert>();
+
+    // Filtros
+    if (from.HasValue)
+        alertas = alertas.Where(a => (a.CreatedDateTime ?? a.LastUpdatedDateTime) >= from).ToList();
+    if (to.HasValue)
+        alertas = alertas.Where(a => (a.CreatedDateTime ?? a.LastUpdatedDateTime) <= to).ToList();
+
+    if (!string.IsNullOrWhiteSpace(sevQ))
+    {
+        var sevv = sevQ.Trim().ToLowerInvariant();
+        alertas = alertas.Where(a => (a.Severity ?? "").ToLowerInvariant() == sevv).ToList();
+    }
+
+    if (!string.IsNullOrWhiteSpace(searchQ))
+    {
+        var s = searchQ.Trim();
+        alertas = alertas.Where(a =>
+            (a.Title ?? "").Contains(s, StringComparison.OrdinalIgnoreCase) ||
+            (a.Category ?? "").Contains(s, StringComparison.OrdinalIgnoreCase) ||
+            (a.Provider ?? "").Contains(s, StringComparison.OrdinalIgnoreCase) ||
+            (a.Status ?? "").Contains(s, StringComparison.OrdinalIgnoreCase)
+        ).ToList();
+    }
+
+    // Orden: recientes primero
+    alertas = alertas.OrderByDescending(a => a.CreatedDateTime ?? a.LastUpdatedDateTime ?? DateTimeOffset.MinValue).ToList();
+
+    // Paginación
+    int pg = Math.Max(Convert.ToInt32(q?["page"].FirstOrDefault() ?? "1"), 1);
+    int pageSize = Math.Clamp(Convert.ToInt32(q?["ps"].FirstOrDefault() ?? "20"), 10, 100);
+    int total = alertas.Count;
+    int pages = Math.Max((int)Math.Ceiling(total / (double)pageSize), 1);
+    var slice = alertas.Skip((pg - 1) * pageSize).Take(pageSize).ToList();
+
+    // KPIs
+    int kpiTotal = total;
+    int kpiCriticas = alertas.Count(a => (a.Severity ?? "").Equals("critical", StringComparison.OrdinalIgnoreCase) || (a.Severity ?? "").Equals("crítico", StringComparison.OrdinalIgnoreCase));
+    int kpiAltas = alertas.Count(a => (a.Severity ?? "").Equals("high", StringComparison.OrdinalIgnoreCase) || (a.Severity ?? "").Equals("alta", StringComparison.OrdinalIgnoreCase));
+    int kpiMedias = alertas.Count(a => (a.Severity ?? "").Equals("medium", StringComparison.OrdinalIgnoreCase) || (a.Severity ?? "").Equals("media", StringComparison.OrdinalIgnoreCase));
+    int kpiBajas  = alertas.Count(a => (a.Severity ?? "").Equals("low", StringComparison.OrdinalIgnoreCase) || (a.Severity ?? "").Equals("baja", StringComparison.OrdinalIgnoreCase));
+
+    // Clases visuales
+    Func<string?, string> SevClass = sev => (sev ?? "").ToLowerInvariant() switch
+    {
+        "critical" or "crítico" => "badge text-bg-danger",
+        "high" or "alta"        => "badge text-bg-warning",
+        "medium" or "media"     => "badge text-bg-warning",
+        "low" or "baja"         => "badge text-bg-success",
+        _                       => "badge text-bg-secondary"
+    };
+
+    // Preservar filtros en navegación
+    Func<int, object> NavParams = (newPage) => new {
+        page = newPage,
+        ps = pageSize,
+        from = fromQ,
+        to = toQ,
+        severity = sevQ,
+        search = searchQ
+    };
+}
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" crossorigin="anonymous">
+
+<div class="container-fluid py-4">
+  <!-- Encabezado + acciones -->
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0">Alertas</h2>
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-secondary" href="javascript:location.reload()">Actualizar</a>
+      <a class="btn btn-primary" href='@Url.Action("Panel","Seguridad")'>Ver panel</a>
+    </div>
+  </div>
+
+  <!-- Filtros ejecutivos -->
+  <div class="card shadow-sm border-0 mb-4">
+    <div class="card-body">
+      <form method="get" class="row gy-3 gx-3">
+        <div class="col-12 col-md-3">
+          <label class="form-label">Desde</label>
+          <input type="date" name="from" value="@fromQ" class="form-control" />
+        </div>
+        <div class="col-12 col-md-3">
+          <label class="form-label">Hasta</label>
+          <input type="date" name="to" value="@toQ" class="form-control" />
+        </div>
+        <div class="col-12 col-md-3">
+          <label class="form-label">Severidad</label>
+          <select name="severity" class="form-select">
+            <option value="">Todas</option>
+            <option value="Critical" selected="@(sevQ == "Critical")">Critical</option>
+            <option value="High" selected="@(sevQ == "High")">High</option>
+            <option value="Medium" selected="@(sevQ == "Medium")">Medium</option>
+            <option value="Low" selected="@(sevQ == "Low")">Low</option>
+          </select>
+        </div>
+        <div class="col-12 col-md-3">
+          <label class="form-label">Buscar</label>
+          <input type="text" name="search" value="@searchQ" class="form-control" placeholder="Título, categoría, proveedor, estado" />
+        </div>
+        <div class="col-12 d-flex justify-content-end gap-2">
+          <input type="hidden" name="ps" value="@pageSize" />
+          <button type="submit" class="btn btn-primary">Aplicar filtros</button>
+          <a class="btn btn-outline-secondary" href='@Url.Action("Alertas","Seguridad")'>Limpiar</a>
+          <a class="btn btn-outline-primary" href='@Url.Action("ExportarAlertasCsv","Seguridad", new { from = fromQ, to = toQ, severity = sevQ, search = searchQ })'>Exportar CSV</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- KPIs -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+      <div class="card shadow-sm border-0">
+        <div class="card-body">
+          <div class="d-flex justify-content-between"><h6 class="text-muted">Total</h6><span class="badge text-bg-secondary">Todas</span></div>
+          <div class="fs-3 fw-semibold">@kpiTotal</div>
+          <small class="text-muted">Alertas filtradas.</small>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card shadow-sm border-0">
+        <div class="card-body">
+          <div class="d-flex justify-content-between"><h6 class="text-muted">Críticas</h6><span class="badge text-bg-danger">Critical</span></div>
+          <div class="fs-3 fw-semibold">@kpiCriticas</div>
+          <small class="text-muted">Alta prioridad.</small>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card shadow-sm border-0">
+        <div class="card-body">
+          <div class="d-flex justify-content-between"><h6 class="text-muted">Altas</h6><span class="badge text-bg-warning">High</span></div>
+          <div class="fs-3 fw-semibold">@kpiAltas</div>
+          <small class="text-muted">Prioridad elevada.</small>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card shadow-sm border-0">
+        <div class="card-body">
+          <div class="d-flex justify-content-between"><h6 class="text-muted">Medias/Bajas</h6><span class="badge text-bg-success">Medium/Low</span></div>
+          <div class="fs-3 fw-semibold">@(@kpiMedias + @kpiBajas)</div>
+          <small class="text-muted">Seguimiento.</small>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tabla de alertas -->
+  <div class="card shadow-sm border-0">
+    <div class="card-header bg-white d-flex align-items-center justify-content-between">
+      <strong>Listado de alertas</strong>
+      <span class="text-muted small">Página @pg de @pages · @total registro(s)</span>
+    </div>
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th style="width: 32%;">Título</th>
+              <th style="width: 10%;">Severidad</th>
+              <th style="width: 14%;">Categoría</th>
+              <th style="width: 12%;">Estado</th>
+              <th style="width: 12%;">Proveedor</th>
+              <th style="width: 20%;">Creada</th>
+            </tr>
+          </thead>
+          <tbody>
+            @if (slice.Any())
+            {
+                foreach (var a in slice)
+                {
+                    <tr>
+                        <td>@(string.IsNullOrWhiteSpace(a.Title) ? "-" : a.Title)</td>
+                        <td><span class="@SevClass(a.Severity)">@((string.IsNullOrWhiteSpace(a.Severity) ? "-" : a.Severity))</span></td>
+                        <td>@(string.IsNullOrWhiteSpace(a.Category) ? "-" : a.Category)</td>
+                        <td>@(string.IsNullOrWhiteSpace(a.Status) ? "-" : a.Status)</td>
+                        <td>@(string.IsNullOrWhiteSpace(a.Provider) ? "-" : a.Provider)</td>
+                        <td>@((a.CreatedDateTime ?? a.LastUpdatedDateTime)?.ToLocalTime().ToString("dd MMM yyyy HH:mm", es) ?? "-")</td>
+                    </tr>
+                }
+            }
+            else
+            {
+                <tr><td colspan="6" class="text-center text-muted">Sin alertas para los filtros seleccionados.</td></tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card-footer d-flex align-items-center justify-content-between">
+      <div class="btn-group">
+        <a class="btn btn-outline-secondary btn-sm @(pg == 1 ? "disabled" : null)"
+           href='@Url.Action("Alertas","Seguridad", NavParams(Math.Max(pg - 1, 1)))'><i class="ti ti-chevron-left"></i></a>
+        <a class="btn btn-outline-secondary btn-sm @(pg == pages ? "disabled" : null)"
+           href='@Url.Action("Alertas","Seguridad", NavParams(Math.Min(pg + 1, pages)))'><i class="ti ti-chevron-right"></i></a>
+      </div>
+      <div class="d-flex align-items-center">
+        <span class="text-muted me-2">Tamaño página</span>
+        @{
+            int[] sizes = new[] { 10, 20, 50, 100 };
+            foreach (var s in sizes)
+            {
+                var p = new {
+                    page = 1,
+                    ps = s,
+                    from = fromQ,
+                    to = toQ,
+                    severity = sevQ,
+                    search = searchQ
+                };
+                <a class="btn btn-outline-primary btn-sm @(pageSize == s ? "active" : null)" href='@Url.Action("Alertas","Seguridad", p)'>@s</a>
+            }
+        }
+      </div>
+    </div>
+  </div>
+</div>

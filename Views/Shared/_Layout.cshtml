@@ -10,12 +10,12 @@
         string.Equals(currentController, ctrl, StringComparison.OrdinalIgnoreCase)
         && string.Equals(currentAction, act, StringComparison.OrdinalIgnoreCase);
 
-    // Navegación: enlaces con realce sutil sobre sidebar transparente
+    // Clase base de navegación (sin subrayado, estados activos/hover)
     Func<string,string,string> navClasses = (ctrl, act) =>
-        "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium " +
+        "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium no-underline " +
         (isActive(ctrl, act)
-            ? "bg-white/[0.08] text-white shadow-soft"
-            : "hover:bg-white/[0.06] text-white");
+            ? "bg-white/[0.10] text-white shadow-soft"
+            : "hover:bg-white/[0.08] text-white");
 
     // Resolver email del usuario
     var email =
@@ -25,14 +25,12 @@
         ?? User.FindFirst("emails")?.Value
         ?? User.FindFirst("upn")?.Value;
 
-    // Traer cliente desde Dataverse (silenciar errores para no romper layout)
+    // Traer cliente desde Dataverse (silenciado si falla)
     dynamic? cliente = null;
     if (!string.IsNullOrWhiteSpace(email))
     {
-        try { cliente = await ClienteService.GetClienteByEmailAsync(email); }
-        catch { }
+        try { cliente = await ClienteService.GetClienteByEmailAsync(email); } catch { }
     }
-
     var companyName = (string)(cliente?.Nombre ?? "Digital Tech");
     var workspaceName = email ?? string.Empty;
 }
@@ -47,6 +45,7 @@
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@@tabler/icons-webfont@latest/tabler-icons.min.css">
 
 <script>
 tailwind.config = {
@@ -63,17 +62,18 @@ tailwind.config = {
 </script>
 
 <style>
-/* Tipografía global Helvetica */
+/* Tipografía y enlaces sin subrayado */
 html, body, button, input, select, textarea { font-family: Helvetica, Arial, ui-sans-serif, system-ui; }
+a { text-decoration: none !important; }
 
-/* Fondo global con imagen (cubre y fija) */
+/* Fondo global */
 body {
   background: url('https://41741943.fs1.hubspotusercontent-na1.net/hubfs/41741943/Copia%20de%20Portafolio%20Unificado%20(Nuevo).jpg') no-repeat center center fixed;
   background-size: cover;
-  color: #fff; /* texto por defecto en blanco para sidebar y área exterior */
+  color: #fff;
 }
 
-/* Selección y scrollbar */
+/* Scrollbar fino */
 ::selection { background:#222; color:#fff; }
 .thin-scroll::-webkit-scrollbar { height:10px; width:10px }
 .thin-scroll::-webkit-scrollbar-thumb { background:#444; border-radius:8px }
@@ -83,151 +83,212 @@ body {
   display:inline-flex; align-items:center; gap:.5rem;
   border-radius:.5rem; padding:.375rem .75rem;
   font-size:.875rem; font-weight:600; line-height:1.25rem;
-  transition:transform .15s ease, box-shadow .15s ease, background-color .15s ease, color .15s ease, border-color .15s ease;
-  text-decoration:none;
+  transition:transform .15s ease, box-shadow .15s ease;
 }
-.btn-unified-light { background:#ffffff; color:#000000; border:1px solid #e5e7eb; box-shadow:0 1px 2px rgba(0,0,0,.08); }
-.btn-unified-light:hover { box-shadow:0 2px 6px rgba(0,0,0,.12); transform:scale(1.02); }
-.btn-unified-dark-outline { background:#000000; color:#ffffff; border:1px solid #6b7280; }
-.btn-unified-dark-outline:hover { background:#ffffff; color:#000000; border-color:#000000; }
+.btn-unified:hover { transform:scale(1.02); }
 
-/* Sidebar completamente transparente (sin fondo ni borde) */
-.sidebar {
-  background: transparent;
-  border-right: none;
-  backdrop-filter: none; /* si necesitas contraste, cambia a blur(4px) */
-}
+/* Botón CloudIA: fondo negro, texto blanco siempre */
+.btn-unified-primary { background:#000; color:#fff !important; border:1px solid #000; }
+.btn-unified-primary:hover { background:#222; border-color:#222; color:#fff !important; }
 
-/* Super tarjeta blanca sólida (contenedor principal) */
+/* Botón claro */
+.btn-unified-light { background:#fff; color:#000; border:1px solid #e5e7eb; box-shadow:0 1px 2px rgba(0,0,0,.08); }
+.btn-unified-light:hover { box-shadow:0 2px 6px rgba(0,0,0,.12); }
+
+/* Sidebar transparente */
+.sidebar { background: transparent; border-right: none; }
+
+/* Estados del sidebar: expandido vs colapsado (rail de iconos) */
+#sidebar { width: 16rem; /* 256px */ transition: width .3s ease, transform .3s ease; }
+#sidebar.collapsed { width: 56px; } /* rail de iconos */
+#sidebar .nav-text { display: inline; }
+#sidebar.collapsed .nav-text { display: none; } /* esconder textos */
+#sidebar .brand-block .brand-texts { display: block; }
+#sidebar.collapsed .brand-block .brand-texts { display: none; } /* ocultar textos de marca, deja solo el logo */
+
+/* Contenedor principal: super tarjeta blanca sólida */
 .super-card {
-  background: #ffffff;           /* blanco sólido pedido */
-  border: 2px solid #0a0a0a;     /* borde negro visible */
-  border-radius: 1rem;           /* rounded-2xl */
-  margin: 1.25rem;               /* marco alrededor para ver el fondo */
-  box-shadow: 0 2px 12px rgba(0,0,0,.25);
+  background: #fff; border: 2px solid #0a0a0a; border-radius: 1rem;
+  margin: 1.25rem; box-shadow: 0 2px 12px rgba(0,0,0,.25);
 }
-
-/* Topbar interna dentro de la super-card: blanco sólido */
 .super-card header {
-  background: #ffffff;
-  border-bottom: 1px solid #e5e7eb;
-  border-top-left-radius: 0.95rem;
-  border-top-right-radius: 0.95rem;
+  background: #fff; border-bottom: 1px solid #e5e7eb;
+  border-top-left-radius: 0.95rem; border-top-right-radius: 0.95rem;
 }
+/* Texto oscuro dentro de super-card */
+.super-card h1, .super-card h2, .super-card h3,
+.super-card p, .super-card span, .super-card li,
+.super-card a, .super-card label, .super-card th, .super-card td { color:#0f172a; }
 
-/* Panel derecho gris claro sólido (no translúcido) */
-.right-panel {
-  background: #f3f4f6;
-  border: 1px solid #e5e7eb;
-  border-radius: 0.75rem;
-  padding: 1rem;
+/* Responsive: sidebar oculto por defecto en pantallas pequeñas (rail) */
+@@media (max-width: 1024px) {
+  #sidebar { width: 56px; }
 }
-
-/* Texto oscuro dentro de la super-card para buen contraste */
-.super-card h1, .super-card h2, .super-card h3, .super-card p, .super-card span, .super-card li {
-  color:#0f172a; /* slate-900 */
-}
-
-/* Pequeños ajustes de color para elementos del sidebar transparente */
-.sidebar .section-label { color: rgba(255,255,255,0.85); }
-.sidebar .brand-muted { color: rgba(255,255,255,0.75); }
-.sidebar .brand-strong { color: #ffffff; }
 </style>
 
 @RenderSection("Head", required: false)
 </head>
-
 <body class="text-white antialiased font-sans">
 <div class="mx-auto max-w-screen-2xl">
   <div class="flex min-h-[100vh]">
 
-    <!-- Sidebar izquierda transparente -->
-    <aside class="w-64 shrink-0 text-white thin-scroll sidebar">
+    <!-- Sidebar izquierda con toggle -->
+    <aside id="sidebar" class="shrink-0 text-white thin-scroll sidebar">
       <!-- Marca -->
-      <div class="flex items-center gap-3 px-4 py-4">
+      <div class="brand-block flex items-center gap-3 px-4 py-4">
         <div class="h-9 w-9 rounded-lg overflow-hidden">
           <img src="~/favicon.png" alt="Logo" class="h-9 w-9 object-contain" />
         </div>
-        <div>
-          <div class="text-xs brand-muted">Digital Tech</div>
-          <div class="text-sm font-medium brand-strong">@companyName</div>
-          <div class="text-xs brand-muted">@workspaceName</div>
+        <div class="brand-texts">
+          <div class="text-xs">Digital Tech</div>
+          <div class="text-sm font-medium">@companyName</div>
+          <div class="text-xs">@workspaceName</div>
         </div>
       </div>
 
+      <!-- Navegación -->
       <nav class="p-3">
-        <p class="px-2 py-2 text-xs uppercase tracking-wide section-label">Menú</p>
+        <p class="px-2 py-2 text-xs uppercase tracking-wide nav-text">Menú</p>
         <ul class="space-y-1">
-          <li><a class="@navClasses("Home","Index")" href='@Url.Action("Index","Home")'>Inicio</a></li>
-          <li><a class='@navClasses("Facturacion","Index")' href='@Url.Action("Index", "Facturacion", new {email = email})'>Facturación</a></li>
-          <li><a class='@navClasses("Capacitaciones","Index")' href='@Url.Action("Index","Capacitaciones")'>Capacitaciones</a></li>
-          <li><a class='@navClasses("Academy","Index")' href='@Url.Action("Index","Academy")'>Academy</a></li>
-          <li><a class='@navClasses("Reportes","Index")' href='@Url.Action("Index","Reportes")'>Reportes</a></li>
-          <li><a class='@navClasses("Soporte","Index")' href='@Url.Action("Index","Soporte")'>Soporte</a></li>
-          <li><a class='@navClasses("Seguridad","Index")' href='@Url.Action("Index","Seguridad")'>Seguridad</a></li>
+          <li>
+            <a class='@navClasses("Home","Index")' href='@Url.Action("Index","Home")'>
+              <i class="ti ti-home"></i> <span class="nav-text">Inicio</span>
+            </a>
+          </li>
+          <li>
+            <a class='@navClasses("Facturacion","Index")' href='@Url.Action("Index","Facturacion", new { email = email })'>
+              <i class="ti ti-file-invoice"></i> <span class="nav-text">Facturación</span>
+            </a>
+          </li>
+          <li>
+            <a class='@navClasses("Capacitaciones","Index")' href='@Url.Action("Index","Capacitaciones")'>
+              <i class="ti ti-school"></i> <span class="nav-text">Capacitaciones</span>
+            </a>
+          </li>
+          <li>
+            <a class='@navClasses("Academy","Index")' href='@Url.Action("Index","Academy")'>
+              <i class="ti ti-book"></i> <span class="nav-text">Academy</span>
+            </a>
+          </li>
+          <li>
+            <a class='@navClasses("Reportes","Index")' href='@Url.Action("Index","Reportes")'>
+              <i class="ti ti-report"></i> <span class="nav-text">Reportes</span>
+            </a>
+          </li>
+          <li>
+            <a class='@navClasses("Soporte","Index")' href='@Url.Action("Index","Soporte")'>
+              <i class="ti ti-headset"></i> <span class="nav-text">Soporte</span>
+            </a>
+          </li>
+          <li>
+            <a class='@navClasses("Seguridad","Index")' href='@Url.Action("Panel","Seguridad")'>
+              <i class="ti ti-shield-lock"></i> <span class="nav-text">Seguridad</span>
+            </a>
+          </li>
+          <li>
+            <a class='@navClasses("Inventario","Equipos")' href='@Url.Action("Equipos","Inventario")'>
+              <i class="ti ti-device-desktop"></i> <span class="nav-text">Inventario</span>
+            </a>
+          </li>
+          <li>
+            <a class='@navClasses("Seguridad","Alertas")' href='@Url.Action("Alertas","Seguridad")'>
+              <i class="ti ti-alert-triangle"></i> <span class="nav-text">Alertas</span>
+            </a>
+          </li>
         </ul>
 
-        <p class="mt-5 px-2 py-2 text-xs uppercase tracking-wide section-label">Productos</p>
+        <p class="mt-5 px-2 py-2 text-xs uppercase tracking-wide nav-text">Productos</p>
         <ul class="space-y-1">
-          <li><a class="@navClasses("PortafolioCloud","Index")" href='@Url.Action("Index", "PortafolioCloud")'>Cloud</a></li>
-          <li><a class='@navClasses("PortafolioCopiers","Index")' href='@Url.Action("Index", "PortafolioCopiers")'>Impresión</a></li>
-          <li><a class='@navClasses("ServiciosProfesionales","Index")' href='@Url.Action("Index", "ServiciosProfesionales")'>Servicios Profesionales</a></li>
+          <li>
+            <a class='@navClasses("PortafolioCloud","Index")' href='@Url.Action("Index","PortafolioCloud")'>
+              <i class="ti ti-cloud"></i> <span class="nav-text">Cloud</span>
+            </a>
+          </li>
+          <li>
+            <a class='@navClasses("PortafolioCopiers","Index")' href='@Url.Action("Index","PortafolioCopiers")'>
+              <i class="ti ti-printer"></i> <span class="nav-text">Impresión</span>
+            </a>
+          </li>
+          <li>
+            <a class='@navClasses("ServiciosProfesionales","Index")' href='@Url.Action("Index","ServiciosProfesionales")'>
+              <i class="ti ti-briefcase"></i> <span class="nav-text">Servicios Profesionales</span>
+            </a>
+          </li>
         </ul>
 
         <div class="mt-6 px-2">
-          <a href='@Url.Action("SeguridadContinuidad","Assessment")' class="btn-unified btn-unified-light">Assessment</a>
+          <a href='@Url.Action("SeguridadContinuidad","Assessment")' class="btn-unified btn-unified-light">
+            <i class="ti ti-clipboard-check"></i> <span class="nav-text">Assessment</span>
+          </a>
         </div>
       </nav>
     </aside>
 
-    <!-- Columna derecha: super tarjeta blanca sólida que contiene todo -->
+    <!-- Columna derecha: se expande automáticamente -->
     <div class="flex-1 super-card">
-      <!-- Topbar interna de la super tarjeta -->
-      <header class="sticky top-0 z-20 px-4 py-3 flex items-center">
-        <a href="/Support/SoporteTest" class="btn-unified btn-unified-light" title="Accede a tu asistente inteligente">CloudIA</a>
-        <span class="ml-2 text-xs text-slate-700">Accede a tu asistente inteligente</span>
+      <!-- Topbar con toggle y CloudIA negro texto blanco -->
+      <header class="sticky top-0 z-20 px-4 py-3 d-flex align-items-center">
+        <button id="sidebarToggle" class="btn btn-sm btn-dark me-3" type="button" aria-label="Mostrar/ocultar menú">
+          <i class="ti ti-layout-sidebar-left-collapse"></i>
+        </button>
 
-        <div class="ml-auto flex items-center gap-4">
+        <a href="/Support/SoporteTest" class="btn-unified btn-unified-primary" title="Accede a tu asistente inteligente">
+          <i class="ti ti-message-chatbot"></i> <span style="color:#fff">CloudIA</span>
+        </a>
+        <span class="ms-2 text-xs text-slate-700">Accede a tu asistente inteligente</span>
+
+        <div class="ms-auto d-flex align-items-center gap-3">
           @if (User.Identity?.IsAuthenticated ?? false)
           {
-            <span class="text-sm font-medium text-slate-700">@User.Identity.Name</span>
-            <form method="post" action='@Url.Action("SignOutUser","Login")' class="inline-block">
+            <span class="text-sm font-medium text-slate-700">@User.Identity!.Name</span>
+            <form method="post" action='@Url.Action("SignOutUser","Login")' class="d-inline-block">
               @Html.AntiForgeryToken()
-              <button type="submit" class="btn-unified btn-unified-dark-outline">Salir</button>
+              <button type="submit" class="btn-unified btn-unified-primary">
+                <i class="ti ti-logout"></i> <span style="color:#fff">Salir</span>
+              </button>
             </form>
           }
           else
           {
-            <a href='@Url.Action("SignIn","Login")' class="btn-unified btn-unified-light">Entrar</a>
+            <a href='@Url.Action("SignIn","Login")' class="btn-unified btn-unified-primary">
+              <i class="ti ti-login"></i> <span style="color:#fff">Entrar</span>
+            </a>
           }
         </div>
       </header>
 
-      <!-- Grid principal dentro de la super tarjeta -->
+      <!-- Contenido principal -->
       <div class="grid grid-cols-12 gap-6 p-6">
-        <!-- Contenido central -->
-        <section class="col-span-12 lg:col-span-8">
+        <section class="col-span-12">
           <main role="main" class="pb-3">
             @RenderBody()
             @RenderSection("Main", required: false)
           </main>
         </section>
-
-        <!-- Panel derecho: gris claro sólido con los contactos -->
-        <aside class="col-span-12 lg:col-span-4">
-          <div class="right-panel">
-            <div class="contacts-content">
-              @await Component.InvokeAsync("RightContacts")
-            </div>
-          </div>
-        </aside>
       </div>
 
-      <!-- Scripts específicos de vistas -->
       @RenderSection("Scripts", required: false)
     </div>
-
   </div>
 </div>
+
+<script>
+(function() {
+  const btn = document.getElementById('sidebarToggle');
+  const sidebar = document.getElementById('sidebar');
+
+  // Restaurar estado desde localStorage
+  const saved = localStorage.getItem('sidebar-collapsed');
+  if (saved === 'true') {
+    sidebar.classList.add('collapsed');
+  }
+
+  // Toggle y persistencia
+  btn?.addEventListener('click', function() {
+    sidebar.classList.toggle('collapsed');
+    localStorage.setItem('sidebar-collapsed', sidebar.classList.contains('collapsed'));
+  });
+})();
+</script>
 </body>
 </html>

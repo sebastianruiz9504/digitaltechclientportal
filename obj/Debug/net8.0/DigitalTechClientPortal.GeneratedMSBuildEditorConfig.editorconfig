@@ -46,6 +46,14 @@ build_metadata.AdditionalFiles.CssScope =
 build_metadata.AdditionalFiles.TargetPath = Vmlld3NcSG9tZVxQcml2YWN5LmNzaHRtbA==
 build_metadata.AdditionalFiles.CssScope = 
 
+[C:/Users/SebastianRuiz/DigitalTechClientPortal/Views/Inventario/Inventario.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcSW52ZW50YXJpb1xJbnZlbnRhcmlvLmNzaHRtbA==
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/SebastianRuiz/DigitalTechClientPortal/Views/Inventario/_UsuarioDetalle.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcSW52ZW50YXJpb1xfVXN1YXJpb0RldGFsbGUuY3NodG1s
+build_metadata.AdditionalFiles.CssScope = 
+
 [C:/Users/SebastianRuiz/DigitalTechClientPortal/Views/Login/Index.cshtml]
 build_metadata.AdditionalFiles.TargetPath = Vmlld3NcTG9naW5cSW5kZXguY3NodG1s
 build_metadata.AdditionalFiles.CssScope = 
@@ -62,8 +70,12 @@ build_metadata.AdditionalFiles.CssScope =
 build_metadata.AdditionalFiles.TargetPath = Vmlld3NcUmVwb3J0ZXNcSW5kZXguY3NodG1s
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/SebastianRuiz/DigitalTechClientPortal/Views/Seguridad/Index.cshtml]
-build_metadata.AdditionalFiles.TargetPath = Vmlld3NcU2VndXJpZGFkXEluZGV4LmNzaHRtbA==
+[C:/Users/SebastianRuiz/DigitalTechClientPortal/Views/Seguridad/Alertas.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcU2VndXJpZGFkXEFsZXJ0YXMuY3NodG1s
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/SebastianRuiz/DigitalTechClientPortal/Views/Seguridad/PanelSeguridad.cshtml]
+build_metadata.AdditionalFiles.TargetPath = Vmlld3NcU2VndXJpZGFkXFBhbmVsU2VndXJpZGFkLmNzaHRtbA==
 build_metadata.AdditionalFiles.CssScope = 
 
 [C:/Users/SebastianRuiz/DigitalTechClientPortal/Views/ServiciosProfesionales/Index.cshtml]

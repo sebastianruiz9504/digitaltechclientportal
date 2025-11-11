@@ -15,30 +15,30 @@ using DigitalTechClientPortal.Web.Services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Identity.Client; // agregado para app-only Graph
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Servicios propios
 builder.Services.AddScoped<CapacitacionService>();
 builder.Services.AddScoped<GraphCalendarService>();
-
-
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICapacitacionService, CapacitacionService>();
-// Servicio de calendario (singleton, cliente Graph es thread-safe)
 builder.Services.AddSingleton<GraphCalendarService>();
 builder.Services.AddControllersWithViews();
-// Opciones propias de Dataverse (si usas appsettings: "Dataverse": {...})
+
+// Dataverse Options
 builder.Services
     .AddOptions<DataverseOptions>()
     .Bind(builder.Configuration.GetSection("Dataverse"))
     .ValidateDataAnnotations()
     .Validate(o => Uri.TryCreate(o.Url, UriKind.Absolute, out _), "Dataverse:Url inválida")
     .ValidateOnStart();
-builder.Services.AddScoped<ClientesService>();
 
+builder.Services.AddScoped<ClientesService>();
 builder.Services.AddHttpClient<YouTubeService>();
 builder.Services.AddScoped<ReportesCloudService>();
 
-// Configuración fuertemente tipada para YouTube
 builder.Services
     .AddOptions<DigitalTechClientPortal.Services.YouTubeOptions>()
     .Bind(builder.Configuration.GetSection("YouTube"))
@@ -46,51 +46,47 @@ builder.Services
     .Validate(o => !string.IsNullOrWhiteSpace(o.PlaylistId), "YouTube:PlaylistId requerido")
     .ValidateOnStart();
 
-// Typed HttpClient para YouTubeService
 builder.Services.AddHttpClient<DigitalTechClientPortal.Services.YouTubeService>();
 
-// 1) Forwarded Headers (si hay proxy/LB delante)
+// Forwarded Headers (proxy/LB)
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost;
 });
+
 builder.Services.AddScoped<DigitalTechApp.Services.ChatService>();
 builder.Services.AddScoped<DigitalTechApp.Services.SearchService>();
 builder.Services.AddScoped<DigitalTechApp.Services.OpenAIClientAdapter>();
 
+// GraphClientFactory (delegated): usa el token del usuario desde HttpContext
+builder.Services.AddScoped<GraphClientFactory>();
 
-// Configuración de servicios Graph
-builder.Services.AddSingleton(provider =>
-    new GraphClientFactory(
-        clientId: "c2ac208c-c6d5-40bc-9b3a-fb360fef5213",
-        clientSecret: builder.Configuration["Graph:ClientSecret"]
-    )
-);
 builder.Services.AddScoped<SecurityDataService>();
 
-// 2) Cookies: asegurar SameSite=None y Secure para callbacks cross-site
+// Cookies cross-site
 builder.Services.Configure<CookiePolicyOptions>(options =>
 {
     options.MinimumSameSitePolicy = SameSiteMode.None;
     options.Secure = CookieSecurePolicy.Always;
 });
-// Habilitar IHttpClientFactory
+
+// IHttpClientFactory
 builder.Services.AddHttpClient();
+
 builder.Services.AddScoped<DataverseHomeService>();
 
-// Registrar el servicio de conexión a Dataverse
+// Registrar conexión Dataverse
 builder.Services.AddScoped<DigitalTechClientPortal.Services.DataverseSoporteService>();
 builder.Services.AddScoped<DataverseClienteService>();
 builder.Services.AddScoped<SummaryService>();
-// Configurar MVC / Razor Views si no lo tienes ya
-builder.Services.AddControllersWithViews();
-// 3) Autorización global: todo requiere login salvo [AllowAnonymous]
+
+// Autorización global
 builder.Services.AddAuthorization(options =>
 {
     options.FallbackPolicy = options.DefaultPolicy;
 });
 
-// 4) Autenticación: Cookie + OIDC (Authorization Code + PKCE)
+// Autenticación: Cookie + OIDC (Authorization Code + PKCE) — manteniendo lo tuyo
 builder.Services
     .AddAuthentication(options =>
     {
@@ -116,6 +112,7 @@ builder.Services
         options.Authority = "https://login.microsoftonline.com/common/v2.0";
         options.ClientId = "28c4c8cf-5a82-4744-8d16-6cb007a645d5";
         options.ClientSecret = "-ox8Q~SLdEt1JJnuCL0qdoR~w5XmR33jAghgIbaZ";
+
         options.TokenValidationParameters.ValidateIssuer = false;
         options.ResponseType = "code";
         options.UsePkce = true;
@@ -126,6 +123,11 @@ builder.Services
         options.Scope.Add("openid");
         options.Scope.Add("profile");
         options.Scope.Add("email");
+        // Scopes mínimos para Graph en delegado (ya ajustados según lo que estás leyendo)
+        options.Scope.Add("User.Read");
+        options.Scope.Add("User.Read.All");
+        options.Scope.Add("SecurityEvents.Read.All");
+        options.Scope.Add("offline_access"); // para refresh tokens
 
         options.TokenValidationParameters.NameClaimType = "name";
         options.TokenValidationParameters.RoleClaimType = "roles";
@@ -152,10 +154,10 @@ builder.Services
         };
     });
 
-// 5) MVC
+// MVC
 builder.Services.AddControllersWithViews();
 
-// 6) Dataverse: Registro único de IOrganizationService (y también ServiceClient)
+// Dataverse: registro único
 builder.Services.AddSingleton<IOrganizationService>(sp =>
 {
     var connString = builder.Configuration.GetConnectionString("Dataverse");
@@ -179,16 +181,43 @@ builder.Services.AddSingleton<IOrganizationService>(sp =>
     return new ServiceClient(connString);
 });
 
-// 🔄 También registrar ServiceClient para clases que lo pidan directamente
+// También registrar ServiceClient para clases que lo pidan directamente
 builder.Services.AddSingleton<ServiceClient>(sp =>
 {
     return (ServiceClient)sp.GetRequiredService<IOrganizationService>();
 });
 
-// Registrar el servicio de capacitaciones
 builder.Services.AddScoped<CapacitacionService>();
 builder.Services.AddScoped<IDataverseService, DataverseService>();
 builder.Services.AddScoped<ContactsPanelService>();
+
+// ---------------------------
+// Graph app-only para Seguridad
+// ---------------------------
+// Usa configuración del app registration (sección "Graph" en appsettings.json):
+// Graph:TenantId, Graph:ClientId, Graph:ClientSecret
+builder.Services.AddScoped<GraphAppOnlyClientFactory>(sp =>
+{
+    var cfg = builder.Configuration;
+    var tenantId = cfg["Graph:TenantId"];
+    var clientId = cfg["Graph:ClientId"];
+    var clientSecret = cfg["Graph:ClientSecret"];
+
+    if (string.IsNullOrWhiteSpace(tenantId) ||
+        string.IsNullOrWhiteSpace(clientId) ||
+        string.IsNullOrWhiteSpace(clientSecret))
+    {
+        throw new InvalidOperationException("Configura Graph:TenantId, Graph:ClientId y Graph:ClientSecret para el cliente app-only.");
+    }
+
+    var cca = ConfidentialClientApplicationBuilder
+        .Create(clientId)
+        .WithClientSecret(clientSecret)
+        .WithAuthority($"https://login.microsoftonline.com/{tenantId}")
+        .Build();
+
+    return new GraphAppOnlyClientFactory(cca);
+});
 
 var app = builder.Build();
 
@@ -200,20 +229,19 @@ app.UseRouting();
 app.UseCookiePolicy();
 app.UseAuthentication();
 app.UseAuthorization();
-app.MapControllers(); // ← Esto activa los atributos [Route]
+
+app.MapControllers(); // atributos [Route]
 app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Login}/{action=Index}/{id?}");
 
-
-
+// Test Dataverse
 var serviceClient = app.Services.GetRequiredService<ServiceClient>();
-
 try
 {
     var query = new QueryExpression("cr07a_capacitacion")
     {
-        ColumnSet = new ColumnSet("cr07a_fecha") // ajusta según tus columnas
+        ColumnSet = new ColumnSet("cr07a_fecha")
     };
 
     var results = serviceClient.RetrieveMultiple(query);
@@ -224,9 +252,7 @@ catch (Exception ex)
     Console.WriteLine($"❌ Error al acceder a cr07a_capacitacion: {ex.Message}");
 }
 
-
-// …
-
+// Dump de endpoints
 var dataSource = app.Services.GetRequiredService<EndpointDataSource>();
 Console.WriteLine("---- ENDPOINTS CONFIGURADOS ----");
 foreach (var ep in dataSource.Endpoints)
@@ -234,4 +260,5 @@ foreach (var ep in dataSource.Endpoints)
     Console.WriteLine(ep.DisplayName);
 }
 Console.WriteLine("---- FIN DE ENDPOINTS ----");
+
 app.Run();
