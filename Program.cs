@@ -15,7 +15,10 @@ using DigitalTechClientPortal.Web.Services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Identity.Client; // agregado para app-only Graph
+using Microsoft.Identity.Client; // app-only Graph
+using System;
+using System.Threading.Tasks;
+using System.Security.Claims; // <-- importante: este es el ClaimTypes correcto
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -58,7 +61,7 @@ builder.Services.AddScoped<DigitalTechApp.Services.ChatService>();
 builder.Services.AddScoped<DigitalTechApp.Services.SearchService>();
 builder.Services.AddScoped<DigitalTechApp.Services.OpenAIClientAdapter>();
 
-// GraphClientFactory (delegated): usa el token del usuario desde HttpContext
+// GraphClientFactory (delegated)
 builder.Services.AddScoped<GraphClientFactory>();
 
 builder.Services.AddScoped<SecurityDataService>();
@@ -80,13 +83,17 @@ builder.Services.AddScoped<DigitalTechClientPortal.Services.DataverseSoporteServ
 builder.Services.AddScoped<DataverseClienteService>();
 builder.Services.AddScoped<SummaryService>();
 
+// === NUEVO: LimitedAccess ===
+builder.Services.AddScoped<LimitedAccessService>(); // usa ServiceClient internamente
+builder.Services.AddScoped<IClaimsTransformation, LimitedAccessClaimsTransformer>();
+
 // Autorización global
 builder.Services.AddAuthorization(options =>
 {
     options.FallbackPolicy = options.DefaultPolicy;
 });
 
-// Autenticación: Cookie + OIDC (Authorization Code + PKCE) — manteniendo lo tuyo
+// Autenticación: Cookie + OIDC
 builder.Services
     .AddAuthentication(options =>
     {
@@ -123,11 +130,10 @@ builder.Services
         options.Scope.Add("openid");
         options.Scope.Add("profile");
         options.Scope.Add("email");
-        // Scopes mínimos para Graph en delegado (ya ajustados según lo que estás leyendo)
         options.Scope.Add("User.Read");
         options.Scope.Add("User.Read.All");
         options.Scope.Add("SecurityEvents.Read.All");
-        options.Scope.Add("offline_access"); // para refresh tokens
+        options.Scope.Add("offline_access");
 
         options.TokenValidationParameters.NameClaimType = "name";
         options.TokenValidationParameters.RoleClaimType = "roles";
@@ -181,7 +187,7 @@ builder.Services.AddSingleton<IOrganizationService>(sp =>
     return new ServiceClient(connString);
 });
 
-// También registrar ServiceClient para clases que lo pidan directamente
+// También registrar ServiceClient
 builder.Services.AddSingleton<ServiceClient>(sp =>
 {
     return (ServiceClient)sp.GetRequiredService<IOrganizationService>();
@@ -191,11 +197,7 @@ builder.Services.AddScoped<CapacitacionService>();
 builder.Services.AddScoped<IDataverseService, DataverseService>();
 builder.Services.AddScoped<ContactsPanelService>();
 
-// ---------------------------
 // Graph app-only para Seguridad
-// ---------------------------
-// Usa configuración del app registration (sección "Graph" en appsettings.json):
-// Graph:TenantId, Graph:ClientId, Graph:ClientSecret
 builder.Services.AddScoped<GraphAppOnlyClientFactory>(sp =>
 {
     var cfg = builder.Configuration;

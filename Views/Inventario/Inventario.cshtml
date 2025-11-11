@@ -1,3 +1,8 @@
+¡Listo! Aquí tienes tu **`Views/Inventario/Inventario.cshtml` completo**, con **todo lo que ya tenías** + la **pestaña “Reportes”** (4 gráficas y botón de exportar CSV). No toqué nada del markup/JS existente salvo para añadir la nueva pestaña/panel y el bloque JS que carga los reportes cuando se abre esa pestaña.
+
+> Reemplaza el archivo por este contenido íntegro.
+
+```cshtml
 @using DigitalTechClientPortal.Models
 @model InventarioVm
 
@@ -74,6 +79,11 @@ else
         <button class="tab-btn px-3 py-1.5 rounded-full text-sm font-medium bg-white text-black ring-1 ring-slate-300 hover:bg-slate-50"
                 data-target="panel-ubicaciones" data-group="invTabs">
             Ubicaciones
+        </button>
+        <!-- NUEVO: Reportes -->
+        <button class="tab-btn px-3 py-1.5 rounded-full text-sm font-medium bg-white text-black ring-1 ring-slate-300 hover:bg-slate-50"
+                data-target="panel-reportes" data-group="invTabs" id="btnReportesTab">
+            Reportes
         </button>
     </div>
 
@@ -438,6 +448,41 @@ else
                 </div>
             }
         </div>
+
+        <!-- NUEVO: Reportes -->
+        <div id="panel-reportes" class="tab-panel hidden">
+            <div class="rounded-lg bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+                <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <svg class="w-5 h-5 text-[#040d1c]" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17h2v-7H3v7zm4 0h2V7H7v10zm4 0h2V4h-2v13zm4 0h2V10h-2v7zm4 0h2V6h-2v11z"/></svg>
+                        <span class="font-semibold text-black">Reportes</span>
+                    </div>
+                    <a href="/Inventario/ExportEquiposCsv"
+                       class="inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium bg-[#040d1c] text-white hover:brightness-110">
+                        Exportar CSV
+                    </a>
+                </div>
+
+                <div class="p-4 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="rounded-md border border-slate-200 p-3">
+                        <div class="text-sm font-semibold text-black mb-2">Cantidad por Categoría</div>
+                        <div class="h-64"><canvas id="chartPorCategoria"></canvas></div>
+                    </div>
+                    <div class="rounded-md border border-slate-200 p-3">
+                        <div class="text-sm font-semibold text-black mb-2">Cantidad por Ubicación</div>
+                        <div class="h-64"><canvas id="chartPorUbicacion"></canvas></div>
+                    </div>
+                    <div class="rounded-md border border-slate-200 p-3">
+                        <div class="text-sm font-semibold text-black mb-2">Cantidad por Marca</div>
+                        <div class="h-64"><canvas id="chartPorMarca"></canvas></div>
+                    </div>
+                    <div class="rounded-md border border-slate-200 p-3">
+                        <div class="text-sm font-semibold text-black mb-2">Usuarios sin licencia</div>
+                        <div class="h-64"><canvas id="chartSinLicencia"></canvas></div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 }
 
@@ -666,6 +711,9 @@ else
 </div>
 
 @section Scripts {
+<!-- Chart.js (para las gráficas de Reportes) -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+
 <script>
 document.addEventListener('DOMContentLoaded', () => {
   // Tabs
@@ -685,6 +733,11 @@ document.addEventListener('DOMContentLoaded', () => {
       document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
       const panel = document.getElementById(target);
       if (panel) panel.classList.remove('hidden');
+
+      // NUEVO: cargar reportes al abrir la pestaña
+      if (target === 'panel-reportes') {
+        loadReportesOnce();
+      }
     });
   });
 
@@ -1005,6 +1058,69 @@ document.addEventListener('DOMContentLoaded', () => {
     const pageSize = parseInt(usuariosPager?.getAttribute('data-pagesize') || '25', 10);
     fetchUsuariosPage('', pageSize, 1, true);
   }
+
+  // ========= NUEVO: Reportes =========
+  let reportesLoaded = false;
+  let chartCat, chartUbi, chartMarca, chartSinLic;
+
+  async function loadReportesOnce() {
+    if (reportesLoaded) return;
+    try {
+      const res = await fetch('/Inventario/ReportesData', { headers: { 'Accept': 'application/json' } });
+      if (!res.ok) { console.error('No se pudo cargar ReportesData'); return; }
+      const data = await res.json();
+
+      // Por Categoría
+      const catLabels = (data.porCategoria || []).map(x => x.label || '(Sin categoría)');
+      const catValues = (data.porCategoria || []).map(x => x.count || 0);
+      chartCat = buildBarChart('chartPorCategoria', catLabels, catValues);
+
+      // Por Ubicación
+      const ubiLabels = (data.porUbicacion || []).map(x => x.label || '(Sin ubicación)');
+      const ubiValues = (data.porUbicacion || []).map(x => x.count || 0);
+      chartUbi = buildBarChart('chartPorUbicacion', ubiLabels, ubiValues);
+
+      // Por Marca
+      const marcaLabels = (data.porMarca || []).map(x => x.label || '(Sin marca)');
+      const marcaValues = (data.porMarca || []).map(x => x.count || 0);
+      chartMarca = buildBarChart('chartPorMarca', marcaLabels, marcaValues);
+
+      // Usuarios sin licencia (una sola barra)
+      const sinLic = Number(data.usuariosSinLicencia || 0);
+      chartSinLic = buildBarChart('chartSinLicencia', ['Sin licencia'], [sinLic]);
+
+      reportesLoaded = true;
+    } catch (e) {
+      console.error('Error cargando reportes', e);
+    }
+  }
+
+  function buildBarChart(canvasId, labels, values) {
+    const ctx = document.getElementById(canvasId);
+    if (!ctx) return null;
+    return new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Cantidad',
+          data: values
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false }
+        },
+        scales: {
+          x: { ticks: { autoSkip: true, maxRotation: 45, minRotation: 0 } },
+          y: { beginAtZero: true, precision: 0 }
+        }
+      }
+    });
+  }
 });
 </script>
 }
+```

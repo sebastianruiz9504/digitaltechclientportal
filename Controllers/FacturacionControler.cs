@@ -23,6 +23,9 @@ namespace DigitalTechClientPortal.Web.Controllers
 
         public async Task<IActionResult> Index()
         {
+            if (User.HasClaim("limited_access", "true"))
+    return Forbid(); // o RedirectToAction("Index","Home")
+
             // Obtener el email del usuario logueado desde los claims
             var email = User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value
                         ?? User.FindFirst("preferred_username")?.Value

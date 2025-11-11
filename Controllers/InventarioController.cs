@@ -11,6 +11,7 @@ using Microsoft.PowerPlatform.Dataverse.Client;
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Query;
 using System.Collections.Generic;
+using System.Text;
 
 namespace DigitalTechClientPortal.Controllers
 {
@@ -29,7 +30,9 @@ namespace DigitalTechClientPortal.Controllers
             _clientesService = clientesService;
         }
 
-        // Usuarios (vista independiente)
+        // =======================
+        //      USUARIOS (vista)
+        // =======================
         [HttpGet("Usuarios")]
         public async Task<IActionResult> Usuarios([FromQuery] int pageSize = 20, [FromQuery] string? skiptoken = null, [FromQuery] string? term = null)
         {
@@ -87,7 +90,9 @@ namespace DigitalTechClientPortal.Controllers
             return View("UsuariosPaged", model);
         }
 
-        // Inventario unificado
+        // =======================
+        //   INVENTARIO unificado
+        // =======================
         [HttpGet("Equipos")]
         public async Task<IActionResult> Equipos([FromQuery] string? upn = null, [FromQuery] Guid? ubicacionId = null)
         {
@@ -136,7 +141,126 @@ namespace DigitalTechClientPortal.Controllers
             return View("Inventario", model);
         }
 
-        // Crear equipo
+        // =======================
+        //        REPORTES
+        // =======================
+
+        // Devuelve datos agregados para las gráficas de la pestaña "Reportes"
+        [HttpGet("ReportesData")]
+        public async Task<IActionResult> ReportesData()
+        {
+            var correo = User.FindFirst("preferred_username")?.Value
+                ?? User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value
+                ?? User.FindFirst("email")?.Value
+                ?? User.Identity?.Name;
+
+            if (string.IsNullOrWhiteSpace(correo))
+                return Unauthorized(new { error = "No se pudo determinar el correo del usuario autenticado." });
+
+            var clienteId = await _clientesService.GetClienteIdByEmailAsync(correo);
+            if (clienteId == Guid.Empty)
+                return Unauthorized(new { error = "Cliente no encontrado para el usuario autenticado." });
+
+            // 1) Equipos del cliente (todos)
+            var equiposAll = await GetEquiposByClienteAsync(clienteId);
+
+            // 2) Por Categoría
+            var porCategoria = equiposAll
+                .GroupBy(e => e.CategoriaId)
+                .Select(g => new
+                {
+                    label = ResolveCategoriaNombre(g.Key, null), // nombre se resolverá luego si es posible
+                    categoriaId = g.Key,
+                    count = g.Count()
+                })
+                .ToList();
+
+            // completar nombres de categoría con una consulta real (por si ResolveCategoriaNombre retorna vacío en este punto)
+            var categorias = await GetCategoriasAsync();
+            var catDict = categorias.ToDictionary(x => x.Id, x => x.Nombre);
+            foreach (var c in porCategoria)
+            {
+                if (string.IsNullOrWhiteSpace(c.label) && catDict.TryGetValue(c.categoriaId, out var n))
+                {
+                    c.GetType().GetProperty("label")?.SetValue(c, n);
+                }
+            }
+
+            // 3) Por Ubicación (usa string Ubicacion resultante/format)
+            var porUbicacion = equiposAll
+                .GroupBy(e => string.IsNullOrWhiteSpace(e.Ubicacion) ? "(Sin ubicación)" : e.Ubicacion)
+                .Select(g => new { label = g.Key, count = g.Count() })
+                .ToList();
+
+            // 4) Por Marca
+            var porMarca = equiposAll
+                .GroupBy(e => string.IsNullOrWhiteSpace(e.Marca) ? "(Sin marca)" : e.Marca)
+                .Select(g => new { label = g.Key, count = g.Count() })
+                .OrderByDescending(x => x.count)
+                .Take(30) // evita gráficas enormes
+                .ToList();
+
+            // 5) Usuarios sin licencia asignada (Graph)
+            var sinLicencia = await CountUsuariosSinLicenciaAsync();
+
+            return Json(new
+            {
+                porCategoria,
+                porUbicacion,
+                porMarca,
+                usuariosSinLicencia = sinLicencia
+            });
+        }
+
+        // Exporta CSV con todos los equipos del cliente autenticado
+        [HttpGet("ExportEquiposCsv")]
+        public async Task<IActionResult> ExportEquiposCsv()
+        {
+            var correo = User.FindFirst("preferred_username")?.Value
+                ?? User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value
+                ?? User.FindFirst("email")?.Value
+                ?? User.Identity?.Name;
+
+            if (string.IsNullOrWhiteSpace(correo))
+                return Unauthorized("No se pudo determinar el correo del usuario autenticado.");
+
+            var clienteId = await _clientesService.GetClienteIdByEmailAsync(correo);
+            if (clienteId == Guid.Empty)
+                return Unauthorized("Cliente no encontrado en Dataverse para el correo autenticado.");
+
+            var equipos = await GetEquiposByClienteAsync(clienteId);
+
+            var sb = new StringBuilder();
+            sb.AppendLine("Id,ClienteId,CategoriaId,Marca,Modelo,Serial,Estado,FechaCompra,Ubicacion,AsignadoA,Notas");
+
+            foreach (var e in equipos)
+            {
+                string CsvEsc(string? v) =>
+                    "\"" + (v ?? string.Empty).Replace("\"", "\"\"") + "\"";
+
+                sb.Append(e.Id).Append(',')
+                  .Append(e.ClienteId).Append(',')
+                  .Append(e.CategoriaId).Append(',')
+                  .Append(CsvEsc(e.Marca)).Append(',')
+                  .Append(CsvEsc(e.Modelo)).Append(',')
+                  .Append(CsvEsc(e.Serial)).Append(',')
+                  .Append(CsvEsc(e.Estado)).Append(',')
+                  .Append(e.FechaCompra.HasValue ? e.FechaCompra.Value.ToString("yyyy-MM-dd") : "")
+                  .Append(',')
+                  .Append(CsvEsc(e.Ubicacion)).Append(',')
+                  .Append(CsvEsc(e.AsignadoA)).Append(',')
+                  .Append(CsvEsc(e.Notas))
+                  .AppendLine();
+            }
+
+            var bytes = Encoding.UTF8.GetBytes(sb.ToString());
+            return File(bytes, "text/csv; charset=utf-8", "inventario.csv");
+        }
+
+        // =======================
+        //      CRUD EQUIPOS
+        // =======================
+
         [HttpPost("CrearEquipo")]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> CrearEquipo(CrearEquipoVm model)
@@ -196,7 +320,6 @@ namespace DigitalTechClientPortal.Controllers
             return RedirectToAction("Equipos");
         }
 
-        // EDITAR EQUIPO
         // GET para cargar datos del equipo (AJAX)
         [HttpGet("Equipo")]
         public async Task<IActionResult> Equipo([FromQuery] Guid id)
@@ -236,7 +359,6 @@ namespace DigitalTechClientPortal.Controllers
             return Json(vm);
         }
 
-        // POST actualizar equipo
         [HttpPost("EditarEquipo")]
         [ValidateAntiForgeryToken]
         public IActionResult EditarEquipo(EditEquipoVm model)
@@ -248,7 +370,6 @@ namespace DigitalTechClientPortal.Controllers
             }
 
             var entity = new Entity("cr07a_equiposdigitalapp", model.Id);
-            // Campos actualizables
             entity["cr07a_categoria"] = new EntityReference("cr07a_categoriasdigitalapp", model.CategoriaId);
             entity["cr07a_marca"] = model.Marca ?? "";
             entity["cr07a_modelo"] = model.Modelo ?? "";
@@ -297,7 +418,6 @@ namespace DigitalTechClientPortal.Controllers
             return RedirectToAction("Equipos");
         }
 
-        // DELETE equipo
         [HttpPost("EliminarEquipo")]
         [ValidateAntiForgeryToken]
         public IActionResult EliminarEquipo([FromForm] Guid id)
@@ -321,7 +441,10 @@ namespace DigitalTechClientPortal.Controllers
             return RedirectToAction("Equipos");
         }
 
-        // UBICACIONES
+        // =======================
+        //       UBICACIONES
+        // =======================
+
         [HttpPost("CrearUbicacion")]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> CrearUbicacion(string nombre, string? descripcion)
@@ -362,7 +485,6 @@ namespace DigitalTechClientPortal.Controllers
             return RedirectToAction("Equipos");
         }
 
-        // GET cargar ubicación por id (AJAX)
         [HttpGet("Ubicacion")]
         public async Task<IActionResult> Ubicacion([FromQuery] Guid id)
         {
@@ -378,7 +500,6 @@ namespace DigitalTechClientPortal.Controllers
             });
         }
 
-        // POST editar ubicación
         [HttpPost("EditarUbicacion")]
         [ValidateAntiForgeryToken]
         public IActionResult EditarUbicacion([FromForm] Guid id, [FromForm] string nombre, [FromForm] string? descripcion)
@@ -406,7 +527,6 @@ namespace DigitalTechClientPortal.Controllers
             return RedirectToAction("Equipos");
         }
 
-        // DELETE ubicación
         [HttpPost("EliminarUbicacion")]
         [ValidateAntiForgeryToken]
         public IActionResult EliminarUbicacion([FromForm] Guid id)
@@ -430,7 +550,6 @@ namespace DigitalTechClientPortal.Controllers
             return RedirectToAction("Equipos");
         }
 
-        // Navegación por ubicación
         [HttpGet("EquiposPorUbicacion")]
         public IActionResult EquiposPorUbicacion([FromQuery] Guid ubicacionId)
         {
@@ -439,7 +558,10 @@ namespace DigitalTechClientPortal.Controllers
             return RedirectToAction("Equipos", new { ubicacionId });
         }
 
-        // Buscar usuarios (autocompletar UPN)
+        // =======================
+        //        BÚSQUEDAS
+        // =======================
+
         [HttpGet("BuscarUsuarios")]
         public async Task<IActionResult> BuscarUsuarios([FromQuery] string term, [FromQuery] int top = 10)
         {
@@ -478,7 +600,6 @@ namespace DigitalTechClientPortal.Controllers
             return Json(new { value = list });
         }
 
-        // Modal detalle usuario
         [HttpGet("UsuarioDetalle")]
         public async Task<IActionResult> UsuarioDetalle([FromQuery] string userId, [FromQuery] string upn)
         {
@@ -540,58 +661,10 @@ namespace DigitalTechClientPortal.Controllers
             return PartialView("_UsuarioDetalle", vm);
         }
 
-        // ---------- NUEVO: UsuariosPage para paginación incremental en pestaña Inventario/Usuarios ----------
-        // GET /Inventario/UsuariosPage?pageSize=25&skipToken=...
-        [HttpGet("UsuariosPage")]
-        public async Task<IActionResult> UsuariosPage([FromQuery] int pageSize = 25, [FromQuery] string? skipToken = null)
-        {
-            if (pageSize <= 0) pageSize = 25;
-            if (pageSize > 999) pageSize = 999;
+        // =======================
+        //        PRIVADOS
+        // =======================
 
-            HttpClient client;
-            try { client = await _graphFactory.CreateClientAsync(); }
-            catch (InvalidOperationException ex) { return StatusCode(401, new { error = ex.Message }); }
-
-            var url = $"https://graph.microsoft.com/v1.0/users?$select=id,displayName,userPrincipalName,mail,jobTitle,department,mobilePhone&$top={pageSize}";
-            if (!string.IsNullOrEmpty(skipToken))
-            {
-                url += $"&$skiptoken={Uri.EscapeDataString(skipToken)}";
-            }
-
-            var resp = await client.GetAsync(url);
-            var raw = await resp.Content.ReadAsStringAsync();
-            if (!resp.IsSuccessStatusCode) return StatusCode((int)resp.StatusCode, raw);
-
-            using var doc = JsonDocument.Parse(raw);
-
-            var users = new List<object>();
-            if (doc.RootElement.TryGetProperty("value", out var arr) && arr.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var u in arr.EnumerateArray())
-                {
-                    users.Add(new
-                    {
-                        id = u.GetPropertyOrDefault("id"),
-                        displayName = u.GetPropertyOrDefault("displayName"),
-                        upn = u.GetPropertyOrDefault("userPrincipalName"),
-                        mail = u.GetPropertyOrDefault("mail"),
-                        department = u.GetPropertyOrDefault("department")
-                    });
-                }
-            }
-
-            string? nextLink = doc.RootElement.TryGetProperty("@odata.nextLink", out var nl) ? nl.GetString() : null;
-            string? nextSkipToken = ExtractSkipToken(nextLink ?? string.Empty);
-
-            return Json(new
-            {
-                users,
-                nextSkipToken,
-                pageSize
-            });
-        }
-
-        // -------- Privados (Dataverse) --------
         private async Task<List<CategoriaVm>> GetCategoriasAsync()
         {
             var q = new QueryExpression("cr07a_categoriasdigitalapp")
@@ -604,6 +677,12 @@ namespace DigitalTechClientPortal.Controllers
                 Id = c.Id,
                 Nombre = c.GetAttributeValue<string>("cr07a_name") ?? ""
             }).ToList();
+        }
+
+        private static string ResolveCategoriaNombre(Guid categoriaId, List<CategoriaVm>? categorias)
+        {
+            if (categoriaId == Guid.Empty || categorias == null) return string.Empty;
+            return categorias.FirstOrDefault(x => x.Id == categoriaId)?.Nombre ?? string.Empty;
         }
 
         private async Task<List<EquipoVm>> GetEquiposByClienteAndCategoriaAsync(Guid clienteId, Guid categoriaId)
@@ -626,6 +705,58 @@ namespace DigitalTechClientPortal.Controllers
             };
             q.Criteria.AddCondition("cr07a_cliente", ConditionOperator.Equal, clienteId);
             q.Criteria.AddCondition("cr07a_categoria", ConditionOperator.Equal, categoriaId);
+
+            var result = await _dataverse.RetrieveMultipleAsync(q);
+            var list = new List<EquipoVm>(result.Entities.Count);
+            foreach (var e in result.Entities)
+            {
+                var clienteRef = e.GetAttributeValue<EntityReference>("cr07a_cliente");
+                var categoriaRef = e.GetAttributeValue<EntityReference>("cr07a_categoria");
+                var estadoFmt = e.FormattedValues.ContainsKey("cr07a_estado") ? e.FormattedValues["cr07a_estado"] : "";
+                var ubicRef = e.GetAttributeValue<EntityReference>("cr07a_ubicacionid");
+                var ubicFmt = e.FormattedValues.ContainsKey("cr07a_ubicacionid")
+                    ? e.FormattedValues["cr07a_ubicacionid"]
+                    : e.GetAttributeValue<string>("cr07a_ubicacion") ?? "";
+
+                list.Add(new EquipoVm
+                {
+                    Id = e.Id,
+                    ClienteId = clienteRef?.Id ?? Guid.Empty,
+                    CategoriaId = categoriaRef?.Id ?? Guid.Empty,
+                    Marca = e.GetAttributeValue<string>("cr07a_marca") ?? "",
+                    Modelo = e.GetAttributeValue<string>("cr07a_modelo") ?? "",
+                    Serial = e.GetAttributeValue<string>("cr07a_serial") ?? "",
+                    Estado = estadoFmt,
+                    FechaCompra = e.GetAttributeValue<DateTime?>("cr07a_fechacompra"),
+                    Ubicacion = ubicFmt,
+                    Notas = e.GetAttributeValue<string>("cr07a_notas") ?? "",
+                    AsignadoA = e.GetAttributeValue<string>("cr07a_asignadoa") ?? "",
+                    UbicacionId = ubicRef?.Id
+                });
+            }
+            return list;
+        }
+
+        // NUEVO: traer todos los equipos del cliente (todas las categorías)
+        private async Task<List<EquipoVm>> GetEquiposByClienteAsync(Guid clienteId)
+        {
+            var q = new QueryExpression("cr07a_equiposdigitalapp")
+            {
+                ColumnSet = new ColumnSet(
+                    "cr07a_marca",
+                    "cr07a_modelo",
+                    "cr07a_serial",
+                    "cr07a_estado",
+                    "cr07a_fechacompra",
+                    "cr07a_ubicacion",
+                    "cr07a_notas",
+                    "cr07a_categoria",
+                    "cr07a_cliente",
+                    "cr07a_asignadoa",
+                    "cr07a_ubicacionid"
+                )
+            };
+            q.Criteria.AddCondition("cr07a_cliente", ConditionOperator.Equal, clienteId);
 
             var result = await _dataverse.RetrieveMultipleAsync(q);
             var list = new List<EquipoVm>(result.Entities.Count);
@@ -750,7 +881,7 @@ namespace DigitalTechClientPortal.Controllers
                     Serial = e.GetAttributeValue<string>("cr07a_serial") ?? "",
                     Estado = estadoFmt,
                     FechaCompra = e.GetAttributeValue<DateTime?>("cr07a_fechacompra"),
-                    Ubicacion = ubicFmt,
+                    Ubicacion = e.FormattedValues.ContainsKey("cr07a_ubicacionid") ? e.FormattedValues["cr07a_ubicacionid"] : "",
                     Notas = e.GetAttributeValue<string>("cr07a_notas") ?? "",
                     AsignadoA = e.GetAttributeValue<string>("cr07a_asignadoa") ?? ""
                 });
@@ -797,7 +928,43 @@ namespace DigitalTechClientPortal.Controllers
             return list;
         }
 
-        // Helper para extraer el skiptoken de @odata.nextLink (dentro del controlador para evitar errores de ámbito)
+        // Conteo de usuarios sin licencia (usa la propiedad assignedLicenses del recurso user)
+        private async Task<int> CountUsuariosSinLicenciaAsync()
+        {
+            HttpClient client;
+            try { client = await _graphFactory.CreateClientAsync(); }
+            catch { return 0; }
+
+            // Traemos usuarios con assignedLicenses (paginado simple)
+            var url = "https://graph.microsoft.com/v1.0/users?$select=id,assignedLicenses&$top=999";
+            int count = 0;
+
+            while (!string.IsNullOrEmpty(url))
+            {
+                var resp = await client.GetAsync(url);
+                var raw = await resp.Content.ReadAsStringAsync();
+                if (!resp.IsSuccessStatusCode) break;
+
+                using var doc = JsonDocument.Parse(raw);
+                if (doc.RootElement.TryGetProperty("value", out var arr) && arr.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var u in arr.EnumerateArray())
+                    {
+                        if (u.TryGetProperty("assignedLicenses", out var lic) && lic.ValueKind == JsonValueKind.Array)
+                        {
+                            if (lic.GetArrayLength() == 0) count++;
+                        }
+                    }
+                }
+
+                var nextLink = doc.RootElement.TryGetProperty("@odata.nextLink", out var nl) ? nl.GetString() : null;
+                url = nextLink ?? string.Empty;
+            }
+
+            return count;
+        }
+
+        // Helper para extraer el skiptoken
         private static string? ExtractSkipToken(string nextLink)
         {
             if (string.IsNullOrEmpty(nextLink)) return null;
@@ -810,7 +977,6 @@ namespace DigitalTechClientPortal.Controllers
             }
             catch
             {
-                // Fallback simple si no es una URL válida
                 var idx = nextLink.IndexOf("$skiptoken=", StringComparison.OrdinalIgnoreCase);
                 if (idx >= 0)
                 {
