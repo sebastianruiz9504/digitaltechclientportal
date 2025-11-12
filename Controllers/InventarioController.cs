@@ -32,6 +32,10 @@ namespace DigitalTechClientPortal.Controllers
         private readonly ServiceClient _dataverse;
         private readonly ClientesService _clientesService;
 
+ private const int MaxUsuariosSinLicenciaListado = 100;
+
+        private sealed record UnlicensedUserSummary(string? DisplayName, string? UserPrincipalName, string? Mail, string? Department);
+
         public InventarioController(GraphClientFactory graphFactory, ServiceClient dataverse, ClientesService clientesService)
         {
             _graphFactory = graphFactory;
@@ -658,20 +662,26 @@ namespace DigitalTechClientPortal.Controllers
             // ---------- Usuarios sin licencia (Graph) ----------
             int usuariosSinLicencia = 0;
             string? usuariosSinLicenciaWarning = null;
+                        List<UnlicensedUserSummary> usuariosSinLicenciaListado = new();
+
             try
             {
                 var http = await _graphFactory.CreateClientAsync();
-                (usuariosSinLicencia, usuariosSinLicenciaWarning) = await CountUsuariosSinLicenciaAsync(http, HttpContext.RequestAborted);
+                (usuariosSinLicencia, usuariosSinLicenciaWarning, usuariosSinLicenciaListado) = await CountUsuariosSinLicenciaAsync(http, HttpContext.RequestAborted, MaxUsuariosSinLicenciaListado);
             }
             catch (InvalidOperationException ex)
             {
                 usuariosSinLicencia = 0;
                 usuariosSinLicenciaWarning = $"No se pudo inicializar el cliente de Microsoft Graph: {ex.Message}";
+                            usuariosSinLicenciaListado = new List<UnlicensedUserSummary>();
+
             }
             catch (Exception)
             {
                 usuariosSinLicencia = 0;
                 usuariosSinLicenciaWarning = "Ocurrió un error inesperado al preparar la consulta a Microsoft Graph.";
+                            usuariosSinLicenciaListado = new List<UnlicensedUserSummary>();
+
             }
 
             return Json(new
@@ -681,123 +691,230 @@ namespace DigitalTechClientPortal.Controllers
                 porMarca,
 
                 usuariosSinLicencia,
-                usuariosSinLicenciaWarning
+                usuariosSinLicenciaWarning,
+                usuariosSinLicenciaListado = usuariosSinLicenciaListado
+                    .Select(u => new
+                    {
+                        displayName = u.DisplayName,
+                        userPrincipalName = u.UserPrincipalName,
+                        mail = u.Mail,
+                        department = u.Department
+                    })
+                    .ToList()
             });
         }
         private static async Task<(int Count, string? Warning)> CountUsuariosSinLicenciaAsync(HttpClient httpClient, CancellationToken cancellationToken)
         {
-            var total = 0;
-            string? warning = null;
- var filter = Uri.EscapeDataString("not(assignedLicenses/any())");
-            string? nextUrl = $"https://graph.microsoft.com/v1.0/users?$select=id&$filter={filter}&$top=999&$count=true";
-            var countFromOData = false;
+          
             try
             {
-                while (!string.IsNullOrEmpty(nextUrl))
+                   var advanced = await TryCountUsuariosSinLicenciaConFiltroAsync(httpClient, cancellationToken);
+                if (advanced.Success)
                 {
-                    using var request = new HttpRequestMessage(HttpMethod.Get, nextUrl);
-                    request.Headers.TryAddWithoutValidation("ConsistencyLevel", "eventual");
-                    request.Headers.TryAddWithoutValidation("Prefer", "odata.maxpagesize=999");
-
-                    using var response = await httpClient.SendAsync(request, cancellationToken);
-                    var raw = await response.Content.ReadAsStringAsync();
-
-                    if (!response.IsSuccessStatusCode)
-                    {
-  string? detail = null;
-
-                        if (!string.IsNullOrWhiteSpace(raw))
-                        {
-                            try
-                            {
-                                using var errorDoc = JsonDocument.Parse(raw);
-                                if (errorDoc.RootElement.TryGetProperty("error", out var errorElement))
-                                {
-                                    if (errorElement.TryGetProperty("message", out var messageElement) && messageElement.ValueKind == JsonValueKind.String)
-                                    {
-                                        detail = messageElement.GetString();
-                                    }
-                                    else if (errorElement.TryGetProperty("innerError", out var innerElement)
-                                        && innerElement.TryGetProperty("message", out var innerMessage)
-                                        && innerMessage.ValueKind == JsonValueKind.String)
-                                    {
-                                        detail = innerMessage.GetString();
-                                    }
-                                }
-                            }
-                            catch (JsonException)
-                            {
-                                detail = null;
-                            }
-                        }
-
-                        var baseWarning = response.StatusCode switch
-                        {
-                            HttpStatusCode.Unauthorized => "El token para Microsoft Graph no es válido (401). Inicia sesión nuevamente para renovarlo.",
-                            HttpStatusCode.Forbidden => "Microsoft Graph devolvió 403 (Forbidden). Confirma que la aplicación tenga el consentimiento de administrador para User.Read.All o Directory.Read.All.",
-                            _ => $"Microsoft Graph devolvió {(int)response.StatusCode}."
-                        };
-                        
-                        warning = detail is not null
-                            ? $"{baseWarning} Detalle: {detail}"
-                            : $"{baseWarning} Revisa el registro del servidor para más detalles.";
-                        total = 0;
-                        break;
-                    }
-
-                    using var document = JsonDocument.Parse(raw);
-
-                    if (!countFromOData && document.RootElement.TryGetProperty("value", out var valueElement) && valueElement.ValueKind == JsonValueKind.Array)
-                    {
-                        total += valueElement.GetArrayLength();
-                    }
-    if (document.RootElement.TryGetProperty("@odata.count", out var countElement) && countElement.ValueKind == JsonValueKind.Number)
-                    {
-                        if (countElement.TryGetInt32(out var count32))
-                        {
-                            total = count32;
-                            countFromOData = true;
-                        }
-                        else if (countElement.TryGetInt64(out var count64))
-                        {
-                            total = count64 > int.MaxValue ? int.MaxValue : (int)count64;
-                            countFromOData = true;
-                        }
-                    }
-
-                    if (countFromOData)
-                    {
-                        break;
-                    }
-
-                    if (document.RootElement.TryGetProperty("@odata.nextLink", out var nextElement) && nextElement.ValueKind == JsonValueKind.String)
-                    
-                    {
-                        nextUrl = nextElement.GetString();
-                    }
-                    else
-                    {
-                        nextUrl = null;
-                    }
+                    return (advanced.Count, null);
                 }
+
+                if (!advanced.ShouldFallback)
+                {
+                    return (0, advanced.Warning);
+                }
+
+                var fallback = await CountUsuariosSinLicenciaEnumerandoAsync(httpClient, cancellationToken);
+
+                if (fallback.Warning is null)
+                {
+                    fallback.Warning = advanced.Warning;
+                }
+                else if (!string.IsNullOrWhiteSpace(advanced.Warning))
+                {
+                    fallback.Warning = $"{advanced.Warning} {fallback.Warning}";
+                }
+
+                return fallback;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                warning = "La consulta de usuarios sin licencia fue cancelada antes de completarse.";
-                total = 0;
+                return (0, "La consulta de usuarios sin licencia fue cancelada antes de completarse.");
             }
             catch (HttpRequestException)
             {
-                warning = "No se pudo contactar Microsoft Graph para obtener los usuarios sin licencia. Verifica la conectividad o renueva la sesión.";
-                total = 0;
+                return (0, "No se pudo contactar Microsoft Graph para obtener los usuarios sin licencia. Verifica la conectividad o renueva la sesión.");
             }
             catch (JsonException)
             {
-                warning = "Microsoft Graph devolvió una respuesta inesperada al consultar usuarios sin licencia.";
-                total = 0;
+                return (0, "Microsoft Graph devolvió una respuesta inesperada al consultar usuarios sin licencia.");
+            }
+        }
+
+        private static async Task<(bool Success, int Count, string? Warning, bool ShouldFallback)> TryCountUsuariosSinLicenciaConFiltroAsync(HttpClient httpClient, CancellationToken cancellationToken)
+        {
+            var filter = Uri.EscapeDataString("assignedLicenses/$count eq 0");
+            string? nextUrl = $"https://graph.microsoft.com/v1.0/users?$select=id&$filter={filter}&$top=999&$count=true";
+            var countFromOData = false;
+            var total = 0;
+
+            while (!string.IsNullOrEmpty(nextUrl))
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Get, nextUrl);
+                request.Headers.TryAddWithoutValidation("ConsistencyLevel", "eventual");
+                request.Headers.TryAddWithoutValidation("Prefer", "odata.maxpagesize=999");
+
+                using var response = await httpClient.SendAsync(request, cancellationToken);
+                var raw = await response.Content.ReadAsStringAsync();
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    var detail = TryExtractGraphErrorDetail(raw);
+
+                    var baseWarning = response.StatusCode switch
+                    {
+                        HttpStatusCode.Unauthorized => "El token para Microsoft Graph no es válido (401). Inicia sesión nuevamente para renovarlo.",
+                        HttpStatusCode.Forbidden => "Microsoft Graph devolvió 403 (Forbidden). Confirma que la aplicación tenga el consentimiento de administrador para User.Read.All o Directory.Read.All.",
+                        _ => $"Microsoft Graph devolvió {(int)response.StatusCode}."
+                    };
+
+                    var warning = detail is not null
+                        ? $"{baseWarning} Detalle: {detail}"
+                        : $"{baseWarning} Revisa el registro del servidor para más detalles.";
+
+                    var shouldFallback = response.StatusCode == HttpStatusCode.BadRequest
+                        && detail is not null
+                        && detail.IndexOf("filter property that is not indexed", StringComparison.OrdinalIgnoreCase) >= 0;
+
+                    return (false, 0, shouldFallback
+                        ? $"{warning} Se intentará un método alternativo para contar los usuarios sin licencia."
+                        : warning, shouldFallback);
+                }
+
+                using var document = JsonDocument.Parse(raw);
+
+                if (!countFromOData && document.RootElement.TryGetProperty("value", out var valueElement) && valueElement.ValueKind == JsonValueKind.Array)
+                {
+                    total += valueElement.GetArrayLength();
+                }
+                if (document.RootElement.TryGetProperty("@odata.count", out var countElement) && countElement.ValueKind == JsonValueKind.Number)
+                {
+                    if (countElement.TryGetInt32(out var count32))
+                    {
+                        total = count32;
+                        countFromOData = true;
+                    }
+                    else if (countElement.TryGetInt64(out var count64))
+                    {
+                        total = count64 > int.MaxValue ? int.MaxValue : (int)count64;
+                        countFromOData = true;
+                    }
+                }
+
+                if (countFromOData)
+                {
+                    break;
+                }
+
+                if (document.RootElement.TryGetProperty("@odata.nextLink", out var nextElement) && nextElement.ValueKind == JsonValueKind.String)
+
+                {
+                    nextUrl = nextElement.GetString();
+                }
+                else
+                {
+                    nextUrl = null;
+                }
             }
 
-            return (total, warning);
+            return (true, total, null, false);
+        }
+             private static async Task<(int Count, string? Warning)> CountUsuariosSinLicenciaEnumerandoAsync(HttpClient httpClient, CancellationToken cancellationToken)
+        {
+            var total = 0;
+            string? nextUrl = "https://graph.microsoft.com/v1.0/users?$select=id,assignedLicenses&$top=999";
+
+            while (!string.IsNullOrEmpty(nextUrl))
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Get, nextUrl);
+                request.Headers.TryAddWithoutValidation("Prefer", "odata.maxpagesize=999");
+
+                using var response = await httpClient.SendAsync(request, cancellationToken);
+                var raw = await response.Content.ReadAsStringAsync();
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    var detail = TryExtractGraphErrorDetail(raw);
+
+                    var baseWarning = response.StatusCode switch
+                    {
+                         HttpStatusCode.Unauthorized => "El token para Microsoft Graph no es válido (401). Inicia sesión nuevamente para renovarlo.",
+                        HttpStatusCode.Forbidden => "Microsoft Graph devolvió 403 (Forbidden). Confirma que la aplicación tenga el consentimiento de administrador para User.Read.All o Directory.Read.All.",
+                        _ => $"Microsoft Graph devolvió {(int)response.StatusCode}."
+                    };
+
+                    var warning = detail is not null
+                        ? $"{baseWarning} Detalle: {detail}"
+                        : $"{baseWarning} Revisa el registro del servidor para más detalles.";
+
+                    return (0, warning);
+                }
+
+                using var document = JsonDocument.Parse(raw);
+
+                if (document.RootElement.TryGetProperty("value", out var valueElement) && valueElement.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var user in valueElement.EnumerateArray())
+                    {
+                        if (!user.TryGetProperty("assignedLicenses", out var licenses) || licenses.ValueKind != JsonValueKind.Array || licenses.GetArrayLength() == 0)
+                        {
+                            total++;
+                        }
+                    }
+                }
+
+                if (document.RootElement.TryGetProperty("@odata.nextLink", out var nextElement) && nextElement.ValueKind == JsonValueKind.String)
+                {
+                    nextUrl = nextElement.GetString();
+                }
+                else
+                {
+                    nextUrl = null;
+                }
+            }
+
+            return (total, "Se utilizó un método alternativo enumerando usuarios porque el filtro avanzado de Microsoft Graph no está disponible.");
+        }
+
+        private static string? TryExtractGraphErrorDetail(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+            
+           return null;
+            }
+
+
+            try
+            {
+                   using var errorDoc = JsonDocument.Parse(raw);
+                if (!errorDoc.RootElement.TryGetProperty("error", out var errorElement))
+                {
+                    return null;
+                }
+
+                if (errorElement.TryGetProperty("message", out var messageElement) && messageElement.ValueKind == JsonValueKind.String)
+                {
+                    return messageElement.GetString();
+                }
+
+                if (errorElement.TryGetProperty("innerError", out var innerElement)
+                    && innerElement.TryGetProperty("message", out var innerMessage)
+                    && innerMessage.ValueKind == JsonValueKind.String)
+                {
+                    return innerMessage.GetString();
+                }
+            }
+            catch (JsonException)
+            {
+               return null;  
+            }
+ return null;
         }
 
             // ===================== NUEVO: Exportación CSV =====================
