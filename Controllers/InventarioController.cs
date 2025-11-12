@@ -32,7 +32,7 @@ namespace DigitalTechClientPortal.Controllers
         private readonly ServiceClient _dataverse;
         private readonly ClientesService _clientesService;
 
- private const int MaxUsuariosSinLicenciaListado = 100;
+        private const int MaxUsuariosSinLicenciaListado = 100;
 
         private sealed record UnlicensedUserSummary(string? DisplayName, string? UserPrincipalName, string? Mail, string? Department);
 
@@ -56,16 +56,31 @@ namespace DigitalTechClientPortal.Controllers
 
             string url;
             if (string.IsNullOrWhiteSpace(term))
-                url = $"https://graph.microsoft.com/v1.0/users?$select=id,displayName,userPrincipalName,mail,jobTitle,department,mobilePhone&$top={pageSize}";
+            {
+                url = "https://graph.microsoft.com/v1.0/users" +
+                    "?$select=id,displayName,userPrincipalName,mail,jobTitle,department,mobilePhone" +
+                    $"&$top={pageSize}";
+            }
             else
-                url = $"https://graph.microsoft.com/v1.0/users?$filter=startswith(displayName,'{term.Replace("'", "''")}')&$select=id,displayName,userPrincipalName,mail,jobTitle,department,mobilePhone&$top={pageSize}";
+            {
+                var safeTerm = term.Replace("'", "''");
+                url = "https://graph.microsoft.com/v1.0/users" +
+                    $"?$filter=startswith(displayName,'{safeTerm}')" +
+                    "&$select=id,displayName,userPrincipalName,mail,jobTitle,department,mobilePhone" +
+                    $"&$top={pageSize}";
+            }
 
             if (!string.IsNullOrEmpty(skiptoken))
+            {
                 url += $"&$skiptoken={Uri.EscapeDataString(skiptoken)}";
+            }
 
-            var resp = await client.GetAsync(url);
-            var raw = await resp.Content.ReadAsStringAsync();
-            if (!resp.IsSuccessStatusCode) return StatusCode((int)resp.StatusCode, raw);
+            using var response = await client.GetAsync(url);
+            var raw = await response.Content.ReadAsStringAsync();
+            if (!response.IsSuccessStatusCode)
+            {
+                return StatusCode((int)response.StatusCode, raw);
+            }
 
             using var doc = JsonDocument.Parse(raw);
             var users = new List<UserInventoryViewModel>();
@@ -662,8 +677,7 @@ namespace DigitalTechClientPortal.Controllers
             // ---------- Usuarios sin licencia (Graph) ----------
             int usuariosSinLicencia = 0;
             string? usuariosSinLicenciaWarning = null;
-                        List<UnlicensedUserSummary> usuariosSinLicenciaListado = new();
-
+            List<UnlicensedUserSummary> usuariosSinLicenciaListado = new();
             try
             {
                 var http = await _graphFactory.CreateClientAsync();
@@ -673,16 +687,24 @@ namespace DigitalTechClientPortal.Controllers
             {
                 usuariosSinLicencia = 0;
                 usuariosSinLicenciaWarning = $"No se pudo inicializar el cliente de Microsoft Graph: {ex.Message}";
-                            usuariosSinLicenciaListado = new List<UnlicensedUserSummary>();
-
+                usuariosSinLicenciaListado = new List<UnlicensedUserSummary>();
             }
             catch (Exception)
             {
                 usuariosSinLicencia = 0;
                 usuariosSinLicenciaWarning = "Ocurrió un error inesperado al preparar la consulta a Microsoft Graph.";
-                            usuariosSinLicenciaListado = new List<UnlicensedUserSummary>();
-
+                usuariosSinLicenciaListado = new List<UnlicensedUserSummary>();
             }
+
+            var usuariosSinLicenciaOrdenados = usuariosSinLicenciaListado
+                .OrderBy(u => string.IsNullOrWhiteSpace(u.DisplayName) ? 1 : 0)
+                .ThenBy(
+                    u => string.IsNullOrWhiteSpace(u.DisplayName)
+                        ? u.UserPrincipalName ?? string.Empty
+                        : u.DisplayName,
+                    StringComparer.OrdinalIgnoreCase)
+                .ThenBy(u => u.UserPrincipalName ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+                .ToList();
 
             return Json(new
             {
@@ -692,7 +714,7 @@ namespace DigitalTechClientPortal.Controllers
 
                 usuariosSinLicencia,
                 usuariosSinLicenciaWarning,
-                usuariosSinLicenciaListado = usuariosSinLicenciaListado
+                usuariosSinLicenciaListado = usuariosSinLicenciaOrdenados
                     .Select(u => new
                     {
                         displayName = u.DisplayName,
@@ -703,23 +725,22 @@ namespace DigitalTechClientPortal.Controllers
                     .ToList()
             });
         }
-        private static async Task<(int Count, string? Warning)> CountUsuariosSinLicenciaAsync(HttpClient httpClient, CancellationToken cancellationToken)
+        private static async Task<(int Count, string? Warning, List<UnlicensedUserSummary> Usuarios)> CountUsuariosSinLicenciaAsync(HttpClient httpClient, CancellationToken cancellationToken, int maxUsersToCollect)
         {
-          
             try
             {
-                   var advanced = await TryCountUsuariosSinLicenciaConFiltroAsync(httpClient, cancellationToken);
+                var advanced = await TryCountUsuariosSinLicenciaConFiltroAsync(httpClient, cancellationToken, maxUsersToCollect);
                 if (advanced.Success)
                 {
-                    return (advanced.Count, null);
+                    return (advanced.Count, null, advanced.Users);
                 }
 
                 if (!advanced.ShouldFallback)
                 {
-                    return (0, advanced.Warning);
+                    return (0, advanced.Warning, advanced.Users);
                 }
 
-                var fallback = await CountUsuariosSinLicenciaEnumerandoAsync(httpClient, cancellationToken);
+                var fallback = await CountUsuariosSinLicenciaEnumerandoAsync(httpClient, cancellationToken, maxUsersToCollect);
 
                 if (fallback.Warning is null)
                 {
@@ -734,24 +755,25 @@ namespace DigitalTechClientPortal.Controllers
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                return (0, "La consulta de usuarios sin licencia fue cancelada antes de completarse.");
+                return (0, "La consulta de usuarios sin licencia fue cancelada antes de completarse.", new List<UnlicensedUserSummary>());
             }
             catch (HttpRequestException)
             {
-                return (0, "No se pudo contactar Microsoft Graph para obtener los usuarios sin licencia. Verifica la conectividad o renueva la sesión.");
+                return (0, "No se pudo contactar Microsoft Graph para obtener los usuarios sin licencia. Verifica la conectividad o renueva la sesión.", new List<UnlicensedUserSummary>());
             }
             catch (JsonException)
             {
-                return (0, "Microsoft Graph devolvió una respuesta inesperada al consultar usuarios sin licencia.");
+                return (0, "Microsoft Graph devolvió una respuesta inesperada al consultar usuarios sin licencia.", new List<UnlicensedUserSummary>());
             }
         }
 
-        private static async Task<(bool Success, int Count, string? Warning, bool ShouldFallback)> TryCountUsuariosSinLicenciaConFiltroAsync(HttpClient httpClient, CancellationToken cancellationToken)
+        private static async Task<(bool Success, int Count, string? Warning, bool ShouldFallback, List<UnlicensedUserSummary> Users)> TryCountUsuariosSinLicenciaConFiltroAsync(HttpClient httpClient, CancellationToken cancellationToken, int maxUsersToCollect)
         {
             var filter = Uri.EscapeDataString("assignedLicenses/$count eq 0");
-            string? nextUrl = $"https://graph.microsoft.com/v1.0/users?$select=id&$filter={filter}&$top=999&$count=true";
+            string? nextUrl = $"https://graph.microsoft.com/v1.0/users?$select=id,displayName,userPrincipalName,mail,department&$filter={filter}&$top=999&$count=true";
             var countFromOData = false;
             var total = 0;
+            var users = new List<UnlicensedUserSummary>();
 
             while (!string.IsNullOrEmpty(nextUrl))
             {
@@ -783,7 +805,7 @@ namespace DigitalTechClientPortal.Controllers
 
                     return (false, 0, shouldFallback
                         ? $"{warning} Se intentará un método alternativo para contar los usuarios sin licencia."
-                        : warning, shouldFallback);
+                        : warning, shouldFallback, users);
                 }
 
                 using var document = JsonDocument.Parse(raw);
@@ -791,7 +813,22 @@ namespace DigitalTechClientPortal.Controllers
                 if (!countFromOData && document.RootElement.TryGetProperty("value", out var valueElement) && valueElement.ValueKind == JsonValueKind.Array)
                 {
                     total += valueElement.GetArrayLength();
+
+                    foreach (var user in valueElement.EnumerateArray())
+                    {
+                        if (users.Count >= maxUsersToCollect)
+                        {
+                            break;
+                        }
+
+                        users.Add(new UnlicensedUserSummary(
+                            user.GetPropertyOrDefault("displayName"),
+                            user.GetPropertyOrDefault("userPrincipalName"),
+                            user.GetPropertyOrDefault("mail"),
+                            user.GetPropertyOrDefault("department")));
+                    }
                 }
+
                 if (document.RootElement.TryGetProperty("@odata.count", out var countElement) && countElement.ValueKind == JsonValueKind.Number)
                 {
                     if (countElement.TryGetInt32(out var count32))
@@ -812,7 +849,6 @@ namespace DigitalTechClientPortal.Controllers
                 }
 
                 if (document.RootElement.TryGetProperty("@odata.nextLink", out var nextElement) && nextElement.ValueKind == JsonValueKind.String)
-
                 {
                     nextUrl = nextElement.GetString();
                 }
@@ -822,12 +858,14 @@ namespace DigitalTechClientPortal.Controllers
                 }
             }
 
-            return (true, total, null, false);
+            return (true, total, null, false, users);
         }
-             private static async Task<(int Count, string? Warning)> CountUsuariosSinLicenciaEnumerandoAsync(HttpClient httpClient, CancellationToken cancellationToken)
+
+        private static async Task<(int Count, string? Warning, List<UnlicensedUserSummary> Users)> CountUsuariosSinLicenciaEnumerandoAsync(HttpClient httpClient, CancellationToken cancellationToken, int maxUsersToCollect)
         {
             var total = 0;
-            string? nextUrl = "https://graph.microsoft.com/v1.0/users?$select=id,assignedLicenses&$top=999";
+            string? nextUrl = "https://graph.microsoft.com/v1.0/users?$select=id,displayName,userPrincipalName,mail,department,assignedLicenses&$top=999";
+            var users = new List<UnlicensedUserSummary>();
 
             while (!string.IsNullOrEmpty(nextUrl))
             {
@@ -843,7 +881,7 @@ namespace DigitalTechClientPortal.Controllers
 
                     var baseWarning = response.StatusCode switch
                     {
-                         HttpStatusCode.Unauthorized => "El token para Microsoft Graph no es válido (401). Inicia sesión nuevamente para renovarlo.",
+                        HttpStatusCode.Unauthorized => "El token para Microsoft Graph no es válido (401). Inicia sesión nuevamente para renovarlo.",
                         HttpStatusCode.Forbidden => "Microsoft Graph devolvió 403 (Forbidden). Confirma que la aplicación tenga el consentimiento de administrador para User.Read.All o Directory.Read.All.",
                         _ => $"Microsoft Graph devolvió {(int)response.StatusCode}."
                     };
@@ -852,7 +890,7 @@ namespace DigitalTechClientPortal.Controllers
                         ? $"{baseWarning} Detalle: {detail}"
                         : $"{baseWarning} Revisa el registro del servidor para más detalles.";
 
-                    return (0, warning);
+                    return (0, warning, users);
                 }
 
                 using var document = JsonDocument.Parse(raw);
@@ -864,6 +902,15 @@ namespace DigitalTechClientPortal.Controllers
                         if (!user.TryGetProperty("assignedLicenses", out var licenses) || licenses.ValueKind != JsonValueKind.Array || licenses.GetArrayLength() == 0)
                         {
                             total++;
+
+                            if (users.Count < maxUsersToCollect)
+                            {
+                                users.Add(new UnlicensedUserSummary(
+                                    user.GetPropertyOrDefault("displayName"),
+                                    user.GetPropertyOrDefault("userPrincipalName"),
+                                    user.GetPropertyOrDefault("mail"),
+                                    user.GetPropertyOrDefault("department")));
+                            }
                         }
                     }
                 }
@@ -878,21 +925,19 @@ namespace DigitalTechClientPortal.Controllers
                 }
             }
 
-            return (total, "Se utilizó un método alternativo enumerando usuarios porque el filtro avanzado de Microsoft Graph no está disponible.");
+            return (total, "Se utilizó un método alternativo enumerando usuarios porque el filtro avanzado de Microsoft Graph no está disponible.", users);
         }
 
         private static string? TryExtractGraphErrorDetail(string raw)
         {
             if (string.IsNullOrWhiteSpace(raw))
             {
-            
-           return null;
+                return null;
             }
-
 
             try
             {
-                   using var errorDoc = JsonDocument.Parse(raw);
+                using var errorDoc = JsonDocument.Parse(raw);
                 if (!errorDoc.RootElement.TryGetProperty("error", out var errorElement))
                 {
                     return null;
@@ -912,9 +957,10 @@ namespace DigitalTechClientPortal.Controllers
             }
             catch (JsonException)
             {
-               return null;  
+                return null;
             }
- return null;
+
+            return null;
         }
 
             // ===================== NUEVO: Exportación CSV =====================
