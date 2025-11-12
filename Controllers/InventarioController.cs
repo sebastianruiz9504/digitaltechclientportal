@@ -5,13 +5,15 @@ using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
 using System;
 using System.Linq;
-using System.Threading.Tasks;
+using System.Net;
 using System.Net.Http;
 using Microsoft.PowerPlatform.Dataverse.Client;
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Query;
 using System.Collections.Generic;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace DigitalTechClientPortal.Controllers
 {
@@ -653,37 +655,23 @@ namespace DigitalTechClientPortal.Controllers
                 .OrderByDescending(x => x.Count)
                 .ToList();
 
-            // Usuarios sin licencia (Graph) — utiliza assignedLicenses
+            // ---------- Usuarios sin licencia (Graph) ----------
             int usuariosSinLicencia = 0;
+            string? usuariosSinLicenciaWarning = null;
             try
             {
                 var http = await _graphFactory.CreateClientAsync();
-                var url = "https://graph.microsoft.com/v1.0/users?$select=id,displayName,assignedLicenses&$top=999";
-                var resp = await http.GetAsync(url);
-                var raw = await resp.Content.ReadAsStringAsync();
-
-                if (resp.IsSuccessStatusCode)
-                {
-                    using var doc = JsonDocument.Parse(raw);
-                    if (doc.RootElement.TryGetProperty("value", out var arr) && arr.ValueKind == JsonValueKind.Array)
-                    {
-                        foreach (var u in arr.EnumerateArray())
-                        {
-                            if (u.TryGetProperty("assignedLicenses", out var lic) && lic.ValueKind == JsonValueKind.Array)
-                            {
-                                if (lic.GetArrayLength() == 0) usuariosSinLicencia++;
-                            }
-                            else
-                            {
-                                usuariosSinLicencia++;
-                            }
-                        }
-                    }
-                }
+                (usuariosSinLicencia, usuariosSinLicenciaWarning) = await CountUsuariosSinLicenciaAsync(http, HttpContext.RequestAborted);
             }
-            catch
+            catch (InvalidOperationException ex)
             {
                 usuariosSinLicencia = 0;
+                usuariosSinLicenciaWarning = $"No se pudo inicializar el cliente de Microsoft Graph: {ex.Message}";
+            }
+            catch (Exception)
+            {
+                usuariosSinLicencia = 0;
+                usuariosSinLicenciaWarning = "Ocurrió un error inesperado al preparar la consulta a Microsoft Graph.";
             }
 
             return Json(new
@@ -691,12 +679,77 @@ namespace DigitalTechClientPortal.Controllers
                 porCategoria,
                 porUbicacion,
                 porMarca,
-                usuariosSinLicencia
+
+                usuariosSinLicencia,
+                usuariosSinLicenciaWarning
             });
         }
+          private static async Task<(int Count, string? Warning)> CountUsuariosSinLicenciaAsync(HttpClient httpClient, CancellationToken cancellationToken)
+        {
+            var total = 0;
+            string? warning = null;
+            string? nextUrl = "https://graph.microsoft.com/v1.0/users?$select=id&$filter=assignedLicenses/$count eq 0&$top=999&$count=true";
 
-        // ===================== NUEVO: Exportación CSV =====================
-        [HttpGet("ExportEquiposCsv")]
+            try
+            {
+                while (!string.IsNullOrEmpty(nextUrl))
+                {
+                    using var request = new HttpRequestMessage(HttpMethod.Get, nextUrl);
+                    request.Headers.TryAddWithoutValidation("ConsistencyLevel", "eventual");
+
+                    using var response = await httpClient.SendAsync(request, cancellationToken);
+                    var raw = await response.Content.ReadAsStringAsync();
+
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        warning = response.StatusCode switch
+                        {
+                            HttpStatusCode.Unauthorized => "El token para Microsoft Graph no es válido (401). Inicia sesión nuevamente para renovarlo.",
+                            HttpStatusCode.Forbidden => "Microsoft Graph devolvió 403 (Forbidden). Confirma que la aplicación tenga el consentimiento de administrador para User.Read.All o Directory.Read.All.",
+                            _ => $"Microsoft Graph devolvió {(int)response.StatusCode}. Revisa el registro del servidor para más detalles."
+                        };
+                        total = 0;
+                        break;
+                    }
+
+                    using var document = JsonDocument.Parse(raw);
+
+                    if (document.RootElement.TryGetProperty("value", out var valueElement) && valueElement.ValueKind == JsonValueKind.Array)
+                    {
+                        total += valueElement.GetArrayLength();
+                    }
+
+                    if (document.RootElement.TryGetProperty("@odata.nextLink", out var nextElement) && nextElement.ValueKind == JsonValueKind.String)
+                    {
+                        nextUrl = nextElement.GetString();
+                    }
+                    else
+                    {
+                        nextUrl = null;
+                    }
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                warning = "La consulta de usuarios sin licencia fue cancelada antes de completarse.";
+                total = 0;
+            }
+            catch (HttpRequestException)
+            {
+                warning = "No se pudo contactar Microsoft Graph para obtener los usuarios sin licencia. Verifica la conectividad o renueva la sesión.";
+                total = 0;
+            }
+            catch (JsonException)
+            {
+                warning = "Microsoft Graph devolvió una respuesta inesperada al consultar usuarios sin licencia.";
+                total = 0;
+            }
+
+            return (total, warning);
+        }
+
+            // ===================== NUEVO: Exportación CSV =====================
+                [HttpGet("ExportEquiposCsv")]
         public async Task<IActionResult> ExportEquiposCsv()
         {
             var correo = User.FindFirst("preferred_username")?.Value

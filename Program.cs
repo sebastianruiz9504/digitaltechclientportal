@@ -132,6 +132,7 @@ builder.Services
         options.Scope.Add("email");
         options.Scope.Add("User.Read");
         options.Scope.Add("User.Read.All");
+        options.Scope.Add("Directory.Read.All");
         options.Scope.Add("SecurityEvents.Read.All");
         options.Scope.Add("offline_access");
 

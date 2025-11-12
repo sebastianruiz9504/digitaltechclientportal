@@ -140,3 +140,4 @@ C:\Users\SebastianRuiz\DigitalTechClientPortal\obj\Debug\net8.0\scopedcss\projec
 C:\Users\SebastianRuiz\DigitalTechClientPortal\obj\Debug\net8.0\DigitalT.ADCD685D.Up2Date
 C:\Users\SebastianRuiz\DigitalTechClientPortal\obj\Debug\net8.0\DigitalTechClientPortal.genruntimeconfig.cache
 C:\Users\SebastianRuiz\DigitalTechClientPortal\obj\Debug\net8.0\ref\DigitalTechClientPortal.dll
+C:\Users\SebastianRuiz\DigitalTechClientPortal\obj\Debug\net8.0\DigitalTechClientPortal.sourcelink.json

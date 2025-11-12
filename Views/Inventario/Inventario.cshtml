@@ -479,6 +479,13 @@ else
                     <div class="rounded-md border border-slate-200 p-3">
                         <div class="text-sm font-semibold text-black mb-2">Usuarios sin licencia</div>
                         <div class="h-64"><canvas id="chartSinLicencia"></canvas></div>
+                        
+                          <div id="sinLicenciaWarning" class="hidden mt-3 rounded-md bg-yellow-50 p-3 ring-1 ring-yellow-300 text-sm text-yellow-900">
+                            <div class="flex items-center gap-2">
+                                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
+                                <span id="sinLicenciaWarningText">No se recibieron datos. Verifica los permisos y el estado del token de Microsoft Graph.</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1062,13 +1069,54 @@ document.addEventListener('DOMContentLoaded', () => {
   // ========= NUEVO: Reportes =========
   let reportesLoaded = false;
   let chartCat, chartUbi, chartMarca, chartSinLic;
+    const sinLicWarning = document.getElementById('sinLicenciaWarning');
+  const sinLicWarningText = document.getElementById('sinLicenciaWarningText');
+  const sinLicWarningIcon = document.getElementById('sinLicenciaWarningIcon');
+  const sinLicVariantClasses = {
+    warning: ['bg-yellow-50', 'text-yellow-900', 'ring-yellow-300'],
+    info: ['bg-blue-50', 'text-blue-900', 'ring-blue-200']
+  };
 
+  function applySinLicVariant(variant) {
+    if (!sinLicWarning) return;
+    const target = sinLicVariantClasses[variant] ?? sinLicVariantClasses.warning;
+    Object.values(sinLicVariantClasses).forEach(arr => sinLicWarning.classList.remove(...arr));
+    sinLicWarning.classList.add(...target);
+    if (sinLicWarningIcon) {
+      sinLicWarningIcon.classList.remove('text-yellow-700', 'text-blue-700');
+      sinLicWarningIcon.classList.add(variant === 'info' ? 'text-blue-700' : 'text-yellow-700');
+    }
+  }
+
+  function showSinLicMessage(message, variant = 'warning') {
+    if (!sinLicWarning) return;
+    applySinLicVariant(variant);
+    if (sinLicWarningText && message) sinLicWarningText.textContent = message;
+    sinLicWarning.classList.remove('hidden');
+  }
+
+  function showSinLicWarning(message) {
+    showSinLicMessage(message, 'warning');
+  }
+
+  function showSinLicInfo(message) {
+    showSinLicMessage(message, 'info');
+  }
+
+  function hideSinLicWarning() {
+    if (!sinLicWarning) return;
+    sinLicWarning.classList.add('hidden');
+  }
   async function loadReportesOnce() {
     if (reportesLoaded) return;
     try {
+       hideSinLicWarning();
       const res = await fetch('/Inventario/ReportesData', { headers: { 'Accept': 'application/json' } });
-      if (!res.ok) { console.error('No se pudo cargar ReportesData'); return; }
-      const data = await res.json();
+ if (!res.ok) {
+        console.error('No se pudo cargar ReportesData');
+        showSinLicWarning('No se pudo cargar la información. Comprueba el token y los permisos de Microsoft Graph.');
+        return;
+      }      const data = await res.json();
 
       // Por Categoría
       const catLabels = (data.porCategoria || []).map(x => x.label || '(Sin categoría)');
@@ -1086,12 +1134,25 @@ document.addEventListener('DOMContentLoaded', () => {
       chartMarca = buildBarChart('chartPorMarca', marcaLabels, marcaValues);
 
       // Usuarios sin licencia (una sola barra)
-      const sinLic = Number(data.usuariosSinLicencia || 0);
-      chartSinLic = buildBarChart('chartSinLicencia', ['Sin licencia'], [sinLic]);
-
+        const sinLic = Number(data.usuariosSinLicencia ?? 0);
+      const sinLicBackendWarning = data.usuariosSinLicenciaWarning;
+      chartSinLic = buildBarChart('chartSinLicencia', ['Sin licencia'], [Number.isFinite(sinLic) ? sinLic : 0]);
+      if (sinLicBackendWarning) {
+        showSinLicWarning(sinLicBackendWarning);
+      } else if (Number.isFinite(sinLic) && sinLic === 0) {
+        showSinLicInfo('Todos los usuarios tienen al menos una licencia asignada.');
+      } else {
+        hideSinLicWarning();
+      }
       reportesLoaded = true;
+       if (sinLic === 0) {
+        showSinLicWarning('No se recibieron usuarios sin licencia. Revisa que el token esté vigente y que la consulta tenga permisos para Microsoft Graph.');
+      } else {
+        hideSinLicWarning();
+      }
     } catch (e) {
       console.error('Error cargando reportes', e);
+            showSinLicWarning('Ocurrió un error al consultar Microsoft Graph. Intenta actualizar la página o renovar la sesión.');
     }
   }
 
