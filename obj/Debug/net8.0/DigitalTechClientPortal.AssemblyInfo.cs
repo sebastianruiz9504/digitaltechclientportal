@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("DigitalTechClientPortal")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+22ad7f26b2ad5158e72b6eb0860c4bb85440764d")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+3895eadfb80996808705dd98da6f404ae51da375")]
 [assembly: System.Reflection.AssemblyProductAttribute("DigitalTechClientPortal")]
 [assembly: System.Reflection.AssemblyTitleAttribute("DigitalTechClientPortal")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

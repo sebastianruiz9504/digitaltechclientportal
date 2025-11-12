@@ -1,8 +1,4 @@
-¡Listo! Aquí tienes tu **`Views/Inventario/Inventario.cshtml` completo**, con **todo lo que ya tenías** + la **pestaña “Reportes”** (4 gráficas y botón de exportar CSV). No toqué nada del markup/JS existente salvo para añadir la nueva pestaña/panel y el bloque JS que carga los reportes cuando se abre esa pestaña.
 
-> Reemplaza el archivo por este contenido íntegro.
-
-```cshtml
 @using DigitalTechClientPortal.Models
 @model InventarioVm
 
@@ -480,9 +476,9 @@ else
                         <div class="text-sm font-semibold text-black mb-2">Usuarios sin licencia</div>
                         <div class="h-64"><canvas id="chartSinLicencia"></canvas></div>
                         
-                          <div id="sinLicenciaWarning" class="hidden mt-3 rounded-md bg-yellow-50 p-3 ring-1 ring-yellow-300 text-sm text-yellow-900">
-                            <div class="flex items-center gap-2">
-                                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
+
+                        <div id="sinLicenciaWarning" class="hidden mt-3 rounded-md bg-yellow-50 p-3 ring-1 ring-yellow-300 text-sm text-yellow-900">                            <div class="flex items-center gap-2">
+                                <svg id="sinLicenciaWarningIcon" class="w-4 h-4 text-yellow-700" viewBox="0 0 24 24" fill="currentColor"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
                                 <span id="sinLicenciaWarningText">No se recibieron datos. Verifica los permisos y el estado del token de Microsoft Graph.</span>
                             </div>
                         </div>
@@ -1145,11 +1141,7 @@ document.addEventListener('DOMContentLoaded', () => {
         hideSinLicWarning();
       }
       reportesLoaded = true;
-       if (sinLic === 0) {
-        showSinLicWarning('No se recibieron usuarios sin licencia. Revisa que el token esté vigente y que la consulta tenga permisos para Microsoft Graph.');
-      } else {
-        hideSinLicWarning();
-      }
+      
     } catch (e) {
       console.error('Error cargando reportes', e);
             showSinLicWarning('Ocurrió un error al consultar Microsoft Graph. Intenta actualizar la página o renovar la sesión.');
@@ -1184,4 +1176,4 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 }
-```
+
