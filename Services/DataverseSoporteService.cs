@@ -153,6 +153,7 @@ namespace DigitalTechClientPortal.Services
             var client = _httpClientFactory.CreateClient();
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
             client.DefaultRequestHeaders.TryAddWithoutValidation("If-Match", "*");
+             client.DefaultRequestHeaders.TryAddWithoutValidation("Prefer", "return=minimal");
             if (!string.IsNullOrWhiteSpace(fileName))
             {
                 client.DefaultRequestHeaders.TryAddWithoutValidation("x-ms-file-name", fileName);
@@ -164,10 +165,12 @@ namespace DigitalTechClientPortal.Services
             }
 
             using var streamContent = new StreamContent(content);
-            streamContent.Headers.ContentType = new MediaTypeHeaderValue(string.IsNullOrWhiteSpace(contentType)
-                ? "application/octet-stream"
-                : contentType);
-
+            // Dataverse requiere application/octet-stream para las columnas de archivo.
+            streamContent.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+            if (!string.IsNullOrWhiteSpace(contentType))
+            {
+                streamContent.Headers.TryAddWithoutValidation("x-ms-file-content-type", contentType);
+            }
             using var request = new HttpRequestMessage(new HttpMethod("PATCH"), url)
             {
                 Content = streamContent

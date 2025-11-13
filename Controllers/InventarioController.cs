@@ -1325,7 +1325,7 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
         {
             try
             {
-                 var request = new OrganizationRequest("RetrieveAttribute");
+                  var request = new OrganizationRequest("RetrieveAttribute");
                 request["EntityLogicalName"] = EquiposEntityName;
                 request["LogicalName"] = PropioORentaAttribute;
                 request["RetrieveAsIfPublished"] = true;
@@ -1349,8 +1349,9 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
                         });
                     }
 
-                    return options.OrderBy(o => o.Label, StringComparer.CurrentCultureIgnoreCase).ToList();
-                }
+  return options
+                        .OrderBy(o => o.Label, StringComparer.CurrentCultureIgnoreCase)
+                        .ToList();                }
             }
             catch
             {
