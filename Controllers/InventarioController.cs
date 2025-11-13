@@ -334,7 +334,8 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
                 return RedirectToAction("Equipos");
             }
 
- var entity = new Entity(EquiposEntityName, model.Id);            // Campos actualizables
+ var entity = new Entity(EquiposEntityName, model.Id);   
+          // Campos actualizables
             entity["cr07a_categoria"] = new EntityReference("cr07a_categoriasdigitalapp", model.CategoriaId);
             entity["cr07a_marca"] = model.Marca ?? "";
             entity["cr07a_modelo"] = model.Modelo ?? "";
@@ -1172,6 +1173,7 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
                     ActaDeEntregaNombre = actaNombre
                 });
             }
+            await PopulateAsignadoNombresAsync(list);
             return list;
         }
 
@@ -1232,6 +1234,8 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
                     TieneActaDeEntrega = !string.IsNullOrWhiteSpace(actaNombre),
                     ActaDeEntregaNombre = actaNombre                });
             }
+                        await PopulateAsignadoNombresAsync(list);
+
             return list;
         }
   private async Task PopulateAsignadoNombresAsync(List<EquipoVm> equipos)
