@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Http;
 
 namespace DigitalTechClientPortal.Models
 {
@@ -33,5 +34,9 @@ namespace DigitalTechClientPortal.Models
         public string AsignadoA { get; set; } = string.Empty;
 
         public Guid? UbicacionId { get; set; }
+        
+        public int? PropioORenta { get; set; }
+
+        public IFormFile? ActaDeEntrega { get; set; }
     }
 }

@@ -3,6 +3,7 @@ using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Identity.Client;
@@ -129,6 +130,55 @@ namespace DigitalTechClientPortal.Services
             }
 
             return (mem, contentType, fileName);
+        }
+         public async Task UploadFileAsync(
+            string entitySet,
+            Guid id,
+            string columnName,
+            Stream content,
+            string fileName,
+            string? contentType = null,
+            CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(entitySet)) throw new ArgumentException("Valor requerido", nameof(entitySet));
+            if (string.IsNullOrWhiteSpace(columnName)) throw new ArgumentException("Valor requerido", nameof(columnName));
+            if (content == null) throw new ArgumentNullException(nameof(content));
+
+            var token = await GetAccessTokenAsync();
+            var baseUrl = _config["Dataverse:Url"]?.TrimEnd('/')
+                          ?? throw new InvalidOperationException("Dataverse:Url no configurado.");
+
+            var url = $"{baseUrl}/api/data/v9.2/{entitySet}({id})/{columnName}/$value";
+
+            var client = _httpClientFactory.CreateClient();
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            client.DefaultRequestHeaders.TryAddWithoutValidation("If-Match", "*");
+            if (!string.IsNullOrWhiteSpace(fileName))
+            {
+                client.DefaultRequestHeaders.TryAddWithoutValidation("x-ms-file-name", fileName);
+            }
+
+            if (content.CanSeek)
+            {
+                content.Position = 0;
+            }
+
+            using var streamContent = new StreamContent(content);
+            streamContent.Headers.ContentType = new MediaTypeHeaderValue(string.IsNullOrWhiteSpace(contentType)
+                ? "application/octet-stream"
+                : contentType);
+
+            using var request = new HttpRequestMessage(new HttpMethod("PATCH"), url)
+            {
+                Content = streamContent
+            };
+
+            var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync(cancellationToken);
+                throw new HttpRequestException($"Dataverse PATCH {response.StatusCode}. URL: {url}. Body: {body}");
+            }
         }
     }
 }

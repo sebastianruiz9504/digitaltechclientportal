@@ -4,11 +4,14 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
 using System;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using Microsoft.Crm.Sdk.Messages;
 using Microsoft.PowerPlatform.Dataverse.Client;
 using Microsoft.Xrm.Sdk;
+using Microsoft.Xrm.Sdk.Metadata;
 using Microsoft.Xrm.Sdk.Query;
 using System.Collections.Generic;
 using System.Text;
@@ -31,16 +34,22 @@ namespace DigitalTechClientPortal.Controllers
         private readonly GraphClientFactory _graphFactory;
         private readonly ServiceClient _dataverse;
         private readonly ClientesService _clientesService;
+        private readonly DataverseSoporteService _dataverseFiles;
 
         private const int MaxUsuariosSinLicenciaListado = 100;
+        private const string EquiposEntityName = "cr07a_equiposdigitalapp";
+        private const string EquiposEntitySetName = "cr07a_equiposdigitalapps";
+        private const string ActaColumnName = "cr07a_actadeentrega";
+        private const string PropioORentaAttribute = "cr07a_propioorenta";
 
         private sealed record UnlicensedUserSummary(string? DisplayName, string? UserPrincipalName, string? Mail, string? Department);
 
-        public InventarioController(GraphClientFactory graphFactory, ServiceClient dataverse, ClientesService clientesService)
+        public InventarioController(GraphClientFactory graphFactory, ServiceClient dataverse, ClientesService clientesService, DataverseSoporteService dataverseFiles)
         {
             _graphFactory = graphFactory;
             _dataverse = dataverse;
             _clientesService = clientesService;
+            _dataverseFiles = dataverseFiles;
         }
 
         // Usuarios (vista independiente)
@@ -148,6 +157,7 @@ namespace DigitalTechClientPortal.Controllers
             var equiposPorUbicacion = new List<EquipoVm>();
             if (ubicacionId.HasValue && ubicacionId.Value != Guid.Empty)
                 equiposPorUbicacion = await GetEquiposPorUbicacionAsync(ubicacionId.Value);
+var propioOrentaOptions = await GetPropioORentaOptionsAsync();
 
             var model = new InventarioVm
             {
@@ -159,7 +169,8 @@ namespace DigitalTechClientPortal.Controllers
                 EquiposDelUsuarioSeleccionado = equiposUsuario,
                 Ubicaciones = ubicaciones,
                 UbicacionSeleccionadaId = ubicacionId,
-                EquiposPorUbicacionSeleccionada = equiposPorUbicacion
+                 EquiposPorUbicacionSeleccionada = equiposPorUbicacion,
+                PropioORentaOptions = propioOrentaOptions
             };
 
             return View("Inventario", model);
@@ -188,7 +199,7 @@ namespace DigitalTechClientPortal.Controllers
                 return RedirectToAction("Equipos");
             }
 
-            var entity = new Entity("cr07a_equiposdigitalapp");
+           var entity = new Entity(EquiposEntityName);
             entity["cr07a_cliente"] = new EntityReference("cr07a_cliente", clienteId);
             entity["cr07a_categoria"] = new EntityReference("cr07a_categoriasdigitalapp", model.CategoriaId);
             if (!string.IsNullOrWhiteSpace(model.Marca)) entity["cr07a_marca"] = model.Marca;
@@ -211,10 +222,35 @@ namespace DigitalTechClientPortal.Controllers
             }
 
             if (model.FechaCompra.HasValue) entity["cr07a_fechacompra"] = model.FechaCompra.Value;
+ if (model.PropioORenta.HasValue)
+            {
+                entity[PropioORentaAttribute] = new OptionSetValue(model.PropioORenta.Value);
+            }
 
             try
             {
-                _dataverse.Create(entity);
+                 var newId = _dataverse.Create(entity);
+
+                if (model.ActaDeEntrega != null && model.ActaDeEntrega.Length > 0)
+                {
+                    try
+                    {
+                        await using var stream = model.ActaDeEntrega.OpenReadStream();
+                        var fileName = Path.GetFileName(model.ActaDeEntrega.FileName);
+                        await _dataverseFiles.UploadFileAsync(
+                            EquiposEntitySetName,
+                            newId,
+                            ActaColumnName,
+                            stream,
+                            string.IsNullOrWhiteSpace(fileName) ? $"acta-{newId}.bin" : fileName,
+                            model.ActaDeEntrega.ContentType);
+                    }
+                    catch (Exception ex)
+                    {
+                        TempData["InventarioError"] = "Equipo creado, pero no se pudo cargar el acta de entrega: " + ex.Message;
+                        return RedirectToAction("Equipos");
+                    }
+                }
                 TempData["InventarioOk"] = "Equipo creado exitosamente.";
             }
             catch (Exception ex)
@@ -232,7 +268,7 @@ namespace DigitalTechClientPortal.Controllers
         {
             if (id == Guid.Empty) return BadRequest("id requerido.");
 
-            var entity = await _dataverse.RetrieveAsync("cr07a_equiposdigitalapp", id, new ColumnSet(
+              var entity = await _dataverse.RetrieveAsync(EquiposEntityName, id, new ColumnSet(
                 "cr07a_categoria",
                 "cr07a_marca",
                 "cr07a_modelo",
@@ -241,13 +277,16 @@ namespace DigitalTechClientPortal.Controllers
                 "cr07a_fechacompra",
                 "cr07a_notas",
                 "cr07a_asignadoa",
-                "cr07a_ubicacionid"
+               "cr07a_ubicacionid",
+                PropioORentaAttribute,
+                ActaColumnName
             ));
 
             var categoriaRef = entity.GetAttributeValue<EntityReference>("cr07a_categoria");
             var ubicRef = entity.GetAttributeValue<EntityReference>("cr07a_ubicacionid");
             var estadoVal = entity.GetAttributeValue<OptionSetValue>("cr07a_estado");
-
+  var propioOrentaVal = entity.GetAttributeValue<OptionSetValue>(PropioORentaAttribute);
+            var actaNombre = entity.GetAttributeValue<string>(ActaColumnName);
             var vm = new EditEquipoVm
             {
                 Id = id,
@@ -259,16 +298,35 @@ namespace DigitalTechClientPortal.Controllers
                 FechaCompra = entity.GetAttributeValue<DateTime?>("cr07a_fechacompra"),
                 Notas = entity.GetAttributeValue<string>("cr07a_notas") ?? "",
                 AsignadoA = entity.GetAttributeValue<string>("cr07a_asignadoa") ?? "",
-                UbicacionId = ubicRef?.Id
+                  UbicacionId = ubicRef?.Id,
+                PropioORenta = propioOrentaVal?.Value,
+                ActaDeEntregaNombre = actaNombre,
+                TieneActaDeEntrega = !string.IsNullOrWhiteSpace(actaNombre)
             };
 
             return Json(vm);
+        }
+[HttpGet("Acta")]
+        public async Task<IActionResult> Acta([FromQuery] Guid id)
+        {
+            if (id == Guid.Empty) return BadRequest("Id requerido.");
+
+            try
+            {
+                var file = await _dataverseFiles.GetFileAsync(EquiposEntitySetName, id, ActaColumnName);
+                if (file == null) return NotFound();
+                return File(file.Value.Stream, file.Value.ContentType, file.Value.FileName);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode((int)HttpStatusCode.InternalServerError, "Error descargando el acta: " + ex.Message);
+            }
         }
 
         // POST actualizar equipo
         [HttpPost("EditarEquipo")]
         [ValidateAntiForgeryToken]
-        public IActionResult EditarEquipo(EditEquipoVm model)
+        public async Task<IActionResult> EditarEquipo(EditEquipoVm model)
         {
             if (!ModelState.IsValid || model.Id == Guid.Empty)
             {
@@ -276,8 +334,7 @@ namespace DigitalTechClientPortal.Controllers
                 return RedirectToAction("Equipos");
             }
 
-            var entity = new Entity("cr07a_equiposdigitalapp", model.Id);
-            // Campos actualizables
+ var entity = new Entity(EquiposEntityName, model.Id);            // Campos actualizables
             entity["cr07a_categoria"] = new EntityReference("cr07a_categoriasdigitalapp", model.CategoriaId);
             entity["cr07a_marca"] = model.Marca ?? "";
             entity["cr07a_modelo"] = model.Modelo ?? "";
@@ -312,10 +369,36 @@ namespace DigitalTechClientPortal.Controllers
                 entity["cr07a_fechacompra"] = model.FechaCompra.Value;
             else
                 entity["cr07a_fechacompra"] = null;
+ if (model.PropioORenta.HasValue)
+                entity[PropioORentaAttribute] = new OptionSetValue(model.PropioORenta.Value);
+            else
+                entity[PropioORentaAttribute] = null;
 
             try
             {
                 _dataverse.Update(entity);
+                
+                if (model.ActaDeEntrega != null && model.ActaDeEntrega.Length > 0)
+                {
+                    try
+                    {
+                        await using var stream = model.ActaDeEntrega.OpenReadStream();
+                        var fileName = Path.GetFileName(model.ActaDeEntrega.FileName);
+                        await _dataverseFiles.UploadFileAsync(
+                            EquiposEntitySetName,
+                            model.Id,
+                            ActaColumnName,
+                            stream,
+                            string.IsNullOrWhiteSpace(fileName) ? $"acta-{model.Id}.bin" : fileName,
+                            model.ActaDeEntrega.ContentType);
+                    }
+                    catch (Exception ex)
+                    {
+                        TempData["InventarioError"] = "Se actualizó el equipo, pero no se pudo cargar el acta de entrega: " + ex.Message;
+                        return RedirectToAction("Equipos");
+                    }
+                }
+
                 TempData["InventarioOk"] = "Equipo actualizado.";
             }
             catch (Exception ex)
@@ -1032,7 +1115,7 @@ namespace DigitalTechClientPortal.Controllers
 
         private async Task<List<EquipoVm>> GetEquiposByClienteAndCategoriaAsync(Guid clienteId, Guid categoriaId)
         {
-            var q = new QueryExpression("cr07a_equiposdigitalapp")
+            var q = new QueryExpression(EquiposEntityName)
             {
                 ColumnSet = new ColumnSet(
                     "cr07a_marca",
@@ -1045,7 +1128,9 @@ namespace DigitalTechClientPortal.Controllers
                     "cr07a_categoria",
                     "cr07a_cliente",
                     "cr07a_asignadoa",
-                    "cr07a_ubicacionid"
+                    "cr07a_ubicacionid",
+                    PropioORentaAttribute,
+                    ActaColumnName
                 )
             };
             q.Criteria.AddCondition("cr07a_cliente", ConditionOperator.Equal, clienteId);
@@ -1062,7 +1147,11 @@ namespace DigitalTechClientPortal.Controllers
                 var ubicFmt = e.FormattedValues.ContainsKey("cr07a_ubicacionid")
                     ? e.FormattedValues["cr07a_ubicacionid"]
                     : e.GetAttributeValue<string>("cr07a_ubicacion") ?? "";
-
+  var propioFmt = e.FormattedValues.ContainsKey(PropioORentaAttribute)
+                    ? e.FormattedValues[PropioORentaAttribute]
+                    : string.Empty;
+                var propioValue = e.GetAttributeValue<OptionSetValue>(PropioORentaAttribute)?.Value;
+                var actaNombre = e.GetAttributeValue<string>(ActaColumnName);
                 list.Add(new EquipoVm
                 {
                     Id = e.Id,
@@ -1076,7 +1165,11 @@ namespace DigitalTechClientPortal.Controllers
                     Ubicacion = ubicFmt,
                     Notas = e.GetAttributeValue<string>("cr07a_notas") ?? "",
                     AsignadoA = e.GetAttributeValue<string>("cr07a_asignadoa") ?? "",
-                    UbicacionId = ubicRef?.Id
+                    UbicacionId = ubicRef?.Id,
+                    PropioORentaValue = propioValue,
+                    PropioORentaLabel = string.IsNullOrWhiteSpace(propioFmt) ? null : propioFmt,
+                    TieneActaDeEntrega = !string.IsNullOrWhiteSpace(actaNombre),
+                    ActaDeEntregaNombre = actaNombre
                 });
             }
             return list;
@@ -1085,7 +1178,7 @@ namespace DigitalTechClientPortal.Controllers
         // NUEVO: Todos los equipos del cliente (una sola consulta)
         private async Task<List<EquipoVm>> GetEquiposByClienteAsync(Guid clienteId)
         {
-            var q = new QueryExpression("cr07a_equiposdigitalapp")
+            var q = new QueryExpression(EquiposEntityName)
             {
                 ColumnSet = new ColumnSet(
                     "cr07a_marca",
@@ -1098,8 +1191,9 @@ namespace DigitalTechClientPortal.Controllers
                     "cr07a_categoria",
                     "cr07a_cliente",
                     "cr07a_asignadoa",
-                    "cr07a_ubicacionid"
-                )
+ "cr07a_ubicacionid",
+                    PropioORentaAttribute,
+                    ActaColumnName                )
             };
             q.Criteria.AddCondition("cr07a_cliente", ConditionOperator.Equal, clienteId);
 
@@ -1114,7 +1208,11 @@ namespace DigitalTechClientPortal.Controllers
                 var ubicFmt = e.FormattedValues.ContainsKey("cr07a_ubicacionid")
                     ? e.FormattedValues["cr07a_ubicacionid"]
                     : e.GetAttributeValue<string>("cr07a_ubicacion") ?? "";
-
+ var propioFmt = e.FormattedValues.ContainsKey(PropioORentaAttribute)
+                    ? e.FormattedValues[PropioORentaAttribute]
+                    : string.Empty;
+                var propioValue = e.GetAttributeValue<OptionSetValue>(PropioORentaAttribute)?.Value;
+                var actaNombre = e.GetAttributeValue<string>(ActaColumnName);
                 list.Add(new EquipoVm
                 {
                     Id = e.Id,
@@ -1128,10 +1226,134 @@ namespace DigitalTechClientPortal.Controllers
                     Ubicacion = ubicFmt,
                     Notas = e.GetAttributeValue<string>("cr07a_notas") ?? "",
                     AsignadoA = e.GetAttributeValue<string>("cr07a_asignadoa") ?? "",
-                    UbicacionId = ubicRef?.Id
-                });
+   UbicacionId = ubicRef?.Id,
+                    PropioORentaValue = propioValue,
+                    PropioORentaLabel = string.IsNullOrWhiteSpace(propioFmt) ? null : propioFmt,
+                    TieneActaDeEntrega = !string.IsNullOrWhiteSpace(actaNombre),
+                    ActaDeEntregaNombre = actaNombre                });
             }
             return list;
+        }
+  private async Task PopulateAsignadoNombresAsync(List<EquipoVm> equipos)
+        {
+            if (equipos == null || equipos.Count == 0) return;
+
+            var upns = equipos
+                .Select(e => e.AsignadoA?.Trim())
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (upns.Count == 0) return;
+
+            HttpClient client;
+            try { client = await _graphFactory.CreateClientAsync(); }
+            catch (InvalidOperationException)
+            {
+                foreach (var eq in equipos)
+                {
+                    if (!string.IsNullOrWhiteSpace(eq.AsignadoA))
+                        eq.AsignadoNombre = eq.AsignadoA;
+                }
+                return;
+            }
+
+            var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var requestId = 1;
+
+            foreach (var chunk in upns.Chunk(20))
+            {
+                var requests = new List<object>(chunk.Length);
+                foreach (var upn in chunk)
+                {
+                    if (upn == null) continue;
+                    requests.Add(new
+                    {
+                        id = (requestId++).ToString(),
+                        method = "GET",
+                        url = $"/users/{Uri.EscapeDataString(upn)}?$select=displayName,userPrincipalName"
+                    });
+                }
+
+                if (requests.Count == 0) continue;
+
+                var payload = JsonSerializer.Serialize(new { requests });
+                using var content = new StringContent(payload, Encoding.UTF8, "application/json");
+                using var response = await client.PostAsync("https://graph.microsoft.com/v1.0/$batch", content);
+                if (!response.IsSuccessStatusCode) continue;
+
+                var raw = await response.Content.ReadAsStringAsync();
+                using var doc = JsonDocument.Parse(raw);
+
+                if (!doc.RootElement.TryGetProperty("responses", out var responses) || responses.ValueKind != JsonValueKind.Array)
+                    continue;
+
+                foreach (var item in responses.EnumerateArray())
+                {
+                    if (!item.TryGetProperty("status", out var statusEl)) continue;
+                    var status = statusEl.GetInt32();
+                    if (status < 200 || status >= 300) continue;
+                    if (!item.TryGetProperty("body", out var body)) continue;
+                    var upn = body.GetPropertyOrDefault("userPrincipalName");
+                    var displayName = body.GetPropertyOrDefault("displayName");
+                    if (!string.IsNullOrWhiteSpace(upn) && !string.IsNullOrWhiteSpace(displayName))
+                    {
+                        map[upn] = displayName;
+                    }
+                }
+            }
+
+            foreach (var equipo in equipos)
+            {
+                if (string.IsNullOrWhiteSpace(equipo.AsignadoA)) continue;
+                if (map.TryGetValue(equipo.AsignadoA, out var display))
+                {
+                    equipo.AsignadoNombre = display;
+                }
+                else
+                {
+                    equipo.AsignadoNombre = equipo.AsignadoA;
+                }
+            }
+        }
+
+        private async Task<List<OptionItemVm>> GetPropioORentaOptionsAsync()
+        {
+            try
+            {
+                var request = new RetrieveAttributeRequest
+                {
+                    EntityLogicalName = EquiposEntityName,
+                    LogicalName = PropioORentaAttribute,
+                    RetrieveAsIfPublished = true
+                };
+
+                var response = (RetrieveAttributeResponse)await _dataverse.ExecuteAsync(request);
+                if (response.AttributeMetadata is EnumAttributeMetadata enumMetadata)
+                {
+                    var options = new List<OptionItemVm>();
+                    foreach (var opt in enumMetadata.OptionSet.Options)
+                    {
+                        if (!opt.Value.HasValue) continue;
+                        var label = opt.Label?.UserLocalizedLabel?.Label
+                                    ?? opt.Label?.LocalizedLabels?.FirstOrDefault()?.Label
+                                    ?? opt.Value.Value.ToString();
+                        options.Add(new OptionItemVm
+                        {
+                            Value = opt.Value.Value,
+                            Label = label
+                        });
+                    }
+
+                    return options.OrderBy(o => o.Label, StringComparer.CurrentCultureIgnoreCase).ToList();
+                }
+            }
+            catch
+            {
+                // Ignorar errores: la vista manejará la ausencia de opciones.
+            }
+
+            return new List<OptionItemVm>();
         }
 
         private async Task<List<UserInventoryViewModel>> GetUsuariosTenantAsync(int pageSize = 50)
@@ -1197,7 +1419,7 @@ namespace DigitalTechClientPortal.Controllers
 
         private async Task<List<EquipoVm>> GetEquiposPorUbicacionAsync(Guid ubicacionId)
         {
-            var q = new QueryExpression("cr07a_equiposdigitalapp")
+            var q = new QueryExpression(EquiposEntityName)
             {
                 ColumnSet = new ColumnSet(
                     "cr07a_marca",
@@ -1207,7 +1429,9 @@ namespace DigitalTechClientPortal.Controllers
                     "cr07a_fechacompra",
                     "cr07a_ubicacionid",
                     "cr07a_notas",
-                    "cr07a_asignadoa"
+                      "cr07a_asignadoa",
+                    PropioORentaAttribute,
+                    ActaColumnName
                 )
             };
             q.Criteria.AddCondition("cr07a_ubicacionid", ConditionOperator.Equal, ubicacionId);
@@ -1218,6 +1442,11 @@ namespace DigitalTechClientPortal.Controllers
             {
                 var estadoFmt = e.FormattedValues.ContainsKey("cr07a_estado") ? e.FormattedValues["cr07a_estado"] : "";
                 var ubicFmt = e.FormattedValues.ContainsKey("cr07a_ubicacionid") ? e.FormattedValues["cr07a_ubicacionid"] : "";
+                var propioFmt = e.FormattedValues.ContainsKey(PropioORentaAttribute)
+                    ? e.FormattedValues[PropioORentaAttribute]
+                    : string.Empty;
+                var propioValue = e.GetAttributeValue<OptionSetValue>(PropioORentaAttribute)?.Value;
+                var actaNombre = e.GetAttributeValue<string>(ActaColumnName);
                 list.Add(new EquipoVm
                 {
                     Id = e.Id,
@@ -1228,7 +1457,11 @@ namespace DigitalTechClientPortal.Controllers
                     FechaCompra = e.GetAttributeValue<DateTime?>("cr07a_fechacompra"),
                     Ubicacion = ubicFmt,
                     Notas = e.GetAttributeValue<string>("cr07a_notas") ?? "",
-                    AsignadoA = e.GetAttributeValue<string>("cr07a_asignadoa") ?? ""
+                     AsignadoA = e.GetAttributeValue<string>("cr07a_asignadoa") ?? "",
+                    PropioORentaValue = propioValue,
+                    PropioORentaLabel = string.IsNullOrWhiteSpace(propioFmt) ? null : propioFmt,
+                    TieneActaDeEntrega = !string.IsNullOrWhiteSpace(actaNombre),
+                    ActaDeEntregaNombre = actaNombre
                 });
             }
             return list;
@@ -1236,7 +1469,7 @@ namespace DigitalTechClientPortal.Controllers
 
         private async Task<List<EquipoVm>> GetEquiposPorUsuarioUpnAsync(string upn)
         {
-            var q = new QueryExpression("cr07a_equiposdigitalapp")
+            var q = new QueryExpression(EquiposEntityName)
             {
                 ColumnSet = new ColumnSet(
                     "cr07a_marca",
@@ -1246,7 +1479,9 @@ namespace DigitalTechClientPortal.Controllers
                     "cr07a_fechacompra",
                     "cr07a_ubicacionid",
                     "cr07a_notas",
-                    "cr07a_asignadoa"
+                      "cr07a_asignadoa",
+                    PropioORentaAttribute,
+                    ActaColumnName
                 )
             };
             q.Criteria.AddCondition("cr07a_asignadoa", ConditionOperator.Equal, upn);
@@ -1257,6 +1492,11 @@ namespace DigitalTechClientPortal.Controllers
             {
                 var estadoFmt = e.FormattedValues.ContainsKey("cr07a_estado") ? e.FormattedValues["cr07a_estado"] : "";
                 var ubicFmt = e.FormattedValues.ContainsKey("cr07a_ubicacionid") ? e.FormattedValues["cr07a_ubicacionid"] : "";
+                var propioFmt = e.FormattedValues.ContainsKey(PropioORentaAttribute)
+                    ? e.FormattedValues[PropioORentaAttribute]
+                    : string.Empty;
+                var propioValue = e.GetAttributeValue<OptionSetValue>(PropioORentaAttribute)?.Value;
+                var actaNombre = e.GetAttributeValue<string>(ActaColumnName);
                 list.Add(new EquipoVm
                 {
                     Id = e.Id,
@@ -1267,9 +1507,15 @@ namespace DigitalTechClientPortal.Controllers
                     FechaCompra = e.GetAttributeValue<DateTime?>("cr07a_fechacompra"),
                     Ubicacion = ubicFmt,
                     Notas = e.GetAttributeValue<string>("cr07a_notas") ?? "",
-                    AsignadoA = e.GetAttributeValue<string>("cr07a_asignadoa") ?? ""
+                    AsignadoA = e.GetAttributeValue<string>("cr07a_asignadoa") ?? "",
+                    PropioORentaValue = propioValue,
+                    PropioORentaLabel = string.IsNullOrWhiteSpace(propioFmt) ? null : propioFmt,
+                    TieneActaDeEntrega = !string.IsNullOrWhiteSpace(actaNombre),
+                    ActaDeEntregaNombre = actaNombre
                 });
             }
+                        await PopulateAsignadoNombresAsync(list);
+
             return list;
         }
 

@@ -24,7 +24,20 @@ namespace DigitalTechClientPortal.Models
         public string Notas { get; set; } = string.Empty;
 
         public string AsignadoA { get; set; } = string.Empty;
+         public string? AsignadoNombre { get; set; }
         public Guid? UbicacionId { get; set; }
+        
+        public int? PropioORentaValue { get; set; }
+        public string? PropioORentaLabel { get; set; }
+
+        public bool TieneActaDeEntrega { get; set; }
+        public string? ActaDeEntregaNombre { get; set; }
+    }
+
+    public class OptionItemVm
+    {
+        public int Value { get; set; }
+        public string Label { get; set; } = string.Empty;
     }
 
     public class UserInventoryViewModel
@@ -58,5 +71,7 @@ namespace DigitalTechClientPortal.Models
         public List<UbicacionVm> Ubicaciones { get; set; } = new();
         public Guid? UbicacionSeleccionadaId { get; set; }
         public List<EquipoVm> EquiposPorUbicacionSeleccionada { get; set; } = new();
+        
+        public List<OptionItemVm> PropioORentaOptions { get; set; } = new();
     }
 }

@@ -140,3 +140,4 @@ C:\Users\SebastianRuiz\DigitalTechClientPortal\bin\Release\net8.0\Microsoft.Exte
 C:\Users\SebastianRuiz\DigitalTechClientPortal\bin\Release\net8.0\Microsoft.Extensions.Options.ConfigurationExtensions.dll
 C:\Users\SebastianRuiz\DigitalTechClientPortal\bin\Release\net8.0\Microsoft.Extensions.Primitives.dll
 C:\Users\SebastianRuiz\DigitalTechClientPortal\bin\Release\net8.0\System.Diagnostics.DiagnosticSource.dll
+C:\Users\SebastianRuiz\DigitalTechClientPortal\obj\Release\net8.0\DigitalTechClientPortal.sourcelink.json

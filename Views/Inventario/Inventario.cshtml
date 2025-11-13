@@ -368,11 +368,23 @@ else
                                                 <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-sky-100 text-sky-800 ring-1 ring-sky-300 break-words">@e.Ubicacion</span>
                                             </td>
                                             <td class="px-4 py-2 break-words">
-                                                @if (!string.IsNullOrWhiteSpace(e.AsignadoA))
-                                                {
-                                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-slate-900 text-white break-all">@e.AsignadoA</span>
+  @if (!string.IsNullOrWhiteSpace(e.AsignadoNombre) || !string.IsNullOrWhiteSpace(e.AsignadoA))
+                                                  {
+    <div class="flex flex-col">
+                                                        @if (!string.IsNullOrWhiteSpace(e.AsignadoNombre))
+                                                        {
+                                                            <span class="text-sm font-semibold text-black break-words">@e.AsignadoNombre</span>
+                                                        }
+                                                        @if (!string.IsNullOrWhiteSpace(e.AsignadoA))
+                                                        {
+                                                            <span class="text-xs text-slate-600 break-all">@e.AsignadoA</span>
+                                                        }
+                                                    </div>
                                                 }
-                                                else { <span class="text-slate-500 text-sm">—</span> }
+                                                else
+                                                {
+                                                    <span class="text-slate-500 text-sm">—</span>                                                }
+                                                
                                             </td>
                                             <td class="px-4 py-2">
                                                 <div class="flex justify-end gap-2 flex-wrap">
@@ -651,10 +663,18 @@ else
                                             </td>
                                             <td class="px-4 py-2 text-slate-900">@((e.FechaCompra.HasValue) ? e.FechaCompra.Value.ToString("yyyy-MM-dd") : "-")</td>
                                             <td class="px-4 py-2">
-                                                @if (!string.IsNullOrWhiteSpace(e.AsignadoA))
+                                               @if (!string.IsNullOrWhiteSpace(e.AsignadoNombre) || !string.IsNullOrWhiteSpace(e.AsignadoA))
                                                 {
-                                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-slate-900 text-white break-all">@e.AsignadoA</span>
-                                                }
+<div class="flex flex-col">
+                                                        @if (!string.IsNullOrWhiteSpace(e.AsignadoNombre))
+                                                        {
+                                                            <span class="text-sm font-semibold text-black break-words">@e.AsignadoNombre</span>
+                                                        }
+                                                        @if (!string.IsNullOrWhiteSpace(e.AsignadoA))
+                                                        {
+                                                            <span class="text-xs text-slate-600 break-all">@e.AsignadoA</span>
+                                                        }
+                                                    </div>                                                }
                                                 else { <span class="text-slate-500 text-sm">—</span> }
                                             </td>
                                             <td class="px-4 py-2 text-slate-900 break-words">@e.Notas</td>
@@ -803,8 +823,7 @@ else
         <svg class="w-5 h-5 text-slate-700" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59z"/></svg>
       </button>
     </div>
-    <form asp-action="CrearEquipo" asp-controller="Inventario" method="post">
-      @Html.AntiForgeryToken()
+<form asp-action="CrearEquipo" asp-controller="Inventario" method="post" enctype="multipart/form-data">      @Html.AntiForgeryToken()
       <div class="px-4 py-4 space-y-4">
         <input type="hidden" name="CategoriaId" id="categoriaIdField" />
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -843,6 +862,16 @@ else
             </select>
           </div>
           <div>
+            <label class="block text-sm font-medium text-black">Propio o renta</label>
+            <select name="PropioORenta" class="mt-1 w-full rounded-md border-slate-300 focus:border-[#040d1c] focus:ring-[#040d1c] text-black">
+              <option value="">(Sin definir)</option>
+              @foreach (var opt in Model.PropioORentaOptions)
+              {
+                  <option value="@opt.Value">@opt.Label</option>
+              }
+            </select>
+          </div>
+          <div>
             <label class="block text-sm font-medium text-black">Fecha de compra</label>
             <input type="date" name="FechaCompra" class="mt-1 w-full rounded-md border-slate-300 focus:border-[#040d1c] focus:ring-[#040d1c] text-black" />
           </div>
@@ -859,6 +888,11 @@ else
           <textarea name="Notas" rows="3" class="mt-1 w-full rounded-md border-slate-300 focus:border-[#040d1c] focus:ring-[#040d1c] text-black" placeholder="Detalles, condiciones, etc."></textarea>
         </div>
       </div>
+      <div>
+          <label class="block text-sm font-medium text-black">Acta de entrega</label>
+          <input type="file" name="ActaDeEntrega" accept=".pdf,image/*" class="mt-1 w-full text-sm text-black file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-slate-100 file:text-black hover:file:bg-slate-200" />
+          <p class="mt-1 text-xs text-slate-600">Adjunta el acta en formato PDF o imagen.</p>
+        </div>
       <div class="px-4 py-3 bg-slate-100 flex items-center justify-end gap-2">
         <button type="submit" class="inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-[#040d1c] text-white hover:brightness-110">
           Guardar
@@ -882,8 +916,7 @@ else
         <svg class="w-5 h-5 text-slate-700" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59z"/></svg>
       </button>
     </div>
-    <form asp-action="EditarEquipo" asp-controller="Inventario" method="post" id="detalleEquipoForm">
-      @Html.AntiForgeryToken()
+<form asp-action="EditarEquipo" asp-controller="Inventario" method="post" id="detalleEquipoForm" enctype="multipart/form-data">      @Html.AntiForgeryToken()
       <div class="px-4 py-4 space-y-4">
         <input type="hidden" name="Id" id="detEquipoId" />
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -932,7 +965,16 @@ else
               }
             </select>
           </div>
-
+ <div>
+            <label class="block text-sm font-medium text-black">Propio o renta</label>
+            <select name="PropioORenta" id="detPropioOrenta" class="mt-1 w-full rounded-md border-slate-300 focus:border-[#040d1c] focus:ring-[#040d1c] text-black">
+              <option value="">(Sin definir)</option>
+              @foreach (var opt in Model.PropioORentaOptions)
+              {
+                <option value="@opt.Value">@opt.Label</option>
+              }
+            </select>
+          </div>
           <div class="md:col-span-2">
             <label class="block text-sm font-medium text-black">Asignado a (UPN)</label>
             <div class="relative mt-1">
@@ -953,6 +995,15 @@ else
           <p class="mt-2 text-xs text-slate-600">Este campo admite contenido extenso. Asegúrate de guardar los cambios.</p>
         </div>
       </div>
+       <div>
+          <label class="block text-sm font-medium text-black">Acta de entrega</label>
+          <input type="file" name="ActaDeEntrega" id="detActaDeEntrega" accept=".pdf,image/*" class="mt-1 w-full text-sm text-black file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-slate-100 file:text-black hover:file:bg-slate-200" />
+          <div id="detActaActual" class="mt-2 text-sm text-slate-700 hidden">
+            <a id="detActaLink" class="text-[#040d1c] underline" target="_blank" rel="noopener">Ver acta actual</a>
+            <span id="detActaNombre" class="block text-xs text-slate-500"></span>
+          </div>
+        </div>
+
       <div class="px-4 py-3 bg-slate-100 flex items-center justify-end gap-2">
         <button type="submit" class="inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-[#040d1c] text-white hover:brightness-110">
           Guardar cambios
@@ -1021,6 +1072,8 @@ else
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
+    const actaDownloadUrl = '@Url.Action("Acta","Inventario")';
+
   // Tabs
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -1103,9 +1156,26 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('detEstado').value = e.estado ?? '';
         document.getElementById('detUbicacionId').value = e.ubicacionId || '';
         document.getElementById('detAsignadoA').value = e.asignadoA || '';
+           const propioSelect = document.getElementById('detPropioOrenta');
+        if (propioSelect) propioSelect.value = (e.propioORenta ?? '').toString();
         document.getElementById('detFechaCompra').value = e.fechaCompra ? e.fechaCompra.substring(0,10) : '';
         document.getElementById('detNotas').value = e.notas || '';
-
+const actaInput = document.getElementById('detActaDeEntrega');
+        if (actaInput) actaInput.value = '';
+        const actaContainer = document.getElementById('detActaActual');
+        const actaLink = document.getElementById('detActaLink');
+        const actaNombre = document.getElementById('detActaNombre');
+        if (actaContainer && actaLink && actaNombre) {
+          if (e.tieneActaDeEntrega) {
+            actaContainer.classList.remove('hidden');
+            actaLink.href = `${actaDownloadUrl}?id=${encodeURIComponent(id)}`;
+            actaNombre.textContent = e.actaDeEntregaNombre || '';
+          } else {
+            actaContainer.classList.add('hidden');
+            actaLink.removeAttribute('href');
+            actaNombre.textContent = '';
+          }
+        }
         const modal = document.getElementById('detalleEquipoModal');
         modal.classList.remove('hidden'); modal.classList.add('flex');
       } catch {
