@@ -41,7 +41,11 @@ namespace DigitalTechClientPortal.Controllers
         private const string EquiposEntitySetName = "cr07a_equiposdigitalapps";
         private const string ActaColumnName = "cr07a_actadeentrega";
         private const string PropioORentaAttribute = "cr07a_propioorenta";
-
+ private static readonly List<OptionItemVm> DefaultPropioORentaOptions = new()
+        {
+            new OptionItemVm { Value = 645250000, Label = "Propio" },
+            new OptionItemVm { Value = 645250001, Label = "Renta" }
+        };
         private sealed record UnlicensedUserSummary(string? DisplayName, string? UserPrincipalName, string? Mail, string? Department);
 
         public InventarioController(GraphClientFactory graphFactory, ServiceClient dataverse, ClientesService clientesService, DataverseSoporteService dataverseFiles)
@@ -1325,40 +1329,39 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
         {
             try
             {
-                  var request = new OrganizationRequest("RetrieveAttribute");
-                request["EntityLogicalName"] = EquiposEntityName;
-                request["LogicalName"] = PropioORentaAttribute;
-                request["RetrieveAsIfPublished"] = true;
-
-                var response = await _dataverse.ExecuteAsync(request);
-                if (response.Results.TryGetValue("AttributeMetadata", out var metadata)
-                    && metadata is EnumAttributeMetadata enumMetadata)
-
+                  var request = new RetrieveAttributeRequest
                 {
-                    var options = new List<OptionItemVm>();
-                    foreach (var opt in enumMetadata.OptionSet.Options)
-                    {
-                        if (!opt.Value.HasValue) continue;
-                        var label = opt.Label?.UserLocalizedLabel?.Label
-                                    ?? opt.Label?.LocalizedLabels?.FirstOrDefault()?.Label
-                                    ?? opt.Value.Value.ToString();
-                        options.Add(new OptionItemVm
+                    EntityLogicalName = EquiposEntityName,
+                    LogicalName = PropioORentaAttribute,
+                    RetrieveAsIfPublished = true
+                };
+ if (await _dataverse.ExecuteAsync(request) is RetrieveAttributeResponse response &&
+                    response.AttributeMetadata is EnumAttributeMetadata enumMetadata)
+                {
+                    var options = enumMetadata.OptionSet.Options
+                        .Where(opt => opt.Value.HasValue)
+                        .Select(opt => new OptionItemVm
                         {
-                            Value = opt.Value.Value,
-                            Label = label
-                        });
-                    }
-
-  return options
+                           Value = opt.Value!.Value,
+                            Label = opt.Label?.UserLocalizedLabel?.Label
+                                    ?? opt.Label?.LocalizedLabels?.FirstOrDefault()?.Label
+                                    ?? opt.Value.Value.ToString()
+                        })
                         .OrderBy(o => o.Label, StringComparer.CurrentCultureIgnoreCase)
-                        .ToList();                }
+                        .ToList();
+
+                    if (options.Count > 0)
+                    {
+                        return options;
+                    }
+                }               }
             }
             catch
             {
-                // Ignorar errores: la vista manejará la ausencia de opciones.
+                // Ignorar errores y usar valores por defecto.
             }
 
-            return new List<OptionItemVm>();
+            return DefaultPropioORentaOptions.ToList();
         }
 
         private async Task<List<UserInventoryViewModel>> GetUsuariosTenantAsync(int pageSize = 50)

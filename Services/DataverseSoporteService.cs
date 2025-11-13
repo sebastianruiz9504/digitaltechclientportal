@@ -153,8 +153,9 @@ namespace DigitalTechClientPortal.Services
             var client = _httpClientFactory.CreateClient();
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
             client.DefaultRequestHeaders.TryAddWithoutValidation("If-Match", "*");
-             client.DefaultRequestHeaders.TryAddWithoutValidation("Prefer", "return=minimal");
-            if (!string.IsNullOrWhiteSpace(fileName))
+ client.DefaultRequestHeaders.TryAddWithoutValidation("Prefer", "return=minimal");
+            client.DefaultRequestHeaders.Accept.Clear();
+            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));            if (!string.IsNullOrWhiteSpace(fileName))
             {
                 client.DefaultRequestHeaders.TryAddWithoutValidation("x-ms-file-name", fileName);
             }
@@ -165,8 +166,14 @@ namespace DigitalTechClientPortal.Services
             }
 
             using var streamContent = new StreamContent(content);
-            // Dataverse requiere application/octet-stream para las columnas de archivo.
-            streamContent.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+            var requestContentType = string.IsNullOrWhiteSpace(contentType)
+                ? "application/octet-stream"
+                : contentType;
+            streamContent.Headers.ContentType = new MediaTypeHeaderValue(requestContentType);
+            if (content.CanSeek)
+            {
+                streamContent.Headers.ContentLength = content.Length;
+            }
             if (!string.IsNullOrWhiteSpace(contentType))
             {
                 streamContent.Headers.TryAddWithoutValidation("x-ms-file-content-type", contentType);
