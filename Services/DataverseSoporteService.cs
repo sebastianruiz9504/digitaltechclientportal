@@ -179,7 +179,7 @@ namespace DigitalTechClientPortal.Services
             {
                 streamContent.Headers.TryAddWithoutValidation("x-ms-file-content-type", contentType);
             }
-            using var request = new HttpRequestMessage(new HttpMethod("PATCH"), url)
+            using var request = new HttpRequestMessage(HttpMethod.Put, url)
             {
                 Content = streamContent
             };
@@ -188,8 +188,7 @@ namespace DigitalTechClientPortal.Services
             if (!response.IsSuccessStatusCode)
             {
                 var body = await response.Content.ReadAsStringAsync(cancellationToken);
-                throw new HttpRequestException($"Dataverse PATCH {response.StatusCode}. URL: {url}. Body: {body}");
-            }
+  throw new HttpRequestException($"Dataverse PUT {response.StatusCode}. URL: {url}. Body: {body}");            }
         }
     }
 }
