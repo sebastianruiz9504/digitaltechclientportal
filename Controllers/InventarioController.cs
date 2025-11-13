@@ -1,7 +1,9 @@
 using DigitalTechClientPortal.Models;
 using DigitalTechClientPortal.Services;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.PowerPlatform.Dataverse.Client;
 using Microsoft.Xrm.Sdk;
@@ -36,6 +38,14 @@ namespace DigitalTechClientPortal.Controllers
         private const string EquiposEntitySetName = "cr07a_equiposdigitalapps";
         private const string ActaColumnName = "cr07a_actadeentrega";
         private const string PropioORentaAttribute = "cr07a_propioorenta";
+
+        private static readonly FileExtensionContentTypeProvider FileContentTypeProvider = new();
+        private static readonly HashSet<string> AllowedActaContentTypes = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "application/pdf",
+            "image/jpeg",
+            "image/png"
+        };
 
         private static readonly List<OptionItemVm> DefaultPropioORentaOptions = new()
         {
@@ -263,6 +273,12 @@ namespace DigitalTechClientPortal.Controllers
                 {
                     try
                     {
+                        if (!TryGetActaContentType(model.ActaDeEntrega, out var contentType, out var errorMessage))
+                        {
+                            TempData["InventarioError"] = errorMessage;
+                            return RedirectToAction("Equipos");
+                        }
+
                         await using var stream = model.ActaDeEntrega.OpenReadStream();
                         var fileName = Path.GetFileName(model.ActaDeEntrega.FileName);
                         await _dataverseFiles.UploadFileAsync(
@@ -271,7 +287,7 @@ namespace DigitalTechClientPortal.Controllers
                             ActaColumnName,
                             stream,
                             string.IsNullOrWhiteSpace(fileName) ? $"acta-{newId}.bin" : fileName,
-                            model.ActaDeEntrega.ContentType);
+                            contentType);
                     }
                     catch (Exception ex)
                     {
@@ -429,6 +445,12 @@ namespace DigitalTechClientPortal.Controllers
                 {
                     try
                     {
+                        if (!TryGetActaContentType(model.ActaDeEntrega, out var contentType, out var errorMessage))
+                        {
+                            TempData["InventarioError"] = errorMessage;
+                            return RedirectToAction("Equipos");
+                        }
+
                         await using var stream = model.ActaDeEntrega.OpenReadStream();
                         var fileName = Path.GetFileName(model.ActaDeEntrega.FileName);
                         await _dataverseFiles.UploadFileAsync(
@@ -437,7 +459,7 @@ namespace DigitalTechClientPortal.Controllers
                             ActaColumnName,
                             stream,
                             string.IsNullOrWhiteSpace(fileName) ? $"acta-{model.Id}.bin" : fileName,
-                            model.ActaDeEntrega.ContentType);
+                            contentType);
                     }
                     catch (Exception ex)
                     {
@@ -1609,6 +1631,56 @@ namespace DigitalTechClientPortal.Controllers
             }
 
             return usuarios;
+        }
+
+        private bool TryGetActaContentType(IFormFile file, out string? contentType, out string? errorMessage)
+        {
+            contentType = null;
+            errorMessage = null;
+
+            if (file == null)
+            {
+                errorMessage = "No se recibió el archivo del acta.";
+                return false;
+            }
+
+            string? candidate = null;
+            var fileName = file.FileName;
+
+            if (!string.IsNullOrWhiteSpace(fileName) && FileContentTypeProvider.TryGetContentType(fileName, out var detected))
+            {
+                candidate = detected;
+            }
+
+            if (string.IsNullOrWhiteSpace(candidate))
+            {
+                var fallback = file.ContentType;
+                if (!string.IsNullOrWhiteSpace(fallback) &&
+                    !string.Equals(fallback, "application/octet-stream", StringComparison.OrdinalIgnoreCase))
+                {
+                    candidate = fallback;
+                }
+            }
+
+            if (string.Equals(candidate, "image/jpg", StringComparison.OrdinalIgnoreCase))
+            {
+                candidate = "image/jpeg";
+            }
+
+            if (string.IsNullOrWhiteSpace(candidate))
+            {
+                errorMessage = "No se pudo determinar el tipo del acta. Adjunta un PDF o imagen (JPG/PNG).";
+                return false;
+            }
+
+            if (!AllowedActaContentTypes.Contains(candidate))
+            {
+                errorMessage = "Adjunta el acta de entrega en formato PDF o imagen (JPG/PNG).";
+                return false;
+            }
+
+            contentType = candidate;
+            return true;
         }
 
         private static string? ExtractSkipToken(string nextLink)

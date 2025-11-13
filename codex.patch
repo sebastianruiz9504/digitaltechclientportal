@@ -1,18 +1,19 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/Controllers/InventarioController.cs b/Controllers/InventarioController.cs
-index 5064187c23c2cb658bdf0fc4d8e2947d7a7721b3..466cecd4b65b791d0d7b7b65d5d04277c25e0965 100644
+index 466cecd4b65b791d0d7b7b65d5d04277c25e0965..559318e7b5a2e18f27cf227a6510cb08ba407004 100644
 --- a/Controllers/InventarioController.cs
 +++ b/Controllers/InventarioController.cs
-@@ -1,33 +1,33 @@
+@@ -1,64 +1,74 @@
  using DigitalTechClientPortal.Models;
  using DigitalTechClientPortal.Services;
  using Microsoft.AspNetCore.Authorization;
++using Microsoft.AspNetCore.Http;
  using Microsoft.AspNetCore.Mvc;
++using Microsoft.AspNetCore.StaticFiles;
  using Microsoft.AspNetCore.WebUtilities;
--using Microsoft.Crm.Sdk.Messages;
  using Microsoft.PowerPlatform.Dataverse.Client;
  using Microsoft.Xrm.Sdk;
-+using Microsoft.Xrm.Sdk.Messages;
+ using Microsoft.Xrm.Sdk.Messages;
  using Microsoft.Xrm.Sdk.Metadata;
  using Microsoft.Xrm.Sdk.Query;
  using System;
@@ -38,90 +39,253 @@ index 5064187c23c2cb658bdf0fc4d8e2947d7a7721b3..466cecd4b65b791d0d7b7b65d5d04277
      [Route("[controller]")]
      public class InventarioController : Controller
      {
-@@ -1529,50 +1529,110 @@ namespace DigitalTechClientPortal.Controllers
-                     ? e.FormattedValues[PropioORentaAttribute]
-                     : string.Empty;
-                 var propioValue = e.GetAttributeValue<OptionSetValue>(PropioORentaAttribute)?.Value;
-                 var actaNombre = e.GetAttributeValue<string>(ActaColumnName);
-                 list.Add(new EquipoVm
-                 {
-                     Id = e.Id,
-                     Marca = e.GetAttributeValue<string>("cr07a_marca") ?? string.Empty,
-                     Modelo = e.GetAttributeValue<string>("cr07a_modelo") ?? string.Empty,
-                     Serial = e.GetAttributeValue<string>("cr07a_serial") ?? string.Empty,
-                     Estado = estadoFmt,
-                     FechaCompra = e.GetAttributeValue<DateTime?>("cr07a_fechacompra"),
-                     Ubicacion = ubicFmt,
-                     Notas = e.GetAttributeValue<string>("cr07a_notas") ?? string.Empty,
-                     AsignadoA = e.GetAttributeValue<string>("cr07a_asignadoa") ?? string.Empty,
-                     PropioORentaValue = propioValue,
-                     PropioORentaLabel = string.IsNullOrWhiteSpace(propioFmt) ? null : propioFmt,
-                     TieneActaDeEntrega = !string.IsNullOrWhiteSpace(actaNombre),
-                     ActaDeEntregaNombre = actaNombre
-                 });
-             }
-             await PopulateAsignadoNombresAsync(list);
-             return list;
+         private const int MaxUsuariosSinLicenciaListado = 100;
+         private const string EquiposEntityName = "cr07a_equiposdigitalapp";
+         private const string EquiposEntitySetName = "cr07a_equiposdigitalapps";
+         private const string ActaColumnName = "cr07a_actadeentrega";
+         private const string PropioORentaAttribute = "cr07a_propioorenta";
+ 
++        private static readonly FileExtensionContentTypeProvider FileContentTypeProvider = new();
++        private static readonly HashSet<string> AllowedActaContentTypes = new(StringComparer.OrdinalIgnoreCase)
++        {
++            "application/pdf",
++            "image/jpeg",
++            "image/png"
++        };
++
+         private static readonly List<OptionItemVm> DefaultPropioORentaOptions = new()
+         {
+             new OptionItemVm { Value = 645250000, Label = "Propio" },
+             new OptionItemVm { Value = 645250001, Label = "Renta" }
+         };
+ 
+         private sealed record UnlicensedUserSummary(string? DisplayName, string? UserPrincipalName, string? Mail, string? Department);
+ 
+         private readonly GraphClientFactory _graphFactory;
+         private readonly ServiceClient _dataverse;
+         private readonly ClientesService _clientesService;
+         private readonly DataverseSoporteService _dataverseFiles;
+ 
+         public InventarioController(
+             GraphClientFactory graphFactory,
+             ServiceClient dataverse,
+             ClientesService clientesService,
+             DataverseSoporteService dataverseFiles)
+         {
+             _graphFactory = graphFactory;
+             _dataverse = dataverse;
+             _clientesService = clientesService;
+             _dataverseFiles = dataverseFiles;
          }
  
-+        private async Task<List<UserInventoryViewModel>> GetUsuariosTenantAsync(int pageSize = 50)
+@@ -241,59 +251,65 @@ namespace DigitalTechClientPortal.Controllers
+             if (model.Estado.HasValue)
+             {
+                 var allowed = new[] { 645250000, 645250001, 645250002 };
+                 if (!allowed.Contains(model.Estado.Value))
+                 {
+                     TempData["InventarioError"] = "Estado inválido. Selecciona un valor permitido.";
+                     return RedirectToAction("Equipos");
+                 }
+                 entity["cr07a_estado"] = new OptionSetValue(model.Estado.Value);
+             }
+ 
+             if (model.FechaCompra.HasValue) entity["cr07a_fechacompra"] = model.FechaCompra.Value;
+             if (model.PropioORenta.HasValue)
+             {
+                 entity[PropioORentaAttribute] = new OptionSetValue(model.PropioORenta.Value);
+             }
+ 
+             try
+             {
+                 var newId = _dataverse.Create(entity);
+ 
+                 if (model.ActaDeEntrega != null && model.ActaDeEntrega.Length > 0)
+                 {
+                     try
+                     {
++                        if (!TryGetActaContentType(model.ActaDeEntrega, out var contentType, out var errorMessage))
++                        {
++                            TempData["InventarioError"] = errorMessage;
++                            return RedirectToAction("Equipos");
++                        }
++
+                         await using var stream = model.ActaDeEntrega.OpenReadStream();
+                         var fileName = Path.GetFileName(model.ActaDeEntrega.FileName);
+                         await _dataverseFiles.UploadFileAsync(
+                             EquiposEntitySetName,
+                             newId,
+                             ActaColumnName,
+                             stream,
+                             string.IsNullOrWhiteSpace(fileName) ? $"acta-{newId}.bin" : fileName,
+-                            model.ActaDeEntrega.ContentType);
++                            contentType);
+                     }
+                     catch (Exception ex)
+                     {
+                         TempData["InventarioError"] = "Equipo creado, pero no se pudo cargar el acta de entrega: " + ex.Message;
+                         return RedirectToAction("Equipos");
+                     }
+                 }
+ 
+                 TempData["InventarioOk"] = "Equipo creado exitosamente.";
+             }
+             catch (Exception ex)
+             {
+                 TempData["InventarioError"] = "Error creando el equipo: " + ex.Message;
+             }
+ 
+             return RedirectToAction("Equipos");
+         }
+ 
+         [HttpGet("Equipo")]
+         public async Task<IActionResult> Equipo([FromQuery] Guid id)
+         {
+             if (id == Guid.Empty) return BadRequest("id requerido.");
+ 
+             var entity = await _dataverse.RetrieveAsync(EquiposEntityName, id, new ColumnSet(
+                 "cr07a_categoria",
+@@ -407,59 +423,65 @@ namespace DigitalTechClientPortal.Controllers
+             {
+                 entity["cr07a_fechacompra"] = model.FechaCompra.Value;
+             }
+             else
+             {
+                 entity["cr07a_fechacompra"] = null;
+             }
+ 
+             if (model.PropioORenta.HasValue)
+             {
+                 entity[PropioORentaAttribute] = new OptionSetValue(model.PropioORenta.Value);
+             }
+             else
+             {
+                 entity[PropioORentaAttribute] = null;
+             }
+ 
+             try
+             {
+                 _dataverse.Update(entity);
+ 
+                 if (model.ActaDeEntrega != null && model.ActaDeEntrega.Length > 0)
+                 {
+                     try
+                     {
++                        if (!TryGetActaContentType(model.ActaDeEntrega, out var contentType, out var errorMessage))
++                        {
++                            TempData["InventarioError"] = errorMessage;
++                            return RedirectToAction("Equipos");
++                        }
++
+                         await using var stream = model.ActaDeEntrega.OpenReadStream();
+                         var fileName = Path.GetFileName(model.ActaDeEntrega.FileName);
+                         await _dataverseFiles.UploadFileAsync(
+                             EquiposEntitySetName,
+                             model.Id,
+                             ActaColumnName,
+                             stream,
+                             string.IsNullOrWhiteSpace(fileName) ? $"acta-{model.Id}.bin" : fileName,
+-                            model.ActaDeEntrega.ContentType);
++                            contentType);
+                     }
+                     catch (Exception ex)
+                     {
+                         TempData["InventarioError"] = "Se actualizó el equipo, pero no se pudo cargar el acta de entrega: " + ex.Message;
+                         return RedirectToAction("Equipos");
+                     }
+                 }
+ 
+                 TempData["InventarioOk"] = "Equipo actualizado.";
+             }
+             catch (Exception ex)
+             {
+                 TempData["InventarioError"] = "Error actualizando el equipo: " + ex.Message;
+             }
+ 
+             return RedirectToAction("Equipos");
+         }
+ 
+         [HttpPost("EliminarEquipo")]
+         [ValidateAntiForgeryToken]
+         public IActionResult EliminarEquipo([FromForm] Guid id)
+         {
+             if (id == Guid.Empty)
+             {
+                 TempData["InventarioError"] = "Id de equipo inválido.";
+@@ -1589,50 +1611,100 @@ namespace DigitalTechClientPortal.Controllers
+             var raw = await response.Content.ReadAsStringAsync();
+             using var document = JsonDocument.Parse(raw);
+ 
+             if (!document.RootElement.TryGetProperty("value", out var valueElement) || valueElement.ValueKind != JsonValueKind.Array)
+             {
+                 return usuarios;
+             }
+ 
+             foreach (var user in valueElement.EnumerateArray())
+             {
+                 usuarios.Add(new UserInventoryViewModel
+                 {
+                     Id = user.GetPropertyOrDefault("id"),
+                     DisplayName = user.GetPropertyOrDefault("displayName"),
+                     UserPrincipalName = user.GetPropertyOrDefault("userPrincipalName"),
+                     Mail = user.GetPropertyOrDefault("mail"),
+                     JobTitle = user.GetPropertyOrDefault("jobTitle"),
+                     Department = user.GetPropertyOrDefault("department"),
+                     MobilePhone = user.GetPropertyOrDefault("mobilePhone")
+                 });
+             }
+ 
+             return usuarios;
+         }
+ 
++        private bool TryGetActaContentType(IFormFile file, out string? contentType, out string? errorMessage)
 +        {
-+            if (pageSize <= 0)
++            contentType = null;
++            errorMessage = null;
++
++            if (file == null)
 +            {
-+                pageSize = 50;
++                errorMessage = "No se recibió el archivo del acta.";
++                return false;
 +            }
 +
-+            if (pageSize > 999)
++            string? candidate = null;
++            var fileName = file.FileName;
++
++            if (!string.IsNullOrWhiteSpace(fileName) && FileContentTypeProvider.TryGetContentType(fileName, out var detected))
 +            {
-+                pageSize = 999;
++                candidate = detected;
 +            }
 +
-+            var usuarios = new List<UserInventoryViewModel>();
-+
-+            HttpClient httpClient;
-+            try
++            if (string.IsNullOrWhiteSpace(candidate))
 +            {
-+                httpClient = await _graphFactory.CreateClientAsync();
-+            }
-+            catch (InvalidOperationException)
-+            {
-+                return usuarios;
-+            }
-+
-+            var url = "https://graph.microsoft.com/v1.0/users" +
-+                "?$select=id,displayName,userPrincipalName,mail,jobTitle,department,mobilePhone" +
-+                $"&$top={pageSize}" +
-+                "&$orderby=displayName";
-+
-+            using var response = await httpClient.GetAsync(url);
-+            if (!response.IsSuccessStatusCode)
-+            {
-+                return usuarios;
-+            }
-+
-+            var raw = await response.Content.ReadAsStringAsync();
-+            using var document = JsonDocument.Parse(raw);
-+
-+            if (!document.RootElement.TryGetProperty("value", out var valueElement) || valueElement.ValueKind != JsonValueKind.Array)
-+            {
-+                return usuarios;
-+            }
-+
-+            foreach (var user in valueElement.EnumerateArray())
-+            {
-+                usuarios.Add(new UserInventoryViewModel
++                var fallback = file.ContentType;
++                if (!string.IsNullOrWhiteSpace(fallback) &&
++                    !string.Equals(fallback, "application/octet-stream", StringComparison.OrdinalIgnoreCase))
 +                {
-+                    Id = user.GetPropertyOrDefault("id"),
-+                    DisplayName = user.GetPropertyOrDefault("displayName"),
-+                    UserPrincipalName = user.GetPropertyOrDefault("userPrincipalName"),
-+                    Mail = user.GetPropertyOrDefault("mail"),
-+                    JobTitle = user.GetPropertyOrDefault("jobTitle"),
-+                    Department = user.GetPropertyOrDefault("department"),
-+                    MobilePhone = user.GetPropertyOrDefault("mobilePhone")
-+                });
++                    candidate = fallback;
++                }
 +            }
 +
-+            return usuarios;
++            if (string.Equals(candidate, "image/jpg", StringComparison.OrdinalIgnoreCase))
++            {
++                candidate = "image/jpeg";
++            }
++
++            if (string.IsNullOrWhiteSpace(candidate))
++            {
++                errorMessage = "No se pudo determinar el tipo del acta. Adjunta un PDF o imagen (JPG/PNG).";
++                return false;
++            }
++
++            if (!AllowedActaContentTypes.Contains(candidate))
++            {
++                errorMessage = "Adjunta el acta de entrega en formato PDF o imagen (JPG/PNG).";
++                return false;
++            }
++
++            contentType = candidate;
++            return true;
 +        }
 +
          private static string? ExtractSkipToken(string nextLink)
