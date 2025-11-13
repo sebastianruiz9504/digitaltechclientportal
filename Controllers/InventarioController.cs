@@ -3,9 +3,9 @@ using DigitalTechClientPortal.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
-using Microsoft.Crm.Sdk.Messages;
 using Microsoft.PowerPlatform.Dataverse.Client;
 using Microsoft.Xrm.Sdk;
+using Microsoft.Xrm.Sdk.Messages;
 using Microsoft.Xrm.Sdk.Metadata;
 using Microsoft.Xrm.Sdk.Query;
 using System;
@@ -1549,6 +1549,66 @@ namespace DigitalTechClientPortal.Controllers
             }
             await PopulateAsignadoNombresAsync(list);
             return list;
+        }
+
+        private async Task<List<UserInventoryViewModel>> GetUsuariosTenantAsync(int pageSize = 50)
+        {
+            if (pageSize <= 0)
+            {
+                pageSize = 50;
+            }
+
+            if (pageSize > 999)
+            {
+                pageSize = 999;
+            }
+
+            var usuarios = new List<UserInventoryViewModel>();
+
+            HttpClient httpClient;
+            try
+            {
+                httpClient = await _graphFactory.CreateClientAsync();
+            }
+            catch (InvalidOperationException)
+            {
+                return usuarios;
+            }
+
+            var url = "https://graph.microsoft.com/v1.0/users" +
+                "?$select=id,displayName,userPrincipalName,mail,jobTitle,department,mobilePhone" +
+                $"&$top={pageSize}" +
+                "&$orderby=displayName";
+
+            using var response = await httpClient.GetAsync(url);
+            if (!response.IsSuccessStatusCode)
+            {
+                return usuarios;
+            }
+
+            var raw = await response.Content.ReadAsStringAsync();
+            using var document = JsonDocument.Parse(raw);
+
+            if (!document.RootElement.TryGetProperty("value", out var valueElement) || valueElement.ValueKind != JsonValueKind.Array)
+            {
+                return usuarios;
+            }
+
+            foreach (var user in valueElement.EnumerateArray())
+            {
+                usuarios.Add(new UserInventoryViewModel
+                {
+                    Id = user.GetPropertyOrDefault("id"),
+                    DisplayName = user.GetPropertyOrDefault("displayName"),
+                    UserPrincipalName = user.GetPropertyOrDefault("userPrincipalName"),
+                    Mail = user.GetPropertyOrDefault("mail"),
+                    JobTitle = user.GetPropertyOrDefault("jobTitle"),
+                    Department = user.GetPropertyOrDefault("department"),
+                    MobilePhone = user.GetPropertyOrDefault("mobilePhone")
+                });
+            }
+
+            return usuarios;
         }
 
         private static string? ExtractSkipToken(string nextLink)
