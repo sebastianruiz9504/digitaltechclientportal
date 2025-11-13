@@ -51,6 +51,10 @@
               "target": "Package",
               "version": "[2.3.0, )"
             },
+            "Microsoft.CrmSdk.CoreAssemblies": {
+              "target": "Package",
+              "version": "[9.0.2.60, )"
+            },
             "Microsoft.Extensions.Http": {
               "target": "Package",
               "version": "[9.0.9, )"
