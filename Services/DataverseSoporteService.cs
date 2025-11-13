@@ -153,9 +153,10 @@ namespace DigitalTechClientPortal.Services
             var client = _httpClientFactory.CreateClient();
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
             client.DefaultRequestHeaders.TryAddWithoutValidation("If-Match", "*");
- client.DefaultRequestHeaders.TryAddWithoutValidation("Prefer", "return=minimal");
+            client.DefaultRequestHeaders.TryAddWithoutValidation("Prefer", "return=minimal");
             client.DefaultRequestHeaders.Accept.Clear();
-            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));            if (!string.IsNullOrWhiteSpace(fileName))
+           client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("*/*"));
+            if (!string.IsNullOrWhiteSpace(fileName))
             {
                 client.DefaultRequestHeaders.TryAddWithoutValidation("x-ms-file-name", fileName);
             }
