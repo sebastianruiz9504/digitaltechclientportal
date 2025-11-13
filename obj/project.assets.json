@@ -338,30 +338,6 @@
           }
         }
       },
-      "Microsoft.CrmSdk.CoreAssemblies/9.0.2.60": {
-        "type": "package",
-        "dependencies": {
-          "System.ServiceModel.Http": "4.10.3",
-          "System.ServiceModel.Primitives": "4.10.3",
-          "System.Text.Json": "8.0.5"
-        },
-        "compile": {
-          "lib/net462/Microsoft.Crm.Sdk.Proxy.dll": {
-            "related": ".xml"
-          },
-          "lib/net462/Microsoft.Xrm.Sdk.dll": {
-            "related": ".xml"
-          }
-        },
-        "runtime": {
-          "lib/net462/Microsoft.Crm.Sdk.Proxy.dll": {
-            "related": ".xml"
-          },
-          "lib/net462/Microsoft.Xrm.Sdk.dll": {
-            "related": ".xml"
-          }
-        }
-      },
       "Microsoft.Extensions.Caching.Abstractions/8.0.0": {
         "type": "package",
         "dependencies": {
@@ -2746,25 +2722,6 @@
         "microsoft.bcl.asyncinterfaces.8.0.0.nupkg.sha512",
         "microsoft.bcl.asyncinterfaces.nuspec",
         "useSharedDesignerContext.txt"
-      ]
-    },
-    "Microsoft.CrmSdk.CoreAssemblies/9.0.2.60": {
-      "sha512": "vKr2PQPnKqIsI1NEKzianQDCMzf25KsksOaVf+RS2rwk7nQ8biB9yVm+R5/BlQzfUG/vww+uznSRH47nNam8zw==",
-      "type": "package",
-      "path": "microsoft.crmsdk.coreassemblies/9.0.2.60",
-      "files": [
-        ".nupkg.metadata",
-        ".signature.p7s",
-        "images/Dataverse.128x128.png",
-        "lib/LicenseTerms.docx",
-        "lib/Other Redistributable.txt",
-        "lib/Third Party Notices for Dynamics 365 SDK.docx",
-        "lib/net462/Microsoft.Crm.Sdk.Proxy.dll",
-        "lib/net462/Microsoft.Crm.Sdk.Proxy.xml",
-        "lib/net462/Microsoft.Xrm.Sdk.dll",
-        "lib/net462/Microsoft.Xrm.Sdk.xml",
-        "microsoft.crmsdk.coreassemblies.9.0.2.60.nupkg.sha512",
-        "microsoft.crmsdk.coreassemblies.nuspec"
       ]
     },
     "Microsoft.Extensions.Caching.Abstractions/8.0.0": {
@@ -7261,7 +7218,6 @@
     "net8.0": [
       "Azure.Identity >= 1.16.0",
       "Microsoft.AspNetCore.Authentication.Cookies >= 2.3.0",
-      "Microsoft.CrmSdk.CoreAssemblies >= 9.0.2.60",
       "Microsoft.Extensions.Http >= 9.0.9",
       "Microsoft.Graph >= 5.*",
       "Microsoft.Identity.Client >= 4.76.0",
@@ -7321,10 +7277,6 @@
             "target": "Package",
             "version": "[2.3.0, )"
           },
-          "Microsoft.CrmSdk.CoreAssemblies": {
-            "target": "Package",
-            "version": "[9.0.2.60, )"
-          },
           "Microsoft.Extensions.Http": {
             "target": "Package",
             "version": "[9.0.9, )"
@@ -7376,17 +7328,5 @@
         "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.415/PortableRuntimeIdentifierGraph.json"
       }
     }
-  },
-  "logs": [
-    {
-      "code": "NU1701",
-      "level": "Warning",
-      "warningLevel": 1,
-      "message": "Package 'Microsoft.CrmSdk.CoreAssemblies 9.0.2.60' was restored using '.NETFramework,Version=v4.6.1, .NETFramework,Version=v4.6.2, .NETFramework,Version=v4.7, .NETFramework,Version=v4.7.1, .NETFramework,Version=v4.7.2, .NETFramework,Version=v4.8, .NETFramework,Version=v4.8.1' instead of the project target framework 'net8.0'. This package may not be fully compatible with your project.",
-      "libraryId": "Microsoft.CrmSdk.CoreAssemblies",
-      "targetGraphs": [
-        "net8.0"
-      ]
-    }
-  ]
+  }
 }

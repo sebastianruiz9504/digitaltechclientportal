@@ -1325,15 +1325,15 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
         {
             try
             {
-                var request = new RetrieveAttributeRequest
-                {
-                    EntityLogicalName = EquiposEntityName,
-                    LogicalName = PropioORentaAttribute,
-                    RetrieveAsIfPublished = true
-                };
+                 var request = new OrganizationRequest("RetrieveAttribute");
+                request["EntityLogicalName"] = EquiposEntityName;
+                request["LogicalName"] = PropioORentaAttribute;
+                request["RetrieveAsIfPublished"] = true;
 
-                var response = (RetrieveAttributeResponse)await _dataverse.ExecuteAsync(request);
-                if (response.AttributeMetadata is EnumAttributeMetadata enumMetadata)
+                var response = await _dataverse.ExecuteAsync(request);
+                if (response.Results.TryGetValue("AttributeMetadata", out var metadata)
+                    && metadata is EnumAttributeMetadata enumMetadata)
+
                 {
                     var options = new List<OptionItemVm>();
                     foreach (var opt in enumMetadata.OptionSet.Options)
