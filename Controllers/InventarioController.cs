@@ -2,25 +2,25 @@ using DigitalTechClientPortal.Models;
 using DigitalTechClientPortal.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using System.Text.Json;
+using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Crm.Sdk.Messages;
+using Microsoft.PowerPlatform.Dataverse.Client;
+using Microsoft.Xrm.Sdk;
+using Microsoft.Xrm.Sdk.Metadata;
+using Microsoft.Xrm.Sdk.Query;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
-using Microsoft.PowerPlatform.Dataverse.Client;
-using Microsoft.Xrm.Sdk;
-using Microsoft.Crm.Sdk.Messages;
-using Microsoft.Xrm.Sdk.Metadata;
-using Microsoft.Xrm.Sdk.Query;
-using System.Collections.Generic;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace DigitalTechClientPortal.Controllers
 {
-    // DTO simple para reportes (POCO con setters públicos — evita reflexión)
     public sealed class ReportItem
     {
         public string Label { get; set; } = string.Empty;
@@ -31,24 +31,30 @@ namespace DigitalTechClientPortal.Controllers
     [Route("[controller]")]
     public class InventarioController : Controller
     {
-        private readonly GraphClientFactory _graphFactory;
-        private readonly ServiceClient _dataverse;
-        private readonly ClientesService _clientesService;
-        private readonly DataverseSoporteService _dataverseFiles;
-
         private const int MaxUsuariosSinLicenciaListado = 100;
         private const string EquiposEntityName = "cr07a_equiposdigitalapp";
         private const string EquiposEntitySetName = "cr07a_equiposdigitalapps";
         private const string ActaColumnName = "cr07a_actadeentrega";
         private const string PropioORentaAttribute = "cr07a_propioorenta";
- private static readonly List<OptionItemVm> DefaultPropioORentaOptions = new()
+
+        private static readonly List<OptionItemVm> DefaultPropioORentaOptions = new()
         {
             new OptionItemVm { Value = 645250000, Label = "Propio" },
             new OptionItemVm { Value = 645250001, Label = "Renta" }
         };
+
         private sealed record UnlicensedUserSummary(string? DisplayName, string? UserPrincipalName, string? Mail, string? Department);
 
-        public InventarioController(GraphClientFactory graphFactory, ServiceClient dataverse, ClientesService clientesService, DataverseSoporteService dataverseFiles)
+        private readonly GraphClientFactory _graphFactory;
+        private readonly ServiceClient _dataverse;
+        private readonly ClientesService _clientesService;
+        private readonly DataverseSoporteService _dataverseFiles;
+
+        public InventarioController(
+            GraphClientFactory graphFactory,
+            ServiceClient dataverse,
+            ClientesService clientesService,
+            DataverseSoporteService dataverseFiles)
         {
             _graphFactory = graphFactory;
             _dataverse = dataverse;
@@ -56,7 +62,6 @@ namespace DigitalTechClientPortal.Controllers
             _dataverseFiles = dataverseFiles;
         }
 
-        // Usuarios (vista independiente)
         [HttpGet("Usuarios")]
         public async Task<IActionResult> Usuarios([FromQuery] int pageSize = 20, [FromQuery] string? skiptoken = null, [FromQuery] string? term = null)
         {
@@ -64,8 +69,14 @@ namespace DigitalTechClientPortal.Controllers
             if (pageSize > 100) pageSize = 100;
 
             HttpClient client;
-            try { client = await _graphFactory.CreateClientAsync(); }
-            catch (InvalidOperationException ex) { return Redirect("/Login/Index?reason=" + Uri.EscapeDataString(ex.Message)); }
+            try
+            {
+                client = await _graphFactory.CreateClientAsync();
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Redirect("/Login/Index?reason=" + Uri.EscapeDataString(ex.Message));
+            }
 
             string url;
             if (string.IsNullOrWhiteSpace(term))
@@ -97,7 +108,6 @@ namespace DigitalTechClientPortal.Controllers
 
             using var doc = JsonDocument.Parse(raw);
             var users = new List<UserInventoryViewModel>();
-
             if (doc.RootElement.TryGetProperty("value", out var arr) && arr.ValueKind == JsonValueKind.Array)
             {
                 foreach (var u in arr.EnumerateArray())
@@ -129,7 +139,6 @@ namespace DigitalTechClientPortal.Controllers
             return View("UsuariosPaged", model);
         }
 
-        // Inventario unificado
         [HttpGet("Equipos")]
         public async Task<IActionResult> Equipos([FromQuery] string? upn = null, [FromQuery] Guid? ubicacionId = null)
         {
@@ -139,29 +148,40 @@ namespace DigitalTechClientPortal.Controllers
                 ?? User.Identity?.Name;
 
             if (string.IsNullOrWhiteSpace(correo))
+            {
                 return Unauthorized("No se pudo determinar el correo del usuario autenticado.");
+            }
 
             var clienteId = await _clientesService.GetClienteIdByEmailAsync(correo);
             if (clienteId == Guid.Empty)
+            {
                 return Unauthorized("Cliente no encontrado en Dataverse para el correo autenticado.");
+            }
 
             var categorias = await GetCategoriasAsync();
             var equiposPorCategoria = new Dictionary<Guid, List<EquipoVm>>();
             foreach (var cat in categorias)
+            {
                 equiposPorCategoria[cat.Id] = await GetEquiposByClienteAndCategoriaAsync(clienteId, cat.Id);
+            }
 
             var usuarios = await GetUsuariosTenantAsync(pageSize: 50);
 
             var equiposUsuario = new List<EquipoVm>();
             if (!string.IsNullOrWhiteSpace(upn))
+            {
                 equiposUsuario = await GetEquiposPorUsuarioUpnAsync(upn);
+            }
 
             var ubicaciones = await GetUbicacionesAsync(clienteId);
 
             var equiposPorUbicacion = new List<EquipoVm>();
             if (ubicacionId.HasValue && ubicacionId.Value != Guid.Empty)
+            {
                 equiposPorUbicacion = await GetEquiposPorUbicacionAsync(ubicacionId.Value);
-var propioOrentaOptions = await GetPropioORentaOptionsAsync();
+            }
+
+            var propioOrentaOptions = await GetPropioORentaOptionsAsync();
 
             var model = new InventarioVm
             {
@@ -173,14 +193,13 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
                 EquiposDelUsuarioSeleccionado = equiposUsuario,
                 Ubicaciones = ubicaciones,
                 UbicacionSeleccionadaId = ubicacionId,
-                 EquiposPorUbicacionSeleccionada = equiposPorUbicacion,
+                EquiposPorUbicacionSeleccionada = equiposPorUbicacion,
                 PropioORentaOptions = propioOrentaOptions
             };
 
             return View("Inventario", model);
         }
 
-        // Crear equipo
         [HttpPost("CrearEquipo")]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> CrearEquipo(CrearEquipoVm model)
@@ -203,16 +222,21 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
                 return RedirectToAction("Equipos");
             }
 
-           var entity = new Entity(EquiposEntityName);
-            entity["cr07a_cliente"] = new EntityReference("cr07a_cliente", clienteId);
-            entity["cr07a_categoria"] = new EntityReference("cr07a_categoriasdigitalapp", model.CategoriaId);
+            var entity = new Entity(EquiposEntityName)
+            {
+                ["cr07a_cliente"] = new EntityReference("cr07a_cliente", clienteId),
+                ["cr07a_categoria"] = new EntityReference("cr07a_categoriasdigitalapp", model.CategoriaId)
+            };
+
             if (!string.IsNullOrWhiteSpace(model.Marca)) entity["cr07a_marca"] = model.Marca;
             if (!string.IsNullOrWhiteSpace(model.Modelo)) entity["cr07a_modelo"] = model.Modelo;
             if (!string.IsNullOrWhiteSpace(model.Serial)) entity["cr07a_serial"] = model.Serial;
             if (!string.IsNullOrWhiteSpace(model.Notas)) entity["cr07a_notas"] = model.Notas;
             if (!string.IsNullOrWhiteSpace(model.AsignadoA)) entity["cr07a_asignadoa"] = model.AsignadoA;
             if (model.UbicacionId.HasValue && model.UbicacionId.Value != Guid.Empty)
+            {
                 entity["cr07a_ubicacionid"] = new EntityReference("cr07a_ubicacionesdigitalapp", model.UbicacionId.Value);
+            }
 
             if (model.Estado.HasValue)
             {
@@ -226,14 +250,14 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
             }
 
             if (model.FechaCompra.HasValue) entity["cr07a_fechacompra"] = model.FechaCompra.Value;
- if (model.PropioORenta.HasValue)
+            if (model.PropioORenta.HasValue)
             {
                 entity[PropioORentaAttribute] = new OptionSetValue(model.PropioORenta.Value);
             }
 
             try
             {
-                 var newId = _dataverse.Create(entity);
+                var newId = _dataverse.Create(entity);
 
                 if (model.ActaDeEntrega != null && model.ActaDeEntrega.Length > 0)
                 {
@@ -255,6 +279,7 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
                         return RedirectToAction("Equipos");
                     }
                 }
+
                 TempData["InventarioOk"] = "Equipo creado exitosamente.";
             }
             catch (Exception ex)
@@ -265,14 +290,12 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
             return RedirectToAction("Equipos");
         }
 
-        // EDITAR EQUIPO
-        // GET para cargar datos del equipo (AJAX)
         [HttpGet("Equipo")]
         public async Task<IActionResult> Equipo([FromQuery] Guid id)
         {
             if (id == Guid.Empty) return BadRequest("id requerido.");
 
-              var entity = await _dataverse.RetrieveAsync(EquiposEntityName, id, new ColumnSet(
+            var entity = await _dataverse.RetrieveAsync(EquiposEntityName, id, new ColumnSet(
                 "cr07a_categoria",
                 "cr07a_marca",
                 "cr07a_modelo",
@@ -281,28 +304,28 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
                 "cr07a_fechacompra",
                 "cr07a_notas",
                 "cr07a_asignadoa",
-               "cr07a_ubicacionid",
+                "cr07a_ubicacionid",
                 PropioORentaAttribute,
-                ActaColumnName
-            ));
+                ActaColumnName));
 
             var categoriaRef = entity.GetAttributeValue<EntityReference>("cr07a_categoria");
             var ubicRef = entity.GetAttributeValue<EntityReference>("cr07a_ubicacionid");
             var estadoVal = entity.GetAttributeValue<OptionSetValue>("cr07a_estado");
-  var propioOrentaVal = entity.GetAttributeValue<OptionSetValue>(PropioORentaAttribute);
+            var propioOrentaVal = entity.GetAttributeValue<OptionSetValue>(PropioORentaAttribute);
             var actaNombre = entity.GetAttributeValue<string>(ActaColumnName);
+
             var vm = new EditEquipoVm
             {
                 Id = id,
                 CategoriaId = categoriaRef?.Id ?? Guid.Empty,
-                Marca = entity.GetAttributeValue<string>("cr07a_marca") ?? "",
-                Modelo = entity.GetAttributeValue<string>("cr07a_modelo") ?? "",
-                Serial = entity.GetAttributeValue<string>("cr07a_serial") ?? "",
+                Marca = entity.GetAttributeValue<string>("cr07a_marca") ?? string.Empty,
+                Modelo = entity.GetAttributeValue<string>("cr07a_modelo") ?? string.Empty,
+                Serial = entity.GetAttributeValue<string>("cr07a_serial") ?? string.Empty,
                 Estado = estadoVal?.Value,
                 FechaCompra = entity.GetAttributeValue<DateTime?>("cr07a_fechacompra"),
-                Notas = entity.GetAttributeValue<string>("cr07a_notas") ?? "",
-                AsignadoA = entity.GetAttributeValue<string>("cr07a_asignadoa") ?? "",
-                  UbicacionId = ubicRef?.Id,
+                Notas = entity.GetAttributeValue<string>("cr07a_notas") ?? string.Empty,
+                AsignadoA = entity.GetAttributeValue<string>("cr07a_asignadoa") ?? string.Empty,
+                UbicacionId = ubicRef?.Id,
                 PropioORenta = propioOrentaVal?.Value,
                 ActaDeEntregaNombre = actaNombre,
                 TieneActaDeEntrega = !string.IsNullOrWhiteSpace(actaNombre)
@@ -310,7 +333,8 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
 
             return Json(vm);
         }
-[HttpGet("Acta")]
+
+        [HttpGet("Acta")]
         public async Task<IActionResult> Acta([FromQuery] Guid id)
         {
             if (id == Guid.Empty) return BadRequest("Id requerido.");
@@ -327,7 +351,6 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
             }
         }
 
-        // POST actualizar equipo
         [HttpPost("EditarEquipo")]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> EditarEquipo(EditEquipoVm model)
@@ -338,22 +361,32 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
                 return RedirectToAction("Equipos");
             }
 
- var entity = new Entity(EquiposEntityName, model.Id);   
-          // Campos actualizables
-            entity["cr07a_categoria"] = new EntityReference("cr07a_categoriasdigitalapp", model.CategoriaId);
-            entity["cr07a_marca"] = model.Marca ?? "";
-            entity["cr07a_modelo"] = model.Modelo ?? "";
-            entity["cr07a_serial"] = model.Serial ?? "";
-            entity["cr07a_notas"] = model.Notas ?? "";
+            var entity = new Entity(EquiposEntityName, model.Id)
+            {
+                ["cr07a_categoria"] = new EntityReference("cr07a_categoriasdigitalapp", model.CategoriaId),
+                ["cr07a_marca"] = model.Marca ?? string.Empty,
+                ["cr07a_modelo"] = model.Modelo ?? string.Empty,
+                ["cr07a_serial"] = model.Serial ?? string.Empty,
+                ["cr07a_notas"] = model.Notas ?? string.Empty
+            };
+
             if (!string.IsNullOrWhiteSpace(model.AsignadoA))
+            {
                 entity["cr07a_asignadoa"] = model.AsignadoA;
+            }
             else
+            {
                 entity["cr07a_asignadoa"] = null;
+            }
 
             if (model.UbicacionId.HasValue && model.UbicacionId.Value != Guid.Empty)
+            {
                 entity["cr07a_ubicacionid"] = new EntityReference("cr07a_ubicacionesdigitalapp", model.UbicacionId.Value);
+            }
             else
+            {
                 entity["cr07a_ubicacionid"] = null;
+            }
 
             if (model.Estado.HasValue)
             {
@@ -371,18 +404,27 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
             }
 
             if (model.FechaCompra.HasValue)
+            {
                 entity["cr07a_fechacompra"] = model.FechaCompra.Value;
+            }
             else
+            {
                 entity["cr07a_fechacompra"] = null;
- if (model.PropioORenta.HasValue)
+            }
+
+            if (model.PropioORenta.HasValue)
+            {
                 entity[PropioORentaAttribute] = new OptionSetValue(model.PropioORenta.Value);
+            }
             else
+            {
                 entity[PropioORentaAttribute] = null;
+            }
 
             try
             {
                 _dataverse.Update(entity);
-                
+
                 if (model.ActaDeEntrega != null && model.ActaDeEntrega.Length > 0)
                 {
                     try
@@ -414,7 +456,6 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
             return RedirectToAction("Equipos");
         }
 
-        // DELETE equipo
         [HttpPost("EliminarEquipo")]
         [ValidateAntiForgeryToken]
         public IActionResult EliminarEquipo([FromForm] Guid id)
@@ -427,7 +468,7 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
 
             try
             {
-                _dataverse.Delete("cr07a_equiposdigitalapp", id);
+                _dataverse.Delete(EquiposEntityName, id);
                 TempData["InventarioOk"] = "Equipo eliminado.";
             }
             catch (Exception ex)
@@ -438,7 +479,6 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
             return RedirectToAction("Equipos");
         }
 
-        // UBICACIONES
         [HttpPost("CrearUbicacion")]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> CrearUbicacion(string nombre, string? descripcion)
@@ -461,10 +501,16 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
                 return RedirectToAction("Equipos");
             }
 
-            var entity = new Entity("cr07a_ubicacionesdigitalapp");
-            entity["cr07a_name"] = nombre;
-            if (!string.IsNullOrWhiteSpace(descripcion)) entity["cr07a_descripcion"] = descripcion;
-            entity["cr07a_cliente"] = new EntityReference("cr07a_cliente", clienteId);
+            var entity = new Entity("cr07a_ubicacionesdigitalapp")
+            {
+                ["cr07a_name"] = nombre,
+                ["cr07a_cliente"] = new EntityReference("cr07a_cliente", clienteId)
+            };
+
+            if (!string.IsNullOrWhiteSpace(descripcion))
+            {
+                entity["cr07a_descripcion"] = descripcion;
+            }
 
             try
             {
@@ -479,7 +525,6 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
             return RedirectToAction("Equipos");
         }
 
-        // GET cargar ubicación por id (AJAX)
         [HttpGet("Ubicacion")]
         public async Task<IActionResult> Ubicacion([FromQuery] Guid id)
         {
@@ -489,9 +534,9 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
 
             return Json(new
             {
-                id = id,
-                nombre = entity.GetAttributeValue<string>("cr07a_name") ?? "",
-                descripcion = entity.GetAttributeValue<string>("cr07a_descripcion") ?? ""
+                id,
+                nombre = entity.GetAttributeValue<string>("cr07a_name") ?? string.Empty,
+                descripcion = entity.GetAttributeValue<string>("cr07a_descripcion") ?? string.Empty
             });
         }
 
@@ -505,9 +550,11 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
                 return RedirectToAction("Equipos");
             }
 
-            var entity = new Entity("cr07a_ubicacionesdigitalapp", id);
-            entity["cr07a_name"] = nombre;
-            entity["cr07a_descripcion"] = descripcion ?? "";
+            var entity = new Entity("cr07a_ubicacionesdigitalapp", id)
+            {
+                ["cr07a_name"] = nombre,
+                ["cr07a_descripcion"] = descripcion ?? string.Empty
+            };
 
             try
             {
@@ -539,31 +586,40 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
             }
             catch (Exception ex)
             {
-            TempData["InventarioError"] = "Error eliminando la ubicación: " + ex.Message;
+                TempData["InventarioError"] = "Error eliminando la ubicación: " + ex.Message;
             }
 
             return RedirectToAction("Equipos");
         }
 
-        // Navegación por ubicación
         [HttpGet("EquiposPorUbicacion")]
         public IActionResult EquiposPorUbicacion([FromQuery] Guid ubicacionId)
         {
             if (ubicacionId == Guid.Empty)
+            {
                 return BadRequest("ubicacionId requerido.");
+            }
+
             return RedirectToAction("Equipos", new { ubicacionId });
         }
 
-        // Buscar usuarios (autocompletar UPN)
         [HttpGet("BuscarUsuarios")]
         public async Task<IActionResult> BuscarUsuarios([FromQuery] string term, [FromQuery] int top = 10)
         {
             if (string.IsNullOrWhiteSpace(term))
+            {
                 return Json(new { value = Array.Empty<object>() });
+            }
 
             HttpClient client;
-            try { client = await _graphFactory.CreateClientAsync(); }
-            catch (InvalidOperationException ex) { return StatusCode(401, new { error = ex.Message }); }
+            try
+            {
+                client = await _graphFactory.CreateClientAsync();
+            }
+            catch (InvalidOperationException ex)
+            {
+                return StatusCode(401, new { error = ex.Message });
+            }
 
             var safe = term.Replace("'", "''");
             var url = $"https://graph.microsoft.com/v1.0/users?$filter=startswith(displayName,'{safe}') or startswith(userPrincipalName,'{safe}')&$select=id,displayName,userPrincipalName,mail&$top={top}";
@@ -593,12 +649,13 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
             return Json(new { value = list });
         }
 
-        // Modal detalle usuario
         [HttpGet("UsuarioDetalle")]
         public async Task<IActionResult> UsuarioDetalle([FromQuery] string userId, [FromQuery] string upn)
         {
             if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(upn))
+            {
                 return BadRequest("userId y upn requeridos.");
+            }
 
             var client = await _graphFactory.CreateClientAsync();
 
@@ -620,7 +677,7 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
                 vm.MobilePhone = root.GetPropertyOrDefault("mobilePhone");
                 vm.BusinessPhones = root.TryGetProperty("businessPhones", out var bp) && bp.ValueKind == JsonValueKind.Array
                     ? string.Join(", ", bp.EnumerateArray().Select(x => x.GetString()))
-                    : "";
+                    : string.Empty;
                 vm.OfficeLocation = root.GetPropertyOrDefault("officeLocation");
             }
 
@@ -638,11 +695,14 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
                         if (lic.TryGetProperty("servicePlans", out var sp) && sp.ValueKind == JsonValueKind.Array)
                         {
                             foreach (var plan in sp.EnumerateArray())
+                            {
                                 plans.Add(plan.GetPropertyOrDefault("servicePlanName"));
+                            }
                         }
+
                         vm.Licenses.Add(new LicenseAssignmentViewModel
                         {
-                            SkuId = lic.TryGetProperty("skuId", out var s) ? s.ToString() : "",
+                            SkuId = lic.TryGetProperty("skuId", out var s) ? s.ToString() : string.Empty,
                             SkuPartNumber = lic.GetPropertyOrDefault("skuPartNumber"),
                             CapabilityStatus = lic.GetPropertyOrDefault("capabilityStatus"),
                             ServicePlans = plans
@@ -655,8 +715,6 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
             return PartialView("_UsuarioDetalle", vm);
         }
 
-        // ---------- UsuariosPage para paginación incremental en pestaña Inventario/Usuarios ----------
-        // GET /Inventario/UsuariosPage?pageSize=25&skipToken=...
         [HttpGet("UsuariosPage")]
         public async Task<IActionResult> UsuariosPage([FromQuery] int pageSize = 25, [FromQuery] string? skipToken = null)
         {
@@ -664,8 +722,14 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
             if (pageSize > 999) pageSize = 999;
 
             HttpClient client;
-            try { client = await _graphFactory.CreateClientAsync(); }
-            catch (InvalidOperationException ex) { return StatusCode(401, new { error = ex.Message }); }
+            try
+            {
+                client = await _graphFactory.CreateClientAsync();
+            }
+            catch (InvalidOperationException ex)
+            {
+                return StatusCode(401, new { error = ex.Message });
+            }
 
             var url = $"https://graph.microsoft.com/v1.0/users?$select=id,displayName,userPrincipalName,mail,jobTitle,department,mobilePhone&$top={pageSize}";
             if (!string.IsNullOrEmpty(skipToken))
@@ -706,7 +770,6 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
             });
         }
 
-        // ===================== NUEVO: Reportes (JSON) =====================
         [HttpGet("ReportesData")]
         public async Task<IActionResult> ReportesData()
         {
@@ -716,31 +779,31 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
                 ?? User.Identity?.Name;
 
             if (string.IsNullOrWhiteSpace(correo))
+            {
                 return Unauthorized(new { error = "No se pudo determinar el correo del usuario autenticado." });
+            }
 
             var clienteId = await _clientesService.GetClienteIdByEmailAsync(correo);
             if (clienteId == Guid.Empty)
+            {
                 return Unauthorized(new { error = "Cliente no encontrado en Dataverse para el correo autenticado." });
+            }
 
-            // Todos los equipos del cliente
             var equipos = await GetEquiposByClienteAsync(clienteId);
 
-            // Catálogos para nombres de categorías
             var categorias = await GetCategoriasAsync();
             var catDict = categorias.ToDictionary(x => x.Id, x => x.Nombre);
 
-            // Dispositivos por Categoría
             var porCategoria = equipos
                 .GroupBy(e => e.CategoriaId)
                 .Select(g => new ReportItem
                 {
-                    Label = (g.Key != Guid.Empty && catDict.TryGetValue(g.Key, out var name)) ? name : "(Sin categoría)",
+                    Label = g.Key != Guid.Empty && catDict.TryGetValue(g.Key, out var name) ? name : "(Sin categoría)",
                     Count = g.Count()
                 })
                 .OrderByDescending(x => x.Count)
                 .ToList();
 
-            // Dispositivos por Ubicación (usa texto ya formateado en e.Ubicacion)
             var porUbicacion = equipos
                 .GroupBy(e => string.IsNullOrWhiteSpace(e.Ubicacion) ? "(Sin ubicación)" : e.Ubicacion)
                 .Select(g => new ReportItem
@@ -751,7 +814,6 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
                 .OrderByDescending(x => x.Count)
                 .ToList();
 
-            // Dispositivos por Marca
             var porMarca = equipos
                 .GroupBy(e => string.IsNullOrWhiteSpace(e.Marca) ? "(Sin marca)" : e.Marca)
                 .Select(g => new ReportItem
@@ -762,10 +824,10 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
                 .OrderByDescending(x => x.Count)
                 .ToList();
 
-            // ---------- Usuarios sin licencia (Graph) ----------
-            int usuariosSinLicencia = 0;
-            string? usuariosSinLicenciaWarning = null;
-            List<UnlicensedUserSummary> usuariosSinLicenciaListado = new();
+            int usuariosSinLicencia;
+            string? usuariosSinLicenciaWarning;
+            List<UnlicensedUserSummary> usuariosSinLicenciaListado;
+
             try
             {
                 var http = await _graphFactory.CreateClientAsync();
@@ -799,7 +861,6 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
                 porCategoria,
                 porUbicacion,
                 porMarca,
-
                 usuariosSinLicencia,
                 usuariosSinLicenciaWarning,
                 usuariosSinLicenciaListado = usuariosSinLicenciaOrdenados
@@ -813,6 +874,64 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
                     .ToList()
             });
         }
+
+        [HttpGet("ExportEquiposCsv")]
+        public async Task<IActionResult> ExportEquiposCsv()
+        {
+            var correo = User.FindFirst("preferred_username")?.Value
+                ?? User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value
+                ?? User.FindFirst("email")?.Value
+                ?? User.Identity?.Name;
+
+            if (string.IsNullOrWhiteSpace(correo))
+            {
+                return Unauthorized("No se pudo determinar el correo del usuario autenticado.");
+            }
+
+            var clienteId = await _clientesService.GetClienteIdByEmailAsync(correo);
+            if (clienteId == Guid.Empty)
+            {
+                return Unauthorized("Cliente no encontrado en Dataverse para el correo autenticado.");
+            }
+
+            var equipos = await GetEquiposByClienteAsync(clienteId);
+
+            var sb = new StringBuilder();
+            sb.AppendLine("Marca,Modelo,Serial,Estado,FechaCompra,Ubicacion,AsignadoA,Notas,CategoriaId,UbicacionId,EquipoId");
+
+            foreach (var e in equipos)
+            {
+                static string Csv(string? s)
+                {
+                    s ??= string.Empty;
+                    if (s.Contains('"')) s = s.Replace("\"", "\"\"");
+                    if (s.Contains(',') || s.Contains('\n') || s.Contains('\r'))
+                    {
+                        s = $"\"{s}\"";
+                    }
+
+                    return s;
+                }
+
+                sb.AppendLine(string.Join(",",
+                    Csv(e.Marca),
+                    Csv(e.Modelo),
+                    Csv(e.Serial),
+                    Csv(e.Estado),
+                    Csv(e.FechaCompra.HasValue ? e.FechaCompra.Value.ToString("yyyy-MM-dd") : string.Empty),
+                    Csv(e.Ubicacion),
+                    Csv(e.AsignadoA),
+                    Csv(e.Notas),
+                    e.CategoriaId.ToString(),
+                    e.UbicacionId.HasValue ? e.UbicacionId.Value.ToString() : string.Empty,
+                    e.Id.ToString()));
+            }
+
+            var bytes = Encoding.UTF8.GetBytes(sb.ToString());
+            var fileName = $"equipos_{DateTime.UtcNow:yyyyMMdd_HHmmss}.csv";
+            return File(bytes, "text/csv; charset=utf-8", fileName);
+        }
+
         private static async Task<(int Count, string? Warning, List<UnlicensedUserSummary> Usuarios)> CountUsuariosSinLicenciaAsync(HttpClient httpClient, CancellationToken cancellationToken, int maxUsersToCollect)
         {
             try
@@ -891,9 +1010,7 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
                         && detail is not null
                         && detail.IndexOf("filter property that is not indexed", StringComparison.OrdinalIgnoreCase) >= 0;
 
-                    return (false, 0, shouldFallback
-                        ? $"{warning} Se intentará un método alternativo para contar los usuarios sin licencia."
-                        : warning, shouldFallback, users);
+                    return (false, 0, shouldFallback ? $"{warning} Se intentará un método alternativo para contar los usuarios sin licencia." : warning, shouldFallback, users);
                 }
 
                 using var document = JsonDocument.Parse(raw);
@@ -1013,16 +1130,11 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
                 }
             }
 
-            return (total, "Se utilizó un método alternativo enumerando usuarios porque el filtro avanzado de Microsoft Graph no está disponible.", users);
+            return (total, null, users);
         }
 
         private static string? TryExtractGraphErrorDetail(string raw)
         {
-            if (string.IsNullOrWhiteSpace(raw))
-            {
-                return null;
-            }
-
             try
             {
                 using var errorDoc = JsonDocument.Parse(raw);
@@ -1051,59 +1163,46 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
             return null;
         }
 
-            // ===================== NUEVO: Exportación CSV =====================
-                [HttpGet("ExportEquiposCsv")]
-        public async Task<IActionResult> ExportEquiposCsv()
+        private async Task<List<OptionItemVm>> GetPropioORentaOptionsAsync()
         {
-            var correo = User.FindFirst("preferred_username")?.Value
-                ?? User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value
-                ?? User.FindFirst("email")?.Value
-                ?? User.Identity?.Name;
-
-            if (string.IsNullOrWhiteSpace(correo))
-                return Unauthorized("No se pudo determinar el correo del usuario autenticado.");
-
-            var clienteId = await _clientesService.GetClienteIdByEmailAsync(correo);
-            if (clienteId == Guid.Empty)
-                return Unauthorized("Cliente no encontrado en Dataverse para el correo autenticado.");
-
-            var equipos = await GetEquiposByClienteAsync(clienteId);
-
-            var sb = new StringBuilder();
-            sb.AppendLine("Marca,Modelo,Serial,Estado,FechaCompra,Ubicacion,AsignadoA,Notas,CategoriaId,UbicacionId,EquipoId");
-
-            foreach (var e in equipos)
+            try
             {
-                static string Csv(string? s)
+                var request = new RetrieveAttributeRequest
                 {
-                    s ??= string.Empty;
-                    if (s.Contains('"')) s = s.Replace("\"", "\"\"");
-                    if (s.Contains(',') || s.Contains('\n') || s.Contains('\r'))
-                        s = $"\"{s}\"";
-                    return s;
-                }
+                    EntityLogicalName = EquiposEntityName,
+                    LogicalName = PropioORentaAttribute,
+                    RetrieveAsIfPublished = true
+                };
 
-                sb.AppendLine(string.Join(",",
-                    Csv(e.Marca),
-                    Csv(e.Modelo),
-                    Csv(e.Serial),
-                    Csv(e.Estado),
-                    Csv(e.FechaCompra.HasValue ? e.FechaCompra.Value.ToString("yyyy-MM-dd") : ""),
-                    Csv(e.Ubicacion),
-                    Csv(e.AsignadoA),
-                    Csv(e.Notas),
-                    e.CategoriaId.ToString(),
-                    e.UbicacionId.HasValue ? e.UbicacionId.Value.ToString() : "",
-                    e.Id.ToString()
-                ));
+                if (await _dataverse.ExecuteAsync(request) is RetrieveAttributeResponse response &&
+                    response.AttributeMetadata is EnumAttributeMetadata enumMetadata)
+                {
+                    var options = enumMetadata.OptionSet.Options
+                        .Where(opt => opt.Value.HasValue)
+                        .Select(opt => new OptionItemVm
+                        {
+                            Value = opt.Value!.Value,
+                            Label = opt.Label?.UserLocalizedLabel?.Label
+                                ?? opt.Label?.LocalizedLabels?.FirstOrDefault()?.Label
+                                ?? opt.Value.Value.ToString()
+                        })
+                        .OrderBy(o => o.Label, StringComparer.CurrentCultureIgnoreCase)
+                        .ToList();
+
+                    if (options.Count > 0)
+                    {
+                        return options;
+                    }
+                }
+            }
+            catch
+            {
+                // Ignorar errores y usar valores por defecto.
             }
 
-            var bytes = Encoding.UTF8.GetBytes(sb.ToString());
-            var fileName = $"equipos_{DateTime.UtcNow:yyyyMMdd_HHmmss}.csv";
-            return File(bytes, "text/csv; charset=utf-8", fileName);
+            return DefaultPropioORentaOptions.ToList();
         }
 
-        // -------- Privados (Dataverse) --------
         private async Task<List<CategoriaVm>> GetCategoriasAsync()
         {
             var q = new QueryExpression("cr07a_categoriasdigitalapp")
@@ -1114,7 +1213,7 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
             return result.Entities.Select(c => new CategoriaVm
             {
                 Id = c.Id,
-                Nombre = c.GetAttributeValue<string>("cr07a_name") ?? ""
+                Nombre = c.GetAttributeValue<string>("cr07a_name") ?? string.Empty
             }).ToList();
         }
 
@@ -1135,8 +1234,7 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
                     "cr07a_asignadoa",
                     "cr07a_ubicacionid",
                     PropioORentaAttribute,
-                    ActaColumnName
-                )
+                    ActaColumnName)
             };
             q.Criteria.AddCondition("cr07a_cliente", ConditionOperator.Equal, clienteId);
             q.Criteria.AddCondition("cr07a_categoria", ConditionOperator.Equal, categoriaId);
@@ -1147,12 +1245,12 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
             {
                 var clienteRef = e.GetAttributeValue<EntityReference>("cr07a_cliente");
                 var categoriaRef = e.GetAttributeValue<EntityReference>("cr07a_categoria");
-                var estadoFmt = e.FormattedValues.ContainsKey("cr07a_estado") ? e.FormattedValues["cr07a_estado"] : "";
+                var estadoFmt = e.FormattedValues.ContainsKey("cr07a_estado") ? e.FormattedValues["cr07a_estado"] : string.Empty;
                 var ubicRef = e.GetAttributeValue<EntityReference>("cr07a_ubicacionid");
                 var ubicFmt = e.FormattedValues.ContainsKey("cr07a_ubicacionid")
                     ? e.FormattedValues["cr07a_ubicacionid"]
-                    : e.GetAttributeValue<string>("cr07a_ubicacion") ?? "";
-  var propioFmt = e.FormattedValues.ContainsKey(PropioORentaAttribute)
+                    : e.GetAttributeValue<string>("cr07a_ubicacion") ?? string.Empty;
+                var propioFmt = e.FormattedValues.ContainsKey(PropioORentaAttribute)
                     ? e.FormattedValues[PropioORentaAttribute]
                     : string.Empty;
                 var propioValue = e.GetAttributeValue<OptionSetValue>(PropioORentaAttribute)?.Value;
@@ -1162,14 +1260,14 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
                     Id = e.Id,
                     ClienteId = clienteRef?.Id ?? Guid.Empty,
                     CategoriaId = categoriaRef?.Id ?? Guid.Empty,
-                    Marca = e.GetAttributeValue<string>("cr07a_marca") ?? "",
-                    Modelo = e.GetAttributeValue<string>("cr07a_modelo") ?? "",
-                    Serial = e.GetAttributeValue<string>("cr07a_serial") ?? "",
+                    Marca = e.GetAttributeValue<string>("cr07a_marca") ?? string.Empty,
+                    Modelo = e.GetAttributeValue<string>("cr07a_modelo") ?? string.Empty,
+                    Serial = e.GetAttributeValue<string>("cr07a_serial") ?? string.Empty,
                     Estado = estadoFmt,
                     FechaCompra = e.GetAttributeValue<DateTime?>("cr07a_fechacompra"),
                     Ubicacion = ubicFmt,
-                    Notas = e.GetAttributeValue<string>("cr07a_notas") ?? "",
-                    AsignadoA = e.GetAttributeValue<string>("cr07a_asignadoa") ?? "",
+                    Notas = e.GetAttributeValue<string>("cr07a_notas") ?? string.Empty,
+                    AsignadoA = e.GetAttributeValue<string>("cr07a_asignadoa") ?? string.Empty,
                     UbicacionId = ubicRef?.Id,
                     PropioORentaValue = propioValue,
                     PropioORentaLabel = string.IsNullOrWhiteSpace(propioFmt) ? null : propioFmt,
@@ -1181,7 +1279,6 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
             return list;
         }
 
-        // NUEVO: Todos los equipos del cliente (una sola consulta)
         private async Task<List<EquipoVm>> GetEquiposByClienteAsync(Guid clienteId)
         {
             var q = new QueryExpression(EquiposEntityName)
@@ -1197,9 +1294,9 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
                     "cr07a_categoria",
                     "cr07a_cliente",
                     "cr07a_asignadoa",
- "cr07a_ubicacionid",
+                    "cr07a_ubicacionid",
                     PropioORentaAttribute,
-                    ActaColumnName                )
+                    ActaColumnName)
             };
             q.Criteria.AddCondition("cr07a_cliente", ConditionOperator.Equal, clienteId);
 
@@ -1209,12 +1306,12 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
             {
                 var clienteRef = e.GetAttributeValue<EntityReference>("cr07a_cliente");
                 var categoriaRef = e.GetAttributeValue<EntityReference>("cr07a_categoria");
-                var estadoFmt = e.FormattedValues.ContainsKey("cr07a_estado") ? e.FormattedValues["cr07a_estado"] : "";
+                var estadoFmt = e.FormattedValues.ContainsKey("cr07a_estado") ? e.FormattedValues["cr07a_estado"] : string.Empty;
                 var ubicRef = e.GetAttributeValue<EntityReference>("cr07a_ubicacionid");
                 var ubicFmt = e.FormattedValues.ContainsKey("cr07a_ubicacionid")
                     ? e.FormattedValues["cr07a_ubicacionid"]
-                    : e.GetAttributeValue<string>("cr07a_ubicacion") ?? "";
- var propioFmt = e.FormattedValues.ContainsKey(PropioORentaAttribute)
+                    : e.GetAttributeValue<string>("cr07a_ubicacion") ?? string.Empty;
+                var propioFmt = e.FormattedValues.ContainsKey(PropioORentaAttribute)
                     ? e.FormattedValues[PropioORentaAttribute]
                     : string.Empty;
                 var propioValue = e.GetAttributeValue<OptionSetValue>(PropioORentaAttribute)?.Value;
@@ -1224,25 +1321,26 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
                     Id = e.Id,
                     ClienteId = clienteRef?.Id ?? Guid.Empty,
                     CategoriaId = categoriaRef?.Id ?? Guid.Empty,
-                    Marca = e.GetAttributeValue<string>("cr07a_marca") ?? "",
-                    Modelo = e.GetAttributeValue<string>("cr07a_modelo") ?? "",
-                    Serial = e.GetAttributeValue<string>("cr07a_serial") ?? "",
+                    Marca = e.GetAttributeValue<string>("cr07a_marca") ?? string.Empty,
+                    Modelo = e.GetAttributeValue<string>("cr07a_modelo") ?? string.Empty,
+                    Serial = e.GetAttributeValue<string>("cr07a_serial") ?? string.Empty,
                     Estado = estadoFmt,
                     FechaCompra = e.GetAttributeValue<DateTime?>("cr07a_fechacompra"),
                     Ubicacion = ubicFmt,
-                    Notas = e.GetAttributeValue<string>("cr07a_notas") ?? "",
-                    AsignadoA = e.GetAttributeValue<string>("cr07a_asignadoa") ?? "",
-   UbicacionId = ubicRef?.Id,
+                    Notas = e.GetAttributeValue<string>("cr07a_notas") ?? string.Empty,
+                    AsignadoA = e.GetAttributeValue<string>("cr07a_asignadoa") ?? string.Empty,
+                    UbicacionId = ubicRef?.Id,
                     PropioORentaValue = propioValue,
                     PropioORentaLabel = string.IsNullOrWhiteSpace(propioFmt) ? null : propioFmt,
                     TieneActaDeEntrega = !string.IsNullOrWhiteSpace(actaNombre),
-                    ActaDeEntregaNombre = actaNombre                });
+                    ActaDeEntregaNombre = actaNombre
+                });
             }
-                        await PopulateAsignadoNombresAsync(list);
-
+            await PopulateAsignadoNombresAsync(list);
             return list;
         }
-  private async Task PopulateAsignadoNombresAsync(List<EquipoVm> equipos)
+
+        private async Task PopulateAsignadoNombresAsync(List<EquipoVm> equipos)
         {
             if (equipos == null || equipos.Count == 0) return;
 
@@ -1255,13 +1353,18 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
             if (upns.Count == 0) return;
 
             HttpClient client;
-            try { client = await _graphFactory.CreateClientAsync(); }
+            try
+            {
+                client = await _graphFactory.CreateClientAsync();
+            }
             catch (InvalidOperationException)
             {
                 foreach (var eq in equipos)
                 {
                     if (!string.IsNullOrWhiteSpace(eq.AsignadoA))
+                    {
                         eq.AsignadoNombre = eq.AsignadoA;
+                    }
                 }
                 return;
             }
@@ -1294,7 +1397,9 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
                 using var doc = JsonDocument.Parse(raw);
 
                 if (!doc.RootElement.TryGetProperty("responses", out var responses) || responses.ValueKind != JsonValueKind.Array)
+                {
                     continue;
+                }
 
                 foreach (var item in responses.EnumerateArray())
                 {
@@ -1325,84 +1430,6 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
             }
         }
 
-        private async Task<List<OptionItemVm>> GetPropioORentaOptionsAsync()
-        {
-            try
-            {
-                  var request = new RetrieveAttributeRequest
-                {
-                    EntityLogicalName = EquiposEntityName,
-                    LogicalName = PropioORentaAttribute,
-                    RetrieveAsIfPublished = true
-                };
- if (await _dataverse.ExecuteAsync(request) is RetrieveAttributeResponse response &&
-                    response.AttributeMetadata is EnumAttributeMetadata enumMetadata)
-                {
-                    var options = enumMetadata.OptionSet.Options
-                        .Where(opt => opt.Value.HasValue)
-                        .Select(opt => new OptionItemVm
-                        {
-                           Value = opt.Value!.Value,
-                            Label = opt.Label?.UserLocalizedLabel?.Label
-                                    ?? opt.Label?.LocalizedLabels?.FirstOrDefault()?.Label
-                                    ?? opt.Value.Value.ToString()
-                        })
-                        .OrderBy(o => o.Label, StringComparer.CurrentCultureIgnoreCase)
-                        .ToList();
-
-                    if (options.Count > 0)
-                    {
-                        return options;
-                    }
-                }               }
-            }
-            catch
-            {
-                // Ignorar errores y usar valores por defecto.
-            }
-
-            return DefaultPropioORentaOptions.ToList();
-        }
-
-        private async Task<List<UserInventoryViewModel>> GetUsuariosTenantAsync(int pageSize = 50)
-        {
-            HttpClient client;
-            try { client = await _graphFactory.CreateClientAsync(); }
-            catch (InvalidOperationException ex)
-            {
-                TempData["InventarioError"] = "No fue posible cargar usuarios del tenant: " + ex.Message;
-                return new List<UserInventoryViewModel>();
-            }
-
-            var url = $"https://graph.microsoft.com/v1.0/users?$select=id,displayName,userPrincipalName,mail,jobTitle,department,mobilePhone&$top={pageSize}";
-            var resp = await client.GetAsync(url);
-            var raw = await resp.Content.ReadAsStringAsync();
-
-            var usuarios = new List<UserInventoryViewModel>();
-            using var doc = JsonDocument.Parse(raw);
-
-            if (resp.IsSuccessStatusCode &&
-                doc.RootElement.TryGetProperty("value", out var arr) &&
-                arr.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var u in arr.EnumerateArray())
-                {
-                    usuarios.Add(new UserInventoryViewModel
-                    {
-                        Id = u.GetPropertyOrDefault("id"),
-                        DisplayName = u.GetPropertyOrDefault("displayName"),
-                        UserPrincipalName = u.GetPropertyOrDefault("userPrincipalName"),
-                        Mail = u.GetPropertyOrDefault("mail"),
-                        JobTitle = u.GetPropertyOrDefault("jobTitle"),
-                        Department = u.GetPropertyOrDefault("department"),
-                        MobilePhone = u.GetPropertyOrDefault("mobilePhone")
-                    });
-                }
-            }
-
-            return usuarios;
-        }
-
         private async Task<List<UbicacionVm>> GetUbicacionesAsync(Guid clienteId)
         {
             var q = new QueryExpression("cr07a_ubicacionesdigitalapp")
@@ -1418,7 +1445,7 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
                 list.Add(new UbicacionVm
                 {
                     Id = u.Id,
-                    Nombre = u.GetAttributeValue<string>("cr07a_name") ?? "",
+                    Nombre = u.GetAttributeValue<string>("cr07a_name") ?? string.Empty,
                     Descripcion = u.GetAttributeValue<string>("cr07a_descripcion")
                 });
             }
@@ -1437,10 +1464,9 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
                     "cr07a_fechacompra",
                     "cr07a_ubicacionid",
                     "cr07a_notas",
-                      "cr07a_asignadoa",
+                    "cr07a_asignadoa",
                     PropioORentaAttribute,
-                    ActaColumnName
-                )
+                    ActaColumnName)
             };
             q.Criteria.AddCondition("cr07a_ubicacionid", ConditionOperator.Equal, ubicacionId);
 
@@ -1448,8 +1474,8 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
             var list = new List<EquipoVm>(result.Entities.Count);
             foreach (var e in result.Entities)
             {
-                var estadoFmt = e.FormattedValues.ContainsKey("cr07a_estado") ? e.FormattedValues["cr07a_estado"] : "";
-                var ubicFmt = e.FormattedValues.ContainsKey("cr07a_ubicacionid") ? e.FormattedValues["cr07a_ubicacionid"] : "";
+                var estadoFmt = e.FormattedValues.ContainsKey("cr07a_estado") ? e.FormattedValues["cr07a_estado"] : string.Empty;
+                var ubicFmt = e.FormattedValues.ContainsKey("cr07a_ubicacionid") ? e.FormattedValues["cr07a_ubicacionid"] : string.Empty;
                 var propioFmt = e.FormattedValues.ContainsKey(PropioORentaAttribute)
                     ? e.FormattedValues[PropioORentaAttribute]
                     : string.Empty;
@@ -1458,14 +1484,14 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
                 list.Add(new EquipoVm
                 {
                     Id = e.Id,
-                    Marca = e.GetAttributeValue<string>("cr07a_marca") ?? "",
-                    Modelo = e.GetAttributeValue<string>("cr07a_modelo") ?? "",
-                    Serial = e.GetAttributeValue<string>("cr07a_serial") ?? "",
+                    Marca = e.GetAttributeValue<string>("cr07a_marca") ?? string.Empty,
+                    Modelo = e.GetAttributeValue<string>("cr07a_modelo") ?? string.Empty,
+                    Serial = e.GetAttributeValue<string>("cr07a_serial") ?? string.Empty,
                     Estado = estadoFmt,
                     FechaCompra = e.GetAttributeValue<DateTime?>("cr07a_fechacompra"),
                     Ubicacion = ubicFmt,
-                    Notas = e.GetAttributeValue<string>("cr07a_notas") ?? "",
-                     AsignadoA = e.GetAttributeValue<string>("cr07a_asignadoa") ?? "",
+                    Notas = e.GetAttributeValue<string>("cr07a_notas") ?? string.Empty,
+                    AsignadoA = e.GetAttributeValue<string>("cr07a_asignadoa") ?? string.Empty,
                     PropioORentaValue = propioValue,
                     PropioORentaLabel = string.IsNullOrWhiteSpace(propioFmt) ? null : propioFmt,
                     TieneActaDeEntrega = !string.IsNullOrWhiteSpace(actaNombre),
@@ -1487,10 +1513,9 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
                     "cr07a_fechacompra",
                     "cr07a_ubicacionid",
                     "cr07a_notas",
-                      "cr07a_asignadoa",
+                    "cr07a_asignadoa",
                     PropioORentaAttribute,
-                    ActaColumnName
-                )
+                    ActaColumnName)
             };
             q.Criteria.AddCondition("cr07a_asignadoa", ConditionOperator.Equal, upn);
 
@@ -1498,8 +1523,8 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
             var list = new List<EquipoVm>(result.Entities.Count);
             foreach (var e in result.Entities)
             {
-                var estadoFmt = e.FormattedValues.ContainsKey("cr07a_estado") ? e.FormattedValues["cr07a_estado"] : "";
-                var ubicFmt = e.FormattedValues.ContainsKey("cr07a_ubicacionid") ? e.FormattedValues["cr07a_ubicacionid"] : "";
+                var estadoFmt = e.FormattedValues.ContainsKey("cr07a_estado") ? e.FormattedValues["cr07a_estado"] : string.Empty;
+                var ubicFmt = e.FormattedValues.ContainsKey("cr07a_ubicacionid") ? e.FormattedValues["cr07a_ubicacionid"] : string.Empty;
                 var propioFmt = e.FormattedValues.ContainsKey(PropioORentaAttribute)
                     ? e.FormattedValues[PropioORentaAttribute]
                     : string.Empty;
@@ -1508,61 +1533,62 @@ var propioOrentaOptions = await GetPropioORentaOptionsAsync();
                 list.Add(new EquipoVm
                 {
                     Id = e.Id,
-                    Marca = e.GetAttributeValue<string>("cr07a_marca") ?? "",
-                    Modelo = e.GetAttributeValue<string>("cr07a_modelo") ?? "",
-                    Serial = e.GetAttributeValue<string>("cr07a_serial") ?? "",
+                    Marca = e.GetAttributeValue<string>("cr07a_marca") ?? string.Empty,
+                    Modelo = e.GetAttributeValue<string>("cr07a_modelo") ?? string.Empty,
+                    Serial = e.GetAttributeValue<string>("cr07a_serial") ?? string.Empty,
                     Estado = estadoFmt,
                     FechaCompra = e.GetAttributeValue<DateTime?>("cr07a_fechacompra"),
                     Ubicacion = ubicFmt,
-                    Notas = e.GetAttributeValue<string>("cr07a_notas") ?? "",
-                    AsignadoA = e.GetAttributeValue<string>("cr07a_asignadoa") ?? "",
+                    Notas = e.GetAttributeValue<string>("cr07a_notas") ?? string.Empty,
+                    AsignadoA = e.GetAttributeValue<string>("cr07a_asignadoa") ?? string.Empty,
                     PropioORentaValue = propioValue,
                     PropioORentaLabel = string.IsNullOrWhiteSpace(propioFmt) ? null : propioFmt,
                     TieneActaDeEntrega = !string.IsNullOrWhiteSpace(actaNombre),
                     ActaDeEntregaNombre = actaNombre
                 });
             }
-                        await PopulateAsignadoNombresAsync(list);
-
+            await PopulateAsignadoNombresAsync(list);
             return list;
         }
 
-        // Helper para extraer el skiptoken de @odata.nextLink (dentro del controlador para evitar errores de ámbito)
         private static string? ExtractSkipToken(string nextLink)
         {
             if (string.IsNullOrEmpty(nextLink)) return null;
             try
             {
                 var uri = new Uri(nextLink);
-                var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
-                var token = query["$skiptoken"];
-                return string.IsNullOrEmpty(token) ? null : token;
+                var query = QueryHelpers.ParseQuery(uri.Query);
+                if (query.TryGetValue("$skiptoken", out var values))
+                {
+                    var token = values.FirstOrDefault();
+                    return string.IsNullOrEmpty(token) ? null : token;
+                }
             }
             catch
             {
-                // Fallback simple si no es una URL válida
                 var idx = nextLink.IndexOf("$skiptoken=", StringComparison.OrdinalIgnoreCase);
                 if (idx >= 0)
                 {
-                    var val = nextLink.Substring(idx + "$skiptoken=".Length);
+                    var val = nextLink[(idx + "$skiptoken=".Length)..];
                     return Uri.UnescapeDataString(val);
                 }
-                return null;
             }
+
+            return null;
         }
     }
 
-    internal static class JsonExt
+    internal static class JsonElementExtensions
     {
         public static string GetPropertyOrDefault(this JsonElement el, string name)
         {
             if (el.TryGetProperty(name, out var p))
             {
-                if (p.ValueKind == JsonValueKind.String) return p.GetString() ?? "";
-                if (p.ValueKind == JsonValueKind.Null) return "";
+                if (p.ValueKind == JsonValueKind.String) return p.GetString() ?? string.Empty;
+                if (p.ValueKind == JsonValueKind.Null) return string.Empty;
                 return p.ToString();
             }
-            return "";
+            return string.Empty;
         }
     }
 }
