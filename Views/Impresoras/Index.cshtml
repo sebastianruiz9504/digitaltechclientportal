@@ -30,29 +30,30 @@
     <div class="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
       @foreach (var impresora in Model.Impresoras)
       {
-        <div class="bg-white border border-slate-200 rounded-2xl shadow-sm flex flex-col">
-          <div class="p-5 border-b border-slate-100">
+               <div class="relative overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-indigo-50 via-white to-slate-50 shadow-lg flex flex-col">
+          <div class="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(99,102,241,0.08),transparent_35%),radial-gradient(circle_at_80%_0,rgba(14,165,233,0.08),transparent_25%)]"></div>
+          <div class="relative p-5 border-b border-slate-100/70">
             <div class="flex items-start justify-between gap-4">
               <div>
                 <p class="text-xs uppercase tracking-wide text-slate-500">Serial</p>
                 <h2 class="text-xl font-semibold text-slate-900">@impresora.Serial</h2>
-                <p class="text-sm text-slate-500">@impresora.Referencia</p>
+                <p class="text-sm text-slate-600">@impresora.Referencia</p>
               </div>
-              <span class="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">@impresora.Categoria</span>
+              <span class="inline-flex items-center rounded-full bg-white/80 px-3 py-1 text-xs font-medium text-slate-700 shadow-sm ring-1 ring-slate-200">@impresora.Categoria</span>
             </div>
             <dl class="mt-4 grid grid-cols-2 gap-x-6 gap-y-2 text-sm text-slate-700">
               <div>
                 <dt class="text-slate-500">Último nivel de tóner</dt>
-                <dd class="font-medium">@(string.IsNullOrWhiteSpace(impresora.UltimoNivelToner) ? "—" : impresora.UltimoNivelToner)</dd>
+                <dd class="font-semibold text-slate-900">@(string.IsNullOrWhiteSpace(impresora.UltimoNivelToner) ? "—" : impresora.UltimoNivelToner)</dd>
               </div>
               <div>
                 <dt class="text-slate-500">Fecha de lectura</dt>
-                <dd class="font-medium">@FormatDate(impresora.FechaUltimaLectura)</dd>
+                <dd class="font-semibold text-slate-900">@FormatDate(impresora.FechaUltimaLectura)</dd>
               </div>
             </dl>
           </div>
 
-          <div class="p-5 border-b border-slate-100">
+          <div class="relative p-5 border-b border-slate-100/70 backdrop-blur-[1px]">
             <h3 class="text-sm font-semibold text-slate-800 mb-3">Contadores</h3>
             @if (impresora.Contadores == null || !impresora.Contadores.Any())
             {
@@ -63,27 +64,27 @@
               <div class="space-y-3 max-h-48 overflow-auto pr-1">
                 @foreach (var c in impresora.Contadores)
                 {
-                  <div class="rounded-lg border border-slate-200 p-3">
-                    <div class="flex items-center justify-between text-xs text-slate-500">
+                  <div class="rounded-xl border border-slate-200/80 bg-white/70 p-3 shadow-sm ring-1 ring-white/60">
+                    <div class="flex items-center justify-between text-xs text-slate-600">
                       <span>@c.Periodo</span>
                       <span>@FormatDate(c.FechaLectura)</span>
                     </div>
                     <dl class="mt-2 grid grid-cols-2 gap-2 text-sm">
                       <div>
                         <dt class="text-slate-500">Contador</dt>
-                        <dd class="font-medium">@c.ContadorPaginas</dd>
+                        <dd class="font-semibold text-slate-900">@c.ContadorPaginas</dd>
                       </div>
                       <div>
                         <dt class="text-slate-500">Escaneos</dt>
-                        <dd class="font-medium">@c.Escaneos</dd>
+                        <dd class="font-semibold text-slate-900">@c.Escaneos</dd>
                       </div>
                       <div>
                         <dt class="text-slate-500">Nivel tóner</dt>
-                        <dd class="font-medium">@c.NivelToner</dd>
+                        <dd class="font-semibold text-slate-900">@c.NivelToner</dd>
                       </div>
                       <div>
                         <dt class="text-slate-500">IP</dt>
-                        <dd class="font-medium">@c.IpAddress</dd>
+                        <dd class="font-semibold text-slate-900">@c.IpAddress</dd>
                       </div>
                     </dl>
                   </div>
@@ -92,13 +93,13 @@
             }
           </div>
 
-          <details class="group">
-            <summary class="cursor-pointer select-none px-5 py-4 flex items-center justify-between text-sm font-semibold text-slate-800">
+          <details class="group relative">
+            <summary class="cursor-pointer select-none px-5 py-4 flex items-center justify-between text-sm font-semibold text-slate-800 bg-white/70 border-t border-slate-100/60">
               <span>Mantenimientos</span>
               <span class="text-slate-500 group-open:hidden"><i class="ti ti-chevron-down"></i></span>
               <span class="text-slate-500 hidden group-open:inline"><i class="ti ti-chevron-up"></i></span>
             </summary>
-            <div class="px-5 pb-5 space-y-3">
+            <div class="px-5 pb-5 space-y-3 bg-white/70">
               @if (impresora.Mantenimientos == null || !impresora.Mantenimientos.Any())
               {
                 <p class="text-sm text-slate-500">Esta impresora no tiene mantenimientos registrados.</p>
@@ -107,8 +108,8 @@
               {
                 @foreach (var m in impresora.Mantenimientos)
                 {
-                  <div class="rounded-lg border border-slate-200 p-3">
-                    <div class="flex items-center justify-between text-xs text-slate-500">
+                  <div class="rounded-xl border border-slate-200/80 bg-white/80 p-3 shadow-sm ring-1 ring-white/60">
+                    <div class="flex items-center justify-between text-xs text-slate-600">
                       <span>@FormatDate(m.FechaMantenimiento)</span>
                       @if (m.TieneActa && m.Id != Guid.Empty)
                       {
