@@ -85,21 +85,21 @@ namespace DigitalTechClientPortal.Controllers
                 };
 
                 impresora.Contadores = await GetContadoresPorSerialAsync(impresora.Id, serial);
-                impresora.Mantenimientos = await GetMantenimientosPorSerialAsync(serial);
+                impresora.Mantenimientos = await GetMantenimientosPorEquipoAsync(impresora.Id);
                 impresoras.Add(impresora);
             }
 
             return impresoras;
         }
 
-        private async Task<List<MantenimientoVm>> GetMantenimientosPorSerialAsync(string serial)
+        private async Task<List<MantenimientoVm>> GetMantenimientosPorEquipoAsync(Guid equipoId)
         {
-            if (string.IsNullOrWhiteSpace(serial)) return new List<MantenimientoVm>();
+            if (equipoId == Guid.Empty) return new List<MantenimientoVm>();
 
-            var safeSerial = serial.Replace("'", "''");
+            var filter = $"_cr07a_iddeequipo_value eq {equipoId:D}";
             var query = "cr07a_mantenimientos" +
-                        "?$select=cr07a_mantenimiento1,cr07a_fechademantenimiento,cr07a_descripciondelmantenimiento,cr07a_actadeentregadeservicio,cr07a_id" +
-                        $"&$filter=cr07a_iddeequipo eq '{safeSerial}'" +
+                             "?$select=cr07a_mantenimiento1,cr07a_fechademantenimiento,cr07a_descripciondelmantenimiento,cr07a_actadeentregadeservicio,cr07a_id,_cr07a_iddeequipo_value" +
+                        $"&$filter={filter}" +
                         "&$orderby=cr07a_fechademantenimiento desc";
 
             using var json = await _dv.GetAsync(query);
