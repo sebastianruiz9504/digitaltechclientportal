@@ -65,8 +65,7 @@ namespace DigitalTechClientPortal.Controllers
         private async Task<List<ImpresoraVm>> GetImpresorasPorClienteAsync(Guid clienteId)
         {
             var query = "cr07a_equipos" +
-                        "?$select=cr07a_nombredelequipo,cr07a_categoriadeequipo,cr07a_referencia,cr07a_ultimoniveldetoner,cr07a_fechaultimalectura" +
-                        $"&$filter=_cr07a_cliente_value eq {clienteId}" +
+                        "?$select=cr07a_nombredelequipo,cr07a_categoriadeequipo,cr07a_referencia,cr07a_ultimoniveldetoner,cr07a_fechaultimalectura,cr07a_equipoid" +
                         "&$orderby=cr07a_nombredelequipo";
 
             using var printersJson = await _dv.GetAsync(query);
@@ -77,6 +76,7 @@ namespace DigitalTechClientPortal.Controllers
                 var serial = GetString(e, "cr07a_nombredelequipo");
                 var impresora = new ImpresoraVm
                 {
+                    Id = GetGuid(e, "cr07a_equipoid"),
                     Serial = serial,
                     Categoria = GetString(e, "cr07a_categoriadeequipo"),
                     Referencia = GetString(e, "cr07a_referencia"),
@@ -84,7 +84,7 @@ namespace DigitalTechClientPortal.Controllers
                     FechaUltimaLectura = GetDateTime(e, "cr07a_fechaultimalectura")
                 };
 
-                impresora.Contadores = await GetContadoresPorSerialAsync(serial);
+                impresora.Contadores = await GetContadoresPorSerialAsync(impresora.Id, serial);
                 impresora.Mantenimientos = await GetMantenimientosPorSerialAsync(serial);
                 impresoras.Add(impresora);
             }
@@ -116,14 +116,15 @@ namespace DigitalTechClientPortal.Controllers
                 .ToList();
         }
 
-        private async Task<List<ContadorVm>> GetContadoresPorSerialAsync(string serial)
-        {
-            if (string.IsNullOrWhiteSpace(serial)) return new List<ContadorVm>();
+ private async Task<List<ContadorVm>> GetContadoresPorSerialAsync(Guid equipoId, string serial)        {
+ if (equipoId == Guid.Empty && string.IsNullOrWhiteSpace(serial)) return new List<ContadorVm>();
 
-            var safeSerial = serial.Replace("'", "''");
-            var query = "cr07a_contadoresmensualesequipoes" +
-                        "?$select=cr07a_dt_ContadorPaginas,cr07a_dt_fechalectura,cr07a_dt_ipaddress,cr07a_dt_niveltoner,cr07a_dt_paginasescaneadas,cr07a_dt_periodo,cr07a_equipo" +
-                        $"&$filter=cr07a_equipo eq '{safeSerial}'" +
+            var filter = equipoId != Guid.Empty
+                ? $"_cr07a_equipo_value eq {equipoId:D}"
+                : $"cr07a_equipo eq '{serial.Replace("'", "''")}'";
+            var query = "cr07a_contadoresmensualesequipos" +
+                        "?$select=cr07a_dt_contadorpaginas,cr07a_dt_fechalectura,cr07a_dt_ipaddress,cr07a_dt_niveltoner,cr07a_dt_paginasescaneadas,cr07a_dt_periodo,_cr07a_equipo_value" +
+                        $"&$filter={filter}" +
                         "&$orderby=cr07a_dt_fechalectura desc";
 
             using var json = await _dv.GetAsync(query);
@@ -132,7 +133,7 @@ namespace DigitalTechClientPortal.Controllers
                 .Select(c => new ContadorVm
                 {
                     Periodo = GetString(c, "cr07a_dt_periodo"),
-                    ContadorPaginas = GetString(c, "cr07a_dt_ContadorPaginas"),
+                    ContadorPaginas = GetString(c, "cr07a_dt_contadorpaginas"),
                     FechaLectura = GetDateTime(c, "cr07a_dt_fechalectura"),
                     IpAddress = GetString(c, "cr07a_dt_ipaddress"),
                     NivelToner = GetString(c, "cr07a_dt_niveltoner"),

@@ -10,6 +10,7 @@ namespace DigitalTechClientPortal.Models
 
     public class ImpresoraVm
     {
+        public Guid Id { get; set; }
         public string Serial { get; set; } = string.Empty;
         public string Categoria { get; set; } = string.Empty;
         public string Referencia { get; set; } = string.Empty;
