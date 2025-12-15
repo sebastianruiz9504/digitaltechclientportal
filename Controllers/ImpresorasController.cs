@@ -1,0 +1,181 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Security.Claims;
+using System.Text.Json;
+using System.Threading.Tasks;
+using DigitalTechClientPortal.Models;
+using DigitalTechClientPortal.Services;
+using Microsoft.AspNetCore.Mvc;
+
+namespace DigitalTechClientPortal.Controllers
+{
+    public class ImpresorasController : Controller
+    {
+        private readonly DataverseSoporteService _dv;
+        private readonly DataverseClienteService _clienteService;
+
+        public ImpresorasController(DataverseSoporteService dv, DataverseClienteService clienteService)
+        {
+            _dv = dv ?? throw new ArgumentNullException(nameof(dv));
+            _clienteService = clienteService ?? throw new ArgumentNullException(nameof(clienteService));
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> Index()
+        {
+            var vm = new ImpresorasVm();
+
+            var email = User.FindFirst(ClaimTypes.Email)?.Value
+                        ?? User.FindFirst("preferred_username")?.Value
+                        ?? User.FindFirst("email")?.Value
+                        ?? User.FindFirst("emails")?.Value
+                        ?? User.FindFirst("upn")?.Value;
+
+            var clienteInfo = await _clienteService.GetClienteByEmailAsync(email ?? string.Empty);
+            if (clienteInfo == null || clienteInfo.Id == Guid.Empty)
+            {
+                TempData["ImpresorasError"] = "No se pudo determinar el cliente del usuario logueado.";
+                return View(vm);
+            }
+
+            try
+            {
+                vm.Impresoras = await GetImpresorasPorClienteAsync(clienteInfo.Id);
+            }
+            catch (Exception ex)
+            {
+                TempData["ImpresorasError"] = $"No se pudieron cargar las impresoras. Detalle: {ex.Message}";
+            }
+
+            return View(vm);
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> DescargarActa(Guid id)
+        {
+            var file = await _dv.GetFileAsync("cr07a_mantenimientos", id, "cr07a_actadeentregadeservicio");
+            if (file == null) return NotFound();
+
+            var contentType = string.IsNullOrWhiteSpace(file.Value.ContentType) ? "application/octet-stream" : file.Value.ContentType;
+            var fileName = string.IsNullOrWhiteSpace(file.Value.FileName) ? $"acta-{id}.bin" : file.Value.FileName;
+            return File(file.Value.Stream, contentType, fileName);
+        }
+
+        private async Task<List<ImpresoraVm>> GetImpresorasPorClienteAsync(Guid clienteId)
+        {
+            var query = "cr07a_equipos" +
+                        "?$select=cr07a_nombredelequipo,cr07a_categoriadeequipo,cr07a_referencia,cr07a_ultimoniveldetoner,cr07a_fechaultimalectura" +
+                        $"&$filter=_cr07a_cliente_value eq {clienteId}" +
+                        "&$orderby=cr07a_nombredelequipo";
+
+            using var printersJson = await _dv.GetAsync(query);
+            var impresoras = new List<ImpresoraVm>();
+
+            foreach (var e in printersJson.RootElement.GetProperty("value").EnumerateArray())
+            {
+                var serial = GetString(e, "cr07a_nombredelequipo");
+                var impresora = new ImpresoraVm
+                {
+                    Serial = serial,
+                    Categoria = GetString(e, "cr07a_categoriadeequipo"),
+                    Referencia = GetString(e, "cr07a_referencia"),
+                    UltimoNivelToner = GetString(e, "cr07a_ultimoniveldetoner"),
+                    FechaUltimaLectura = GetDateTime(e, "cr07a_fechaultimalectura")
+                };
+
+                impresora.Contadores = await GetContadoresPorSerialAsync(serial);
+                impresora.Mantenimientos = await GetMantenimientosPorSerialAsync(serial);
+                impresoras.Add(impresora);
+            }
+
+            return impresoras;
+        }
+
+        private async Task<List<MantenimientoVm>> GetMantenimientosPorSerialAsync(string serial)
+        {
+            if (string.IsNullOrWhiteSpace(serial)) return new List<MantenimientoVm>();
+
+            var safeSerial = serial.Replace("'", "''");
+            var query = "cr07a_mantenimientos" +
+                        "?$select=cr07a_mantenimiento1,cr07a_fechademantenimiento,cr07a_descripciondelmantenimiento,cr07a_actadeentregadeservicio,cr07a_id" +
+                        $"&$filter=cr07a_iddeequipo eq '{safeSerial}'" +
+                        "&$orderby=cr07a_fechademantenimiento desc";
+
+            using var json = await _dv.GetAsync(query);
+            return json.RootElement.GetProperty("value")
+                .EnumerateArray()
+                .Select(m => new MantenimientoVm
+                {
+                    Id = GetGuid(m, "cr07a_id"),
+                    Titulo = GetString(m, "cr07a_mantenimiento1"),
+                    FechaMantenimiento = GetDateTime(m, "cr07a_fechademantenimiento"),
+                    Descripcion = GetString(m, "cr07a_descripciondelmantenimiento"),
+                    TieneActa = m.TryGetProperty("cr07a_actadeentregadeservicio", out var acta) && acta.ValueKind != JsonValueKind.Null
+                })
+                .ToList();
+        }
+
+        private async Task<List<ContadorVm>> GetContadoresPorSerialAsync(string serial)
+        {
+            if (string.IsNullOrWhiteSpace(serial)) return new List<ContadorVm>();
+
+            var safeSerial = serial.Replace("'", "''");
+            var query = "cr07a_contadoresmensualesequipoes" +
+                        "?$select=cr07a_dt_ContadorPaginas,cr07a_dt_fechalectura,cr07a_dt_ipaddress,cr07a_dt_niveltoner,cr07a_dt_paginasescaneadas,cr07a_dt_periodo,cr07a_equipo" +
+                        $"&$filter=cr07a_equipo eq '{safeSerial}'" +
+                        "&$orderby=cr07a_dt_fechalectura desc";
+
+            using var json = await _dv.GetAsync(query);
+            return json.RootElement.GetProperty("value")
+                .EnumerateArray()
+                .Select(c => new ContadorVm
+                {
+                    Periodo = GetString(c, "cr07a_dt_periodo"),
+                    ContadorPaginas = GetString(c, "cr07a_dt_ContadorPaginas"),
+                    FechaLectura = GetDateTime(c, "cr07a_dt_fechalectura"),
+                    IpAddress = GetString(c, "cr07a_dt_ipaddress"),
+                    NivelToner = GetString(c, "cr07a_dt_niveltoner"),
+                    Escaneos = GetString(c, "cr07a_dt_paginasescaneadas")
+                })
+                .ToList();
+        }
+
+        private static string GetString(JsonElement e, string prop)
+        {
+            if (!e.TryGetProperty(prop, out var v)) return string.Empty;
+
+            return v.ValueKind switch
+            {
+                JsonValueKind.String => v.GetString() ?? string.Empty,
+                JsonValueKind.Number => v.TryGetInt64(out var i)
+                    ? i.ToString()
+                    : v.TryGetDecimal(out var d)
+                        ? d.ToString()
+                        : v.GetRawText(),
+                JsonValueKind.True => "Sí",
+                JsonValueKind.False => "No",
+                _ => string.Empty
+            };
+        }
+
+        private static DateTime? GetDateTime(JsonElement e, string prop)
+        {
+            if (!e.TryGetProperty(prop, out var v) || (v.ValueKind != JsonValueKind.String && v.ValueKind != JsonValueKind.Number))
+                return null;
+
+            try { return v.GetDateTime(); }
+            catch { return null; }
+        }
+
+        private static Guid GetGuid(JsonElement e, string prop)
+        {
+            if (e.TryGetProperty(prop, out var v) && v.ValueKind == JsonValueKind.String)
+            {
+                var s = v.GetString();
+                if (Guid.TryParse(s, out var g)) return g;
+            }
+            return Guid.Empty;
+        }
+    }
+}

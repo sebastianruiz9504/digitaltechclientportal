@@ -47,6 +47,19 @@ namespace DigitalTechClientPortal.Controllers
             "image/png"
         };
 
+        private static string? ResolveActaMimeFromExtension(string? fileName)
+        {
+            if (string.IsNullOrWhiteSpace(fileName)) return null;
+
+            return Path.GetExtension(fileName)?.ToLowerInvariant() switch
+            {
+                ".pdf" => "application/pdf",
+                ".jpg" or ".jpeg" => "image/jpeg",
+                ".png" => "image/png",
+                _ => null
+            };
+        }
+
         private static readonly List<OptionItemVm> DefaultPropioORentaOptions = new()
         {
             new OptionItemVm { Value = 645250000, Label = "Propio" },
@@ -1660,6 +1673,11 @@ namespace DigitalTechClientPortal.Controllers
                 {
                     candidate = fallback;
                 }
+            }
+
+            if (string.IsNullOrWhiteSpace(candidate))
+            {
+                candidate = ResolveActaMimeFromExtension(fileName);
             }
 
             if (string.Equals(candidate, "image/jpg", StringComparison.OrdinalIgnoreCase))

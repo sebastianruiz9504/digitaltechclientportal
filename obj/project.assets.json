@@ -711,7 +711,7 @@
           }
         }
       },
-      "Microsoft.Graph/5.96.0": {
+      "Microsoft.Graph/5.98.0": {
         "type": "package",
         "dependencies": {
           "Microsoft.Graph.Core": "3.2.4"
@@ -3321,10 +3321,10 @@
         "microsoft.extensions.webencoders.nuspec"
       ]
     },
-    "Microsoft.Graph/5.96.0": {
-      "sha512": "4ihInCDMH4YBYCBqKuRFIo+uyo6fFuXPCk9aoABOxE1mOZGX+5BeJIi8NKjAN7db6oaEDLea7D849r9XEc3huQ==",
+    "Microsoft.Graph/5.98.0": {
+      "sha512": "ykQn23vKPMEGKiI3wl5tvgtlSctJQaHIEs4rkvVdITlayIz8RN+NdHfu+lmfqHJbRi+nJ6NkWbUSinNBqKbsJA==",
       "type": "package",
-      "path": "microsoft.graph/5.96.0",
+      "path": "microsoft.graph/5.98.0",
       "files": [
         ".nupkg.metadata",
         ".signature.p7s",
@@ -3336,7 +3336,7 @@
         "lib/netstandard2.0/Microsoft.Graph.xml",
         "lib/netstandard2.1/Microsoft.Graph.dll",
         "lib/netstandard2.1/Microsoft.Graph.xml",
-        "microsoft.graph.5.96.0.nupkg.sha512",
+        "microsoft.graph.5.98.0.nupkg.sha512",
         "microsoft.graph.nuspec"
       ]
     },
@@ -7228,7 +7228,8 @@
     ]
   },
   "packageFolders": {
-    "C:\\Users\\SebastianRuiz\\.nuget\\packages\\": {}
+    "C:\\Users\\SebastianRuiz\\.nuget\\packages\\": {},
+    "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages": {}
   },
   "project": {
     "version": "1.0.0",
@@ -7239,13 +7240,19 @@
       "packagesPath": "C:\\Users\\SebastianRuiz\\.nuget\\packages\\",
       "outputPath": "C:\\Users\\SebastianRuiz\\DigitalTechClientPortal\\obj\\",
       "projectStyle": "PackageReference",
+      "fallbackFolders": [
+        "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
+      ],
       "configFilePaths": [
-        "C:\\Users\\SebastianRuiz\\AppData\\Roaming\\NuGet\\NuGet.Config"
+        "C:\\Users\\SebastianRuiz\\AppData\\Roaming\\NuGet\\NuGet.Config",
+        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
+        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
       ],
       "originalTargetFrameworks": [
         "net8.0"
       ],
       "sources": {
+        "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
         "https://api.nuget.org/v3/index.json": {}
       },
       "frameworks": {
@@ -7263,7 +7270,8 @@
         "enableAudit": "true",
         "auditLevel": "low",
         "auditMode": "direct"
-      }
+      },
+      "SdkAnalysisLevel": "10.0.100"
     },
     "frameworks": {
       "net8.0": {
@@ -7325,7 +7333,7 @@
             "privateAssets": "all"
           }
         },
-        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.415/PortableRuntimeIdentifierGraph.json"
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.100/PortableRuntimeIdentifierGraph.json"
       }
     }
   }

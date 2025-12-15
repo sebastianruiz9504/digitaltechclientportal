@@ -1,318 +1,405 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/Controllers/InventarioController.cs b/Controllers/InventarioController.cs
-index 466cecd4b65b791d0d7b7b65d5d04277c25e0965..559318e7b5a2e18f27cf227a6510cb08ba407004 100644
---- a/Controllers/InventarioController.cs
-+++ b/Controllers/InventarioController.cs
-@@ -1,64 +1,74 @@
- using DigitalTechClientPortal.Models;
- using DigitalTechClientPortal.Services;
- using Microsoft.AspNetCore.Authorization;
-+using Microsoft.AspNetCore.Http;
- using Microsoft.AspNetCore.Mvc;
-+using Microsoft.AspNetCore.StaticFiles;
- using Microsoft.AspNetCore.WebUtilities;
- using Microsoft.PowerPlatform.Dataverse.Client;
- using Microsoft.Xrm.Sdk;
- using Microsoft.Xrm.Sdk.Messages;
- using Microsoft.Xrm.Sdk.Metadata;
- using Microsoft.Xrm.Sdk.Query;
+diff --git a/Services/DataverseSoporteService.cs b/Services/DataverseSoporteService.cs
+index c6f4fdcc2e8edac4f599ac8a171530b1f8d663fa..0ca481c2a2564d3f07226e51a1bb4580836565f3 100644
+--- a/Services/DataverseSoporteService.cs
++++ b/Services/DataverseSoporteService.cs
+@@ -1,278 +1,233 @@
  using System;
- using System.Collections.Generic;
  using System.IO;
- using System.Linq;
- using System.Net;
++using System.Linq;
  using System.Net.Http;
- using System.Text;
+ using System.Net.Http.Headers;
  using System.Text.Json;
  using System.Threading;
  using System.Threading.Tasks;
+ using Microsoft.Extensions.Configuration;
+ using Microsoft.Identity.Client;
  
- namespace DigitalTechClientPortal.Controllers
+ namespace DigitalTechClientPortal.Services
  {
-     public sealed class ReportItem
+     public class DataverseSoporteService
      {
-         public string Label { get; set; } = string.Empty;
-         public int Count { get; set; }
-     }
+         private readonly IConfiguration _config;
+         private readonly IHttpClientFactory _httpClientFactory;
  
-     [Authorize]
-     [Route("[controller]")]
-     public class InventarioController : Controller
-     {
-         private const int MaxUsuariosSinLicenciaListado = 100;
-         private const string EquiposEntityName = "cr07a_equiposdigitalapp";
-         private const string EquiposEntitySetName = "cr07a_equiposdigitalapps";
-         private const string ActaColumnName = "cr07a_actadeentrega";
-         private const string PropioORentaAttribute = "cr07a_propioorenta";
+         private string _accessToken = string.Empty;
+         private DateTimeOffset _tokenExpiresAt = DateTimeOffset.MinValue;
  
-+        private static readonly FileExtensionContentTypeProvider FileContentTypeProvider = new();
-+        private static readonly HashSet<string> AllowedActaContentTypes = new(StringComparer.OrdinalIgnoreCase)
+         public DataverseSoporteService(IConfiguration config, IHttpClientFactory httpClientFactory)
+         {
+             _config = config ?? throw new ArgumentNullException(nameof(config));
+             _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
+         }
+ 
++        private static string? ResolveMimeByExtension(string? name)
 +        {
-+            "application/pdf",
-+            "image/jpeg",
-+            "image/png"
-+        };
++            if (string.IsNullOrWhiteSpace(name)) return null;
 +
-         private static readonly List<OptionItemVm> DefaultPropioORentaOptions = new()
-         {
-             new OptionItemVm { Value = 645250000, Label = "Propio" },
-             new OptionItemVm { Value = 645250001, Label = "Renta" }
-         };
- 
-         private sealed record UnlicensedUserSummary(string? DisplayName, string? UserPrincipalName, string? Mail, string? Department);
- 
-         private readonly GraphClientFactory _graphFactory;
-         private readonly ServiceClient _dataverse;
-         private readonly ClientesService _clientesService;
-         private readonly DataverseSoporteService _dataverseFiles;
- 
-         public InventarioController(
-             GraphClientFactory graphFactory,
-             ServiceClient dataverse,
-             ClientesService clientesService,
-             DataverseSoporteService dataverseFiles)
-         {
-             _graphFactory = graphFactory;
-             _dataverse = dataverse;
-             _clientesService = clientesService;
-             _dataverseFiles = dataverseFiles;
-         }
- 
-@@ -241,59 +251,65 @@ namespace DigitalTechClientPortal.Controllers
-             if (model.Estado.HasValue)
-             {
-                 var allowed = new[] { 645250000, 645250001, 645250002 };
-                 if (!allowed.Contains(model.Estado.Value))
-                 {
-                     TempData["InventarioError"] = "Estado inválido. Selecciona un valor permitido.";
-                     return RedirectToAction("Equipos");
-                 }
-                 entity["cr07a_estado"] = new OptionSetValue(model.Estado.Value);
-             }
- 
-             if (model.FechaCompra.HasValue) entity["cr07a_fechacompra"] = model.FechaCompra.Value;
-             if (model.PropioORenta.HasValue)
-             {
-                 entity[PropioORentaAttribute] = new OptionSetValue(model.PropioORenta.Value);
-             }
- 
-             try
-             {
-                 var newId = _dataverse.Create(entity);
- 
-                 if (model.ActaDeEntrega != null && model.ActaDeEntrega.Length > 0)
-                 {
-                     try
-                     {
-+                        if (!TryGetActaContentType(model.ActaDeEntrega, out var contentType, out var errorMessage))
-+                        {
-+                            TempData["InventarioError"] = errorMessage;
-+                            return RedirectToAction("Equipos");
-+                        }
-+
-                         await using var stream = model.ActaDeEntrega.OpenReadStream();
-                         var fileName = Path.GetFileName(model.ActaDeEntrega.FileName);
-                         await _dataverseFiles.UploadFileAsync(
-                             EquiposEntitySetName,
-                             newId,
-                             ActaColumnName,
-                             stream,
-                             string.IsNullOrWhiteSpace(fileName) ? $"acta-{newId}.bin" : fileName,
--                            model.ActaDeEntrega.ContentType);
-+                            contentType);
-                     }
-                     catch (Exception ex)
-                     {
-                         TempData["InventarioError"] = "Equipo creado, pero no se pudo cargar el acta de entrega: " + ex.Message;
-                         return RedirectToAction("Equipos");
-                     }
-                 }
- 
-                 TempData["InventarioOk"] = "Equipo creado exitosamente.";
-             }
-             catch (Exception ex)
-             {
-                 TempData["InventarioError"] = "Error creando el equipo: " + ex.Message;
-             }
- 
-             return RedirectToAction("Equipos");
-         }
- 
-         [HttpGet("Equipo")]
-         public async Task<IActionResult> Equipo([FromQuery] Guid id)
-         {
-             if (id == Guid.Empty) return BadRequest("id requerido.");
- 
-             var entity = await _dataverse.RetrieveAsync(EquiposEntityName, id, new ColumnSet(
-                 "cr07a_categoria",
-@@ -407,59 +423,65 @@ namespace DigitalTechClientPortal.Controllers
-             {
-                 entity["cr07a_fechacompra"] = model.FechaCompra.Value;
-             }
-             else
-             {
-                 entity["cr07a_fechacompra"] = null;
-             }
- 
-             if (model.PropioORenta.HasValue)
-             {
-                 entity[PropioORentaAttribute] = new OptionSetValue(model.PropioORenta.Value);
-             }
-             else
-             {
-                 entity[PropioORentaAttribute] = null;
-             }
- 
-             try
-             {
-                 _dataverse.Update(entity);
- 
-                 if (model.ActaDeEntrega != null && model.ActaDeEntrega.Length > 0)
-                 {
-                     try
-                     {
-+                        if (!TryGetActaContentType(model.ActaDeEntrega, out var contentType, out var errorMessage))
-+                        {
-+                            TempData["InventarioError"] = errorMessage;
-+                            return RedirectToAction("Equipos");
-+                        }
-+
-                         await using var stream = model.ActaDeEntrega.OpenReadStream();
-                         var fileName = Path.GetFileName(model.ActaDeEntrega.FileName);
-                         await _dataverseFiles.UploadFileAsync(
-                             EquiposEntitySetName,
-                             model.Id,
-                             ActaColumnName,
-                             stream,
-                             string.IsNullOrWhiteSpace(fileName) ? $"acta-{model.Id}.bin" : fileName,
--                            model.ActaDeEntrega.ContentType);
-+                            contentType);
-                     }
-                     catch (Exception ex)
-                     {
-                         TempData["InventarioError"] = "Se actualizó el equipo, pero no se pudo cargar el acta de entrega: " + ex.Message;
-                         return RedirectToAction("Equipos");
-                     }
-                 }
- 
-                 TempData["InventarioOk"] = "Equipo actualizado.";
-             }
-             catch (Exception ex)
-             {
-                 TempData["InventarioError"] = "Error actualizando el equipo: " + ex.Message;
-             }
- 
-             return RedirectToAction("Equipos");
-         }
- 
-         [HttpPost("EliminarEquipo")]
-         [ValidateAntiForgeryToken]
-         public IActionResult EliminarEquipo([FromForm] Guid id)
-         {
-             if (id == Guid.Empty)
-             {
-                 TempData["InventarioError"] = "Id de equipo inválido.";
-@@ -1589,50 +1611,100 @@ namespace DigitalTechClientPortal.Controllers
-             var raw = await response.Content.ReadAsStringAsync();
-             using var document = JsonDocument.Parse(raw);
- 
-             if (!document.RootElement.TryGetProperty("value", out var valueElement) || valueElement.ValueKind != JsonValueKind.Array)
-             {
-                 return usuarios;
-             }
- 
-             foreach (var user in valueElement.EnumerateArray())
-             {
-                 usuarios.Add(new UserInventoryViewModel
-                 {
-                     Id = user.GetPropertyOrDefault("id"),
-                     DisplayName = user.GetPropertyOrDefault("displayName"),
-                     UserPrincipalName = user.GetPropertyOrDefault("userPrincipalName"),
-                     Mail = user.GetPropertyOrDefault("mail"),
-                     JobTitle = user.GetPropertyOrDefault("jobTitle"),
-                     Department = user.GetPropertyOrDefault("department"),
-                     MobilePhone = user.GetPropertyOrDefault("mobilePhone")
-                 });
-             }
- 
-             return usuarios;
-         }
- 
-+        private bool TryGetActaContentType(IFormFile file, out string? contentType, out string? errorMessage)
-+        {
-+            contentType = null;
-+            errorMessage = null;
-+
-+            if (file == null)
++            var ext = Path.GetExtension(name)?.ToLowerInvariant();
++            return ext switch
 +            {
-+                errorMessage = "No se recibió el archivo del acta.";
-+                return false;
-+            }
-+
-+            string? candidate = null;
-+            var fileName = file.FileName;
-+
-+            if (!string.IsNullOrWhiteSpace(fileName) && FileContentTypeProvider.TryGetContentType(fileName, out var detected))
-+            {
-+                candidate = detected;
-+            }
-+
-+            if (string.IsNullOrWhiteSpace(candidate))
-+            {
-+                var fallback = file.ContentType;
-+                if (!string.IsNullOrWhiteSpace(fallback) &&
-+                    !string.Equals(fallback, "application/octet-stream", StringComparison.OrdinalIgnoreCase))
-+                {
-+                    candidate = fallback;
-+                }
-+            }
-+
-+            if (string.Equals(candidate, "image/jpg", StringComparison.OrdinalIgnoreCase))
-+            {
-+                candidate = "image/jpeg";
-+            }
-+
-+            if (string.IsNullOrWhiteSpace(candidate))
-+            {
-+                errorMessage = "No se pudo determinar el tipo del acta. Adjunta un PDF o imagen (JPG/PNG).";
-+                return false;
-+            }
-+
-+            if (!AllowedActaContentTypes.Contains(candidate))
-+            {
-+                errorMessage = "Adjunta el acta de entrega en formato PDF o imagen (JPG/PNG).";
-+                return false;
-+            }
-+
-+            contentType = candidate;
-+            return true;
++                ".pdf" => "application/pdf",
++                ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
++                ".doc" => "application/msword",
++                ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
++                ".xls" => "application/vnd.ms-excel",
++                ".pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
++                ".ppt" => "application/vnd.ms-powerpoint",
++                ".png" => "image/png",
++                ".jpg" or ".jpeg" => "image/jpeg",
++                ".gif" => "image/gif",
++                ".txt" => "text/plain",
++                ".csv" => "text/csv",
++                ".json" => "application/json",
++                ".xml" => "application/xml",
++                _ => null
++            };
 +        }
 +
-         private static string? ExtractSkipToken(string nextLink)
+         private async Task<string> GetAccessTokenAsync()
          {
-             if (string.IsNullOrEmpty(nextLink)) return null;
-             try
+-            // Reutiliza el token mientras no esté cerca de expirar
+             if (!string.IsNullOrEmpty(_accessToken) && DateTimeOffset.UtcNow < _tokenExpiresAt.AddMinutes(-2))
++            {
+                 return _accessToken;
++            }
+ 
+             var url = _config["Dataverse:Url"];
+             var clientId = _config["Dataverse:ClientId"];
+             var clientSecret = _config["Dataverse:ClientSecret"];
+             var tenantId = _config["Dataverse:TenantId"];
+ 
+-            if (string.IsNullOrWhiteSpace(url) || string.IsNullOrWhiteSpace(clientId) ||
+-                string.IsNullOrWhiteSpace(clientSecret) || string.IsNullOrWhiteSpace(tenantId))
++            if (string.IsNullOrWhiteSpace(url) ||
++                string.IsNullOrWhiteSpace(clientId) ||
++                string.IsNullOrWhiteSpace(clientSecret) ||
++                string.IsNullOrWhiteSpace(tenantId))
              {
-                 var uri = new Uri(nextLink);
-                 var query = QueryHelpers.ParseQuery(uri.Query);
-                 if (query.TryGetValue("$skiptoken", out var values))
-                 {
-                     var token = values.FirstOrDefault();
-                     return string.IsNullOrEmpty(token) ? null : token;
-                 }
-             }
-             catch
-             {
-                 var idx = nextLink.IndexOf("$skiptoken=", StringComparison.OrdinalIgnoreCase);
-                 if (idx >= 0)
-                 {
-                     var val = nextLink[(idx + "$skiptoken=".Length)..];
-                     return Uri.UnescapeDataString(val);
-                 }
+                 throw new InvalidOperationException("Faltan valores de configuración para Dataverse.");
              }
  
-             return null;
+             var authority = $"https://login.microsoftonline.com/{tenantId}";
+             var scope = $"{url}/.default";
+ 
+             var app = ConfidentialClientApplicationBuilder
+                 .Create(clientId)
+                 .WithClientSecret(clientSecret)
+                 .WithAuthority(new Uri(authority))
+                 .Build();
+ 
+             var result = await app.AcquireTokenForClient(new[] { scope }).ExecuteAsync();
+             _accessToken = result.AccessToken;
+             _tokenExpiresAt = result.ExpiresOn;
+ 
+             return _accessToken;
          }
+ 
+-        /// <summary>
+-        /// Ejecuta una consulta OData a Dataverse y devuelve el resultado como JsonDocument.
+-        /// Ejemplo: cr07a_tickets?$select=col1,col2&$filter=_cr07a_cliente_value eq {guid}&$orderby=colFecha desc
+-        /// </summary>
+         public async Task<JsonDocument> GetAsync(string odataQuery)
+         {
+             var token = await GetAccessTokenAsync();
+             var baseUrl = _config["Dataverse:Url"]?.TrimEnd('/')
+                           ?? throw new InvalidOperationException("Dataverse:Url no configurado.");
+ 
+             var url = $"{baseUrl}/api/data/v9.2/{odataQuery}";
+ 
+             var client = _httpClientFactory.CreateClient();
+             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+             client.DefaultRequestHeaders.Add("OData-MaxVersion", "4.0");
+             client.DefaultRequestHeaders.Add("OData-Version", "4.0");
+             client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+ 
+             var resp = await client.GetAsync(url);
+             if (!resp.IsSuccessStatusCode)
+             {
+                 var body = await resp.Content.ReadAsStringAsync();
+                 throw new HttpRequestException($"Dataverse GET {resp.StatusCode}. URL: {url}. Body: {body}");
+             }
+ 
+             var json = await resp.Content.ReadAsStringAsync();
+             return JsonDocument.Parse(json);
+         }
+ 
+-        /// <summary>
+-        /// Descarga un archivo almacenado en una columna de tipo file en Dataverse.
+-        /// GET {entitySet}({id})/{columnName}/$value
+-        /// </summary>
+         public async Task<(Stream Stream, string ContentType, string FileName)?> GetFileAsync(string entitySet, Guid id, string columnName)
+         {
+             var token = await GetAccessTokenAsync();
+             var baseUrl = _config["Dataverse:Url"]?.TrimEnd('/')
+                           ?? throw new InvalidOperationException("Dataverse:Url no configurado.");
+ 
+             var url = $"{baseUrl}/api/data/v9.2/{entitySet}({id})/{columnName}/$value";
+ 
+             var client = _httpClientFactory.CreateClient();
+             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+ 
+             var resp = await client.GetAsync(url);
+             if (!resp.IsSuccessStatusCode) return null;
+ 
+             var mem = new MemoryStream();
+             await resp.Content.CopyToAsync(mem);
+             mem.Position = 0;
+ 
+-          // Fragmento que obtiene el stream, contentType y fileName desde una respuesta HTTP
+-// Respeta tu lógica original y añade una normalización y mejora del contentType.
+-{
+-    var contentType = resp.Content.Headers.ContentType?.MediaType ?? "application/octet-stream";
+-
+-    // Nombre por defecto si no viene en headers
+-    string fileName = $"archivo-{id}.bin";
++            var contentType = resp.Content.Headers.ContentType?.MediaType;
++            var fileName = resp.Content.Headers.ContentDisposition?.FileNameStar
++                           ?? resp.Content.Headers.ContentDisposition?.FileName?.Trim('"')
++                           ?? $"archivo-{id}.bin";
+ 
+-    if (resp.Content.Headers.ContentDisposition != null)
+-    {
+-        fileName = resp.Content.Headers.ContentDisposition.FileNameStar
+-                   ?? resp.Content.Headers.ContentDisposition.FileName?.Trim('"')
+-                   ?? fileName;
+-    }
+-    else if (resp.Content.Headers.TryGetValues("Content-Disposition", out var vals))
+-    {
+-        var cd = string.Join(";", vals);
+-        const string tag = "filename=";
+-        var idx = cd.IndexOf(tag, StringComparison.OrdinalIgnoreCase);
+-        if (idx >= 0)
+-        {
+-            var candidate = cd[(idx + tag.Length)..].Trim().Trim('"');
+-            if (!string.IsNullOrWhiteSpace(candidate)) fileName = candidate;
+-        }
+-    }
++            if (resp.Content.Headers.ContentDisposition == null &&
++                resp.Content.Headers.TryGetValues("Content-Disposition", out var rawContentDisposition))
++            {
++                var candidate = rawContentDisposition
++                    .Select(v => v.Split(';', StringSplitOptions.RemoveEmptyEntries))
++                    .SelectMany(parts => parts)
++                    .FirstOrDefault(part => part.TrimStart().StartsWith("filename=", StringComparison.OrdinalIgnoreCase));
++
++                if (!string.IsNullOrWhiteSpace(candidate))
++                {
++                    fileName = candidate[(candidate.IndexOf('=') + 1)..].Trim().Trim('"');
++                }
++            }
+ 
+-    // Normalización de contentType: si viene vacío o 'application/octet-stream',
+-    // intenta resolver por extensión del fileName.
+-    string ResolveMimeByExtension(string name)
+-    {
+-        var ext = System.IO.Path.GetExtension(name)?.ToLowerInvariant();
+-        return ext switch
+-        {
+-            ".pdf"  => "application/pdf",
+-            ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+-            ".doc"  => "application/msword",
+-            ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+-            ".xls"  => "application/vnd.ms-excel",
+-            ".pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+-            ".ppt"  => "application/vnd.ms-powerpoint",
+-            ".png"  => "image/png",
+-            ".jpg" or ".jpeg" => "image/jpeg",
+-            ".gif"  => "image/gif",
+-            ".txt"  => "text/plain",
+-            ".csv"  => "text/csv",
+-            ".json" => "application/json",
+-            ".xml"  => "application/xml",
+-            _ => ""
+-        };
+-    }
++            if (string.IsNullOrWhiteSpace(contentType) ||
++                contentType.Equals("application/octet-stream", StringComparison.OrdinalIgnoreCase))
++            {
++                contentType = ResolveMimeByExtension(fileName) ?? "application/octet-stream";
++            }
+ 
+-    // Si el servidor respondió con octet-stream o no hay MIME, intenta inferirlo por la extensión
+-    if (string.IsNullOrWhiteSpace(contentType) || contentType.Equals("application/octet-stream", StringComparison.OrdinalIgnoreCase))
+-    {
+-        var inferred = ResolveMimeByExtension(fileName);
+-        if (!string.IsNullOrWhiteSpace(inferred))
+-        {
+-            contentType = inferred;
++            return (mem, contentType, fileName);
+         }
+-        // Si no se puede inferir, se mantiene octet-stream aquí,
+-        // pero la subida a Dataverse validará y pedirá un MIME explícito para evitar el error.
+-    }
+ 
+-    return (mem, contentType, fileName);
+-}}
+-
+-// Método de subida a Dataverse ($value) respetando tu flujo y corrigiendo Content-Type
+-public async Task UploadFileAsync(
+-    string entitySet,
+-    Guid id,
+-    string columnName,
+-    Stream content,
+-    string fileName,
+-    string? contentType = null,
+-    CancellationToken cancellationToken = default)
+-{
+-    if (string.IsNullOrWhiteSpace(entitySet)) throw new ArgumentException("Valor requerido", nameof(entitySet));
+-    if (string.IsNullOrWhiteSpace(columnName)) throw new ArgumentException("Valor requerido", nameof(columnName));
+-    if (content == null) throw new ArgumentNullException(nameof(content));
+-    if (string.IsNullOrWhiteSpace(fileName)) throw new ArgumentException("Valor requerido", nameof(fileName));
+-
+-    var token = await GetAccessTokenAsync();
+-    var baseUrl = _config["Dataverse:Url"]?.TrimEnd('/')
+-                  ?? throw new InvalidOperationException("Dataverse:Url no configurado.");
+-
+-    var url = $"{baseUrl}/api/data/v9.2/{entitySet}({id})/{columnName}/$value";
+-
+-    // Resolver/normalizar el Content-Type efectivo
+-    string ResolveMimeByExtension(string name)
+-    {
+-        var ext = System.IO.Path.GetExtension(name)?.ToLowerInvariant();
+-        return ext switch
++        public async Task UploadFileAsync(
++            string entitySet,
++            Guid id,
++            string columnName,
++            Stream content,
++            string fileName,
++            string? contentType = null,
++            CancellationToken cancellationToken = default)
+         {
+-            ".pdf"  => "application/pdf",
+-            ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+-            ".doc"  => "application/msword",
+-            ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+-            ".xls"  => "application/vnd.ms-excel",
+-            ".pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+-            ".ppt"  => "application/vnd.ms-powerpoint",
+-            ".png"  => "image/png",
+-            ".jpg" or ".jpeg" => "image/jpeg",
+-            ".gif"  => "image/gif",
+-            ".txt"  => "text/plain",
+-            ".csv"  => "text/csv",
+-            ".json" => "application/json",
+-            ".xml"  => "application/xml",
+-            _ => ""
+-        };
+-    }
++            if (string.IsNullOrWhiteSpace(entitySet)) throw new ArgumentException("Valor requerido", nameof(entitySet));
++            if (string.IsNullOrWhiteSpace(columnName)) throw new ArgumentException("Valor requerido", nameof(columnName));
++            if (content == null) throw new ArgumentNullException(nameof(content));
++            if (string.IsNullOrWhiteSpace(fileName)) throw new ArgumentException("Valor requerido", nameof(fileName));
+ 
+-    // Si viene desde el método anterior y es octet-stream, intenta mejorarlo por extensión
+-    var effectiveContentType = !string.IsNullOrWhiteSpace(contentType) ? contentType : "";
+-    if (string.IsNullOrWhiteSpace(effectiveContentType) || effectiveContentType.Equals("application/octet-stream", StringComparison.OrdinalIgnoreCase))
+-    {
+-        var inferred = ResolveMimeByExtension(fileName);
+-        if (!string.IsNullOrWhiteSpace(inferred))
+-        {
+-            effectiveContentType = inferred;
+-        }
+-    }
++            var token = await GetAccessTokenAsync();
++            var baseUrl = _config["Dataverse:Url"]?.TrimEnd('/')
++                          ?? throw new InvalidOperationException("Dataverse:Url no configurado.");
+ 
+-    // Validación final: Dataverse NO acepta application/octet-stream en $value
+-    if (string.IsNullOrWhiteSpace(effectiveContentType) || effectiveContentType.Equals("application/octet-stream", StringComparison.OrdinalIgnoreCase))
+-    {
+-        throw new InvalidOperationException("Para subir a Dataverse ($value) debes especificar un Content-Type real del archivo (por ejemplo, application/pdf).");
+-    }
++            var url = $"{baseUrl}/api/data/v9.2/{entitySet}({id})/{columnName}/$value";
+ 
+-    var client = _httpClientFactory.CreateClient();
+-    client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+-    client.DefaultRequestHeaders.TryAddWithoutValidation("If-Match", "*");
+-    client.DefaultRequestHeaders.TryAddWithoutValidation("Prefer", "return=minimal");
+-    client.DefaultRequestHeaders.Accept.Clear();
+-    client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
++            var effectiveContentType = contentType;
++            if (string.IsNullOrWhiteSpace(effectiveContentType) ||
++                effectiveContentType.Equals("application/octet-stream", StringComparison.OrdinalIgnoreCase))
++            {
++                effectiveContentType = ResolveMimeByExtension(fileName);
++            }
+ 
+-    if (!string.IsNullOrWhiteSpace(fileName))
+-    {
+-        client.DefaultRequestHeaders.Remove("x-ms-file-name");
+-        client.DefaultRequestHeaders.TryAddWithoutValidation("x-ms-file-name", fileName);
+-    }
++            if (string.IsNullOrWhiteSpace(effectiveContentType) ||
++                effectiveContentType.Equals("application/octet-stream", StringComparison.OrdinalIgnoreCase))
++            {
++                throw new InvalidOperationException(
++                    "Para subir a Dataverse ($value) debes especificar un Content-Type real del archivo (por ejemplo, application/pdf).");
++            }
+ 
+-    if (content.CanSeek)
+-    {
+-        content.Position = 0;
+-    }
++            var client = _httpClientFactory.CreateClient();
++            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
++            client.DefaultRequestHeaders.TryAddWithoutValidation("If-Match", "*");
++            client.DefaultRequestHeaders.TryAddWithoutValidation("Prefer", "return=minimal");
++            client.DefaultRequestHeaders.Accept.Clear();
++            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+ 
+-    using var streamContent = new StreamContent(content);
++            if (!string.IsNullOrWhiteSpace(fileName))
++            {
++                client.DefaultRequestHeaders.Remove("x-ms-file-name");
++                client.DefaultRequestHeaders.TryAddWithoutValidation("x-ms-file-name", fileName);
++            }
+ 
+-    // Asignar el Content-Type REAL
+-    streamContent.Headers.ContentType = new MediaTypeHeaderValue(effectiveContentType);
++            if (content.CanSeek)
++            {
++                content.Position = 0;
++            }
+ 
+-    if (content.CanSeek)
+-    {
+-        streamContent.Headers.ContentLength = content.Length;
+-    }
++            using var streamContent = new StreamContent(content);
++            streamContent.Headers.ContentType = new MediaTypeHeaderValue(effectiveContentType);
+ 
+-    using var request = new HttpRequestMessage(HttpMethod.Put, url)
+-    {
+-        Content = streamContent
+-    };
++            if (content.CanSeek)
++            {
++                streamContent.Headers.ContentLength = content.Length;
++            }
+ 
+-    var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+-    if (!response.IsSuccessStatusCode)
+-    {
+-        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+-        throw new HttpRequestException($"Dataverse PUT {response.StatusCode}. URL: {url}. Body: {body}");
++            using var request = new HttpRequestMessage(HttpMethod.Put, url)
++            {
++                Content = streamContent
++            };
++
++            var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
++            if (!response.IsSuccessStatusCode)
++            {
++                var body = await response.Content.ReadAsStringAsync(cancellationToken);
++                throw new HttpRequestException($"Dataverse PUT {response.StatusCode}. URL: {url}. Body: {body}");
++            }
++        }
+     }
+-}}}
+\ No newline at end of file
++}
  
 EOF
 )
