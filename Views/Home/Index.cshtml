@@ -20,131 +20,250 @@
     <!-- Swiper CSS solo para esta vista -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@9/swiper-bundle.min.css" />
     <style>
-        .grad-assessment { background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #3b82f6 100%); }
-        .card { position: relative; overflow: hidden; border-radius: 1rem; border: 1px solid #e5e7eb; background: #ffffff; }
-        .card-overlay { position: absolute; inset: 0; opacity: 0.08; }
+        .glass-card {
+            position: relative;
+            overflow: hidden;
+            border-radius: 1.25rem;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.08));
+            backdrop-filter: blur(10px);
+        }
+
+        .card {
+            position: relative;
+            overflow: hidden;
+            border-radius: 1rem;
+            border: 1px solid #e5e7eb;
+            background: #ffffff;
+        }
+
+        .card-overlay {
+            position: absolute;
+            inset: 0;
+            opacity: 0.12;
+        }
+
         .card-content { position: relative; z-index: 1; }
-        .tag { display:inline-block; padding:.375rem .75rem; font-size:.75rem; border-radius:.375rem; }
-        .tag-blue { background:#dbeafe; color:#1e40af; }
-        .tag-blue:hover { background:#bfdbfe; }
-        .ratio-16-9 { aspect-ratio: 16 / 9; }
-        #promoSwiper { background:#fff; }
-        /* Nuevo: tarjetas resumen */
-        .metric { display:flex; flex-direction:column; gap:.25rem; }
-        .metric .label { color:#475569; font-size:.75rem; }
-        .metric .value { color:#0f172a; font-weight:600; font-size:1.25rem; }
-        .range-tab { padding:.375rem .625rem; border:1px solid #e5e7eb; border-radius:.5rem; font-size:.75rem; color:#334155; background:#fff; }
-        .range-tab.active { background:#f1f5f9; border-color:#cbd5e1; }
+        
+        .tag {
+            display: inline-block;
+            padding: .375rem .75rem;
+            font-size: .75rem;
+            border-radius: .375rem;
+        }
+
+        .tag-blue { background: #dbeafe; color: #1e40af; }
+        .tag-blue:hover { background: #bfdbfe; }
+
+        .range-tab {
+            padding: .375rem .75rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 9999px;
+            font-size: .75rem;
+            color: #0f172a;
+            background: #fff;
+            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+            transition: all .2s ease;
+        }
+
+        .range-tab.active {
+            background: linear-gradient(135deg, #0ea5e9, #6366f1);
+            color: #fff;
+            border-color: transparent;
+        }
+
+        .metric { display: flex; flex-direction: column; gap: .2rem; }
+        .metric .label { color: #94a3b8; font-size: .8rem; letter-spacing: 0.01em; }
+        .metric .value { color: #0f172a; font-weight: 700; font-size: 1.35rem; }
+
+        .icon-circle {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 9999px;
+            width: 2.5rem;
+            height: 2.5rem;
+            background: linear-gradient(135deg, #0ea5e9, #6366f1);
+            color: #fff;
+            box-shadow: 0 10px 25px rgba(14, 165, 233, 0.35);
+        }
+
+        .highlight-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: .35rem;
+            padding: .35rem .75rem;
+            border-radius: 9999px;
+            background: rgba(255, 255, 255, 0.16);
+            color: #e0f2fe;
+            font-weight: 600;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+        }
+
+        .panel-surface {
+            background: radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.38), transparent 32%),
+                        radial-gradient(circle at 80% 0%, rgba(59, 130, 246, 0.14), transparent 28%),
+                        #0b1224;
+            border-radius: 1.5rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 20px 60px rgba(15, 23, 42, 0.35);
+        }
+
+        #promoSwiper { background: transparent; }
+        .swiper-pagination-bullet { background: #94a3b8; opacity: 0.6; }
+        .swiper-pagination-bullet-active { background: #0ea5e9; opacity: 1; }
+        .swiper-slide img { border-radius: 1rem; box-shadow: 0 20px 60px rgba(15, 23, 42, 0.08); }
     </style>
 }
 
 @section Main {
-<!-- Encabezado -->
-<div class="w-full px-4 sm:px-6 lg:px-8 py-8">
-  <header class="mb-6">
-    <h1 class="text-3xl font-semibold tracking-tight text-slate-900">Bienvenido a tu Digital App</h1>
-    <p class="mt-2 text-slate-500">Conoce en detalle todos tus productos y servicios</p>
-  </header>
-</div>
-
+<div class="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-100 w-full px-4 sm:px-6 lg:px-8 py-8">
+  <!-- Encabezado hero -->
+  <section class="panel-surface text-white p-8 md:p-10 mb-8 relative overflow-hidden">
+    <div class="absolute inset-0 opacity-70" style="background: radial-gradient(circle at 20% 20%, rgba(14,165,233,.25), transparent 32%), radial-gradient(circle at 80% 10%, rgba(99,102,241,.25), transparent 26%);"></div>
+    <div class="relative flex flex-col lg:flex-row lg:items-center gap-8">
+      <div class="space-y-4 lg:w-7/12">
+        <div class="highlight-badge">
+          <span class="icon-circle w-8 h-8 text-xs shadow-none">⚡</span>
+          Panel ejecutivo digital
+        </div>
+        <h1 class="text-4xl md:text-5xl font-bold leading-tight">Tu operación en un panel unificado</h1>
+        <p class="text-slate-200 text-lg max-w-2xl">Visualiza métricas críticas, gestiona servicios y mantén tus productos organizados con una interfaz moderna inspirada en plataformas tecnológicas.</p>
+        <div class="flex flex-wrap gap-3">
+          <a href="@Url.Action("Index","Soporte")" class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/15 border border-white/20 text-white hover:bg-white/25 transition">
+            <span class="icon-circle w-9 h-9 text-base shadow-none">↗</span>
+            Ir a soporte
+          </a>
+          <a href="https://wa.me/573153405758" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white text-slate-900 font-semibold shadow-lg hover:shadow-xl transition">
+            <span class="icon-circle w-9 h-9 text-base shadow-none bg-gradient-to-br from-slate-800 to-slate-900">✉️</span>
+            Hablar con un asesor
+          </a>
+        </div>
+      </div>
 <!-- Resumen y métricas -->
-<section class="rounded-2xl border border-neutral-200 bg-white w-full px-6 py-5 mb-6">
-  <div class="flex items-center justify-between mb-4">
-    <h2 class="text-base font-semibold text-slate-900">Resumen ejecutivo</h2>
-    <div class="flex items-center gap-2">
-      @{
-          var currentRange = RangeToString(selectedRange);
-          string baseUrl = Url.Action("Index", "Home") ?? "/Home/Index";
-      }
-      <a class="range-tab @(currentRange=="mes" ? "active" : "")" href="@($"{baseUrl}?range=mes")">Este mes</a>
-      <a class="range-tab @(currentRange=="anio" ? "active" : "")" href="@($"{baseUrl}?range=anio")">Este año</a>
-      <a class="range-tab @(currentRange=="total" ? "active" : "")" href="@($"{baseUrl}?range=total")">Total</a>
+<div class="glass-card p-6 lg:w-5/12 text-slate-900">
+        <div class="flex items-center justify-between mb-5">
+          <div>
+            <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Resumen</p>
+            <p class="text-lg font-semibold text-slate-800">KPI de servicio</p>
+          </div>
+          <div class="flex gap-2">
+            @{
+                var currentRange = RangeToString(selectedRange);
+                string baseUrl = Url.Action("Index", "Home") ?? "/Home/Index";
+            }
+            <a class="range-tab @(currentRange=="mes" ? "active" : "")" href="@($"{baseUrl}?range=mes")">Mes</a>
+            <a class="range-tab @(currentRange=="anio" ? "active" : "")" href="@($"{baseUrl}?range=anio")">Año</a>
+            <a class="range-tab @(currentRange=="total" ? "active" : "")" href="@($"{baseUrl}?range=total")">Total</a>
+          </div>
+        </div>
+
+ 
+        @if (TempData["SummaryError"] != null)
+        {
+          <div class="text-sm text-slate-600 mb-3">@TempData["SummaryError"]</div>
+        }
+  <div class="grid grid-cols-2 gap-3">
+          <a href="@Url.Action("Index","Soporte")" class="card bg-gradient-to-br from-cyan-50 via-white to-indigo-50 border-transparent shadow-lg p-4 hover:-translate-y-1 transition" aria-label="Ir a Soporte: detalle de horas entregadas">
+            <div class="flex items-start justify-between">
+              <div class="space-y-1">
+                <p class="text-xs uppercase tracking-wide text-slate-500">Horas entregadas</p>
+                <p class="text-3xl font-extrabold text-slate-900">@resumen.HorasEntregadas</p>
+                <p class="text-[13px] text-slate-500">Capacitaciones, tickets, implementaciones y consultorías.</p>
+              </div>
+              <span class="icon-circle">⏱</span>
+            </div>
+          </a>
+
+          <div class="space-y-3">
+            <a href="@Url.Action("Index","Soporte")" class="card border-slate-200 p-3 shadow-sm hover:-translate-y-1 transition" aria-label="Ir a Soporte: Tickets Cloud">
+              <div class="flex items-center justify-between">
+                <div class="metric">
+                  <span class="label">Tickets Cloud</span>
+                  <span class="value">@resumen.TicketsCloud</span>
+                </div>
+                <span class="icon-circle bg-gradient-to-br from-sky-500 to-indigo-500">☁️</span>
+              </div>
+            </a>
+            <a href="@Url.Action("Index","Soporte")" class="card border-slate-200 p-3 shadow-sm hover:-translate-y-1 transition" aria-label="Ir a Soporte: Tickets Copiers">
+              <div class="flex items-center justify-between">
+                <div class="metric">
+                  <span class="label">Tickets Copiers</span>
+                  <span class="value">@resumen.TicketsCopiers</span>
+                </div>
+                <span class="icon-circle bg-gradient-to-br from-amber-400 to-orange-500">🖨️</span>
+              </div>
+            </a>
+          </div>
+
+          <a href="@Url.Action("Index","Capacitaciones")" class="card border-slate-200 p-3 shadow-sm hover:-translate-y-1 transition" aria-label="Ir a Capacitaciones">
+            <div class="flex items-center justify-between">
+              <div class="metric">
+                <span class="label">Capacitaciones</span>
+                <span class="value">@resumen.Capacitaciones</span>
+              </div>
+              <span class="icon-circle bg-gradient-to-br from-emerald-400 to-teal-500">🎓</span>
+            </div>
+          </a>
+
+          <a href="@Url.Action("Index","Reportes")" class="card border-slate-200 p-3 shadow-sm hover:-translate-y-1 transition" aria-label="Ir a Reportes Cloud">
+            <div class="flex items-center justify-between">
+              <div class="metric">
+                <span class="label">Reportes Cloud</span>
+                <span class="value">@resumen.Reportes</span>
+              </div>
+              <span class="icon-circle bg-gradient-to-br from-fuchsia-500 to-indigo-600">📊</span>
+            </div>
+          </a>
+        </div>
+      </div>
     </div>
-  </div>
+  </section>
 
-  @if (TempData["SummaryError"] != null)
-  {
-    <div class="text-sm text-slate-600 mb-3">@TempData["SummaryError"]</div>
-  }
-
-  <!-- 1) Tarjeta grande arriba -->
-  <a href="@Url.Action("Index","Soporte")" class="block w-full mb-6 rounded-xl border border-slate-200 bg-white shadow-sm p-6 hover:bg-slate-50 transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2" aria-label="Ir a Soporte: detalle de horas entregadas">
-    <div class="flex items-center justify-between">
+  
+    <!-- Verticales de Negocio -->
+  <section class="w-full mb-8">
+    <div class="flex items-center justify-between mb-4">
       <div>
-        <div class="text-lg font-semibold text-slate-900">Horas entregadas</div>
-        <div class="text-sm text-slate-500">
-          (Capacitaciones - Tickets - Implementaciones - Consultorias)
-        </div>
+        <p class="text-xs uppercase tracking-[0.3em] text-slate-500">Productos y licencias</p>
+        <h2 class="text-2xl font-semibold text-slate-900">Organiza tus verticales</h2>
       </div>
-      <div class="text-4xl font-extrabold text-slate-900">@resumen.HorasEntregadas</div>
+    <a href="https://wa.me/573153405758" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-sky-500 to-indigo-600 text-white shadow-lg hover:shadow-xl transition">
+        Solicitar más productos ↗
+      </a>
     </div>
-  </a>
 
-  <!-- 2) Fila intermedia: Tickets -->
-  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-    <a href="@Url.Action("Index","Soporte")" class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:bg-slate-50 transition-colors cursor-pointer block focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2" aria-label="Ir a Soporte: Tickets Cloud">
-      <div class="metric">
-        <span class="label">Tickets Cloud</span>
-        <span class="value">@resumen.TicketsCloud</span>
-      </div>
-    </a>
-
-    <a href="@Url.Action("Index","Soporte")" class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:bg-slate-50 transition-colors cursor-pointer block focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2" aria-label="Ir a Soporte: Tickets Copiers">
-      <div class="metric">
-        <span class="label">Tickets Copiers</span>
-        <span class="value">@resumen.TicketsCopiers</span>
-      </div>
-    </a>
-  </div>
-
-  <!-- 3) Fila inferior: Capacitaciones y Reportes -->
-  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-    <a href="@Url.Action("Index","Capacitaciones")" class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:bg-slate-50 transition-colors cursor-pointer block focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2" aria-label="Ir a Capacitaciones">
-      <div class="metric">
-        <span class="label">Capacitaciones dictadas</span>
-        <span class="value">@resumen.Capacitaciones</span>
-      </div>
-    </a>
-
-    <a href="@Url.Action("Index","Reportes")" class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:bg-slate-50 transition-colors cursor-pointer block focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2" aria-label="Ir a Reportes Cloud">
-      <div class="metric">
-        <span class="label">Reportes Cloud</span>
-        <span class="value">@resumen.Reportes</span>
-      </div>
-    </a>
-  </div>
-</section>
-<!-- Verticales de Negocio -->
-<section class="rounded-2xl p-0 w-full">
-  <h2 class="text-sm font-semibold text-slate-900 mb-4">Tus Productos</h2>
-
-  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-    <!-- Copiers dinámico -->
-    @{
-      var copiers = ViewBag.Copiers as List<DigitalTechClientPortal.Models.ProductVm>;
-    }
-    <section class="rounded-xl border border-neutral-200" style="background:#ffffff;">
-      <div class="p-5">
-        <div class="flex items-center gap-3 mb-4">
-          <img
-            src="https://logo.clearbit.com/kyocera.com"
-            alt="Kyocera"
-            class="h-8 w-auto max-w-[140px] object-contain"
-            referrerpolicy="no-referrer"
-            onerror="
-              this.onerror=null;
-              this.src=`data:image/svg+xml;utf8,
-              <svg xmlns='http://www.w3.org/2000/svg' width='140' height='32'>
-                <rect width='140' height='32' fill='%23e60012'/>
-                <text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle'
-                      font-family='Helvetica, Arial' font-size='14' fill='white'>KYOCERA</text>
-              </svg>`;
-            "
-          />
-          <h3 class="text-base font-semibold text-slate-900">Copiers</h3>
+     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      @{
+        var copiers = ViewBag.Copiers as List<DigitalTechClientPortal.Models.ProductVm>;
+      }
+      <section class="card border-transparent bg-gradient-to-br from-white via-slate-50 to-slate-100 shadow-xl p-6">
+        <div class="flex items-center justify-between mb-5">
+          <div class="flex items-center gap-3">
+            <img
+              src="https://logo.clearbit.com/kyocera.com"
+              alt="Kyocera"
+              class="h-8 w-auto max-w-[140px] object-contain"
+              referrerpolicy="no-referrer"
+              onerror="
+                this.onerror=null;
+                this.src=`data:image/svg+xml;utf8,
+                <svg xmlns='http://www.w3.org/2000/svg' width='140' height='32'>
+                  <rect width='140' height='32' fill='%23e60012'/>
+                  <text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle'
+                        font-family='Helvetica, Arial' font-size='14' fill='white'>KYOCERA</text>
+                </svg>`;
+              "
+            />
+            <div>
+              <p class="text-xs uppercase tracking-wide text-slate-500">Impresión inteligente</p>
+              <h3 class="text-xl font-semibold text-slate-900">Copiers</h3>
+            </div>
+          </div>
+          <span class="icon-circle bg-gradient-to-br from-amber-400 to-orange-500">🖨️</span>
         </div>
 
-        <div class="text-sm text-slate-700 space-y-1.5 mb-5 max-h-40 overflow-y-auto pr-1">
+        <div class="text-sm text-slate-700 space-y-1.5 mb-5 max-h-48 overflow-y-auto pr-1">
           @if (TempData["CopiersError"] != null)
           {
             <div class="text-slate-600">@TempData["CopiersError"]</div>
@@ -155,11 +274,14 @@
           }
           else
           {
-            <ul class="space-y-1.5">
+            <ul class="space-y-2">
               @foreach (var p in copiers)
               {
-                <li class="flex items-center justify-between">
-                  <span>🖨️ @p.ProductName</span>
+                <li class="flex items-center justify-between border-b border-slate-100 pb-2 last:border-0 last:pb-0">
+                  <div class="flex items-center gap-2 text-slate-900">
+                    <span class="icon-circle w-8 h-8 bg-gradient-to-br from-orange-500 to-amber-400 text-xs">✦</span>
+                    <span class="font-medium">@p.ProductName</span>
+                  </div>
                   <span class="tag tag-blue text-[11px]">@p.Quantity</span>
                 </li>
               }
@@ -167,38 +289,40 @@
           }
         </div>
 
-        <a href="https://wa.me/573153405758" target="_blank" rel="noopener noreferrer"
-           class="btn-unified btn-unified-light text-xs">
-          Solicitar más productos
+        <a href="https://wa.me/573153405758" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 text-sm font-semibold text-indigo-600 hover:text-indigo-700">
+          Solicitar más unidades ↗
         </a>
-      </div>
-    </section>
+      </section>
 
-    <!-- Cloud dinámico -->
-    <section class="rounded-xl border border-neutral-200" style="background:#ffffff;">
-      <div class="p-5">
-        <div class="flex items-center gap-3 mb-4">
-          <img
-            src="https://logo.clearbit.com/microsoft.com"
-            alt="Microsoft"
-            class="h-8 w-auto max-w-[140px] object-contain"
-            referrerpolicy="no-referrer"
-            onerror="
-              this.onerror=null;
-              this.src=`data:image/svg+xml;utf8,
-              <svg xmlns='http://www.w3.org/2000/svg' width='140' height='32'>
-                <rect x='0' y='0' width='32' height='32' fill='%23f25022'/>
-                <rect x='36' y='0' width='32' height='32' fill='%2373cf14'/>
-                <rect x='0' y='36' width='32' height='32' fill='%2300a4ef'/>
-                <rect x='36' y='36' width='32' height='32' fill='%23ffb900'/>
-                <text x='90' y='21' font-family='Helvetica, Arial' font-size='14' fill='%23000'>Microsoft</text>
-              </svg>`;
-            "
-          />
-          <h3 class="text-base font-semibold text-slate-900">Cloud</h3>
+      <section class="card border-transparent bg-gradient-to-br from-white via-slate-50 to-slate-100 shadow-xl p-6">
+        <div class="flex items-center justify-between mb-5">
+          <div class="flex items-center gap-3">
+            <img
+              src="https://logo.clearbit.com/microsoft.com"
+              alt="Microsoft"
+              class="h-8 w-auto max-w-[140px] object-contain"
+              referrerpolicy="no-referrer"
+              onerror="
+                this.onerror=null;
+                this.src=`data:image/svg+xml;utf8,
+                <svg xmlns='http://www.w3.org/2000/svg' width='140' height='32'>
+                  <rect x='0' y='0' width='32' height='32' fill='%23f25022'/>
+                  <rect x='36' y='0' width='32' height='32' fill='%2373cf14'/>
+                  <rect x='0' y='36' width='32' height='32' fill='%2300a4ef'/>
+                  <rect x='36' y='36' width='32' height='32' fill='%23ffb900'/>
+                  <text x='90' y='21' font-family='Helvetica, Arial' font-size='14' fill='%23000'>Microsoft</text>
+                </svg>`;
+              "
+            />
+            <div>
+              <p class="text-xs uppercase tracking-wide text-slate-500">Nube y productividad</p>
+              <h3 class="text-xl font-semibold text-slate-900">Cloud</h3>
+            </div>
+          </div>
+          <span class="icon-circle bg-gradient-to-br from-sky-500 to-indigo-500">☁️</span>
         </div>
 
-        <div class="text-sm text-slate-700 space-y-1.5 mb-5 max-h-40 overflow-y-auto pr-1">
+        <div class="text-sm text-slate-700 space-y-1.5 mb-5 max-h-48 overflow-y-auto pr-1">
           @if (TempData["HomeError"] != null)
           {
             <div class="text-slate-600">@TempData["HomeError"]</div>
@@ -209,11 +333,14 @@
           }
           else
           {
-            <ul class="space-y-1.5">
+            <ul class="space-y-2">
               @foreach (var p in Model)
               {
-                <li class="flex items-center justify-between">
-                  <span>☁️ @p.ProductName</span>
+                <li class="flex items-center justify-between border-b border-slate-100 pb-2 last:border-0 last:pb-0">
+                  <div class="flex items-center gap-2 text-slate-900">
+                    <span class="icon-circle w-8 h-8 bg-gradient-to-br from-sky-500 to-indigo-500 text-xs">✦</span>
+                    <span class="font-medium">@p.ProductName</span>
+                  </div>
                   <span class="tag tag-blue text-[11px]">@p.Quantity</span>
                 </li>
               }
@@ -221,74 +348,80 @@
           }
         </div>
 
-        <a href="https://wa.me/573153405758" target="_blank" rel="noopener noreferrer"
-           class="btn-unified btn-unified-light text-xs">
-          Solicitar más productos
+        <a href="https://wa.me/573153405758" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 text-sm font-semibold text-indigo-600 hover:text-indigo-700">
+          Ampliar licenciamiento ↗
+
         </a>
-      </div>
-    </section>
-  </div>
-</section>
+            </section>
 
-<!-- Noticias / Promociones -->
-<section class="rounded-xl border border-neutral-200 mt-6 bg-white">
-  <div class="p-6 w-full overflow-hidden">
-    <div class="mb-4 flex items-center justify-between">
-      <h2 class="text-base font-semibold text-slate-900">Noticias y promociones</h2>
-      <div class="flex items-center gap-2">
-        <div class="swiper-pagination !static"></div>
-        <button class="promo-prev rounded-md border px-2 py-1 text-xs text-slate-700 hover:bg-slate-50" aria-label="Anterior">◀</button>
-        <button class="promo-next rounded-md border px-2 py-1 text-xs text-slate-700 hover:bg-slate-50" aria-label="Siguiente">▶</button>
-      </div>
     </div>
+  </section>
 
-    <div id="promoSwiper" class="swiper rounded-lg overflow-hidden w-full max-w-full">
-      <div class="swiper-wrapper">
-        <!-- Slide 1 -->
-        <div class="swiper-slide">
-          <div class="relative w-full pt-[42.857%] bg-white">
-            <img
-              class="absolute inset-0 w-full h-full object-contain"
-              src="https://41741943.fs1.hubspotusercontent-na1.net/hubfs/41741943/3%201.png"
-              alt="Promoción Kyocera 2025"
-              loading="lazy"
-              decoding="async"
-              onerror="this.src='https://placehold.co/1200x515/eeeeee/999999?text=Imagen+no+disponible';"
-            />
-          </div>
+     <!-- Noticias / Promociones -->
+  <section class="card border border-slate-200 bg-white shadow-xl">
+    <div class="p-6 w-full overflow-hidden">
+      <div class="mb-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+        <div>
+          <p class="text-xs uppercase tracking-[0.3em] text-slate-500">Actualizaciones</p>
+          <h2 class="text-xl font-semibold text-slate-900">Noticias y promociones</h2>
         </div>
+        <div class="flex items-center gap-2 self-end md:self-auto">
+          <div class="swiper-pagination !static"></div>
+          <button class="promo-prev rounded-full border px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 shadow-sm" aria-label="Anterior">◀</button>
+          <button class="promo-next rounded-full border px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 shadow-sm" aria-label="Siguiente">▶</button>
+
+        </div>
+      </div>
+
+        <div id="promoSwiper" class="swiper rounded-2xl overflow-hidden w-full max-w-full">
+        <div class="swiper-wrapper">
+          <!-- Slide 1 -->
+          <div class="swiper-slide">
+            <div class="relative w-full pt-[42.857%] bg-white">
+              <img
+                class="absolute inset-0 w-full h-full object-contain"
+                src="https://41741943.fs1.hubspotusercontent-na1.net/hubfs/41741943/3%201.png"
+                alt="Promoción Kyocera 2025"
+                loading="lazy"
+                decoding="async"
+                onerror="this.src='https://placehold.co/1200x515/eeeeee/999999?text=Imagen+no+disponible';"
+              />
+            </div>
+          </div>
+      
 
         <!-- Slide 2 -->
-        <div class="swiper-slide">
-          <div class="relative w-full pt-[42.857%] bg-white">
-            <img
-              class="absolute inset-0 w-full h-full object-contain"
-              src="https://41741943.fs1.hubspotusercontent-na1.net/hubfs/41741943/2%201.png"
-              alt="Licenciamiento Microsoft 365"
-              loading="lazy"
-              decoding="async"
-              onerror="this.src='https://placehold.co/1200x515/eeeeee/999999?text=Imagen+no+disponible';"
-            />
+          <div class="swiper-slide">
+            <div class="relative w-full pt-[42.857%] bg-white">
+              <img
+                class="absolute inset-0 w-full h-full object-contain"
+                src="https://41741943.fs1.hubspotusercontent-na1.net/hubfs/41741943/2%201.png"
+                alt="Licenciamiento Microsoft 365"
+                loading="lazy"
+                decoding="async"
+                onerror="this.src='https://placehold.co/1200x515/eeeeee/999999?text=Imagen+no+disponible';"
+              />
+            </div>
           </div>
-        </div>
 
-        <!-- Slide 3 -->
-        <div class="swiper-slide">
-          <div class="relative w-full pt-[42.857%] bg-white">
-            <img
-              class="absolute inset-0 w-full h-full object-contain"
-              src="https://41741943.fs1.hubspotusercontent-na1.net/hubfs/41741943/1-Oct-15-2025-04-07-41-8388-PM.png"
-              alt="Azure Backup 50% Off"
-              loading="lazy"
-              decoding="async"
-              onerror="this.src='https://placehold.co/1200x515/eeeeee/999999?text=Imagen+no+disponible';"
-            />
+          <!-- Slide 3 -->
+          <div class="swiper-slide">
+            <div class="relative w-full pt-[42.857%] bg-white">
+              <img
+                class="absolute inset-0 w-full h-full object-contain"
+                src="https://41741943.fs1.hubspotusercontent-na1.net/hubfs/41741943/1-Oct-15-2025-04-07-41-8388-PM.png"
+                alt="Azure Backup 50% Off"
+                loading="lazy"
+                decoding="async"
+                onerror="this.src='https://placehold.co/1200x515/eeeeee/999999?text=Imagen+no+disponible';"
+              />
+            </div>
           </div>
         </div>
       </div>
     </div>
-  </div>
-</section>
+  </section>
+</div>
 
 <!-- Swiper JS -->
 <script defer src="https://cdn.jsdelivr.net/npm/swiper@9/swiper-bundle.min.js"></script>
