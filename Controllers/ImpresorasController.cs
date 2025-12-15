@@ -64,8 +64,12 @@ namespace DigitalTechClientPortal.Controllers
 
         private async Task<List<ImpresoraVm>> GetImpresorasPorClienteAsync(Guid clienteId)
         {
+                        var filter = $"_cr07a_cliente_value eq {clienteId:D}";
+
             var query = "cr07a_equipos" +
                         "?$select=cr07a_nombredelequipo,cr07a_categoriadeequipo,cr07a_referencia,cr07a_ultimoniveldetoner,cr07a_fechaultimalectura,cr07a_equipoid" +
+                                               $"&$filter={filter}" +
+
                         "&$orderby=cr07a_nombredelequipo";
 
             using var printersJson = await _dv.GetAsync(query);
