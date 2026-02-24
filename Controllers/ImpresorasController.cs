@@ -12,6 +12,13 @@ namespace DigitalTechClientPortal.Controllers
 {
     public class ImpresorasController : Controller
     {
+        private static readonly HashSet<string> UsuariosSinFiltro = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "germanruiz@digitaltechcolombia.com",
+            "sruiz@digitaltechcolombia.com",
+            "jromero@digitaltechcolombia.com"
+        };
+
         private readonly DataverseSoporteService _dv;
         private readonly DataverseClienteService _clienteService;
 
@@ -32,6 +39,22 @@ namespace DigitalTechClientPortal.Controllers
                         ?? User.FindFirst("emails")?.Value
                         ?? User.FindFirst("upn")?.Value;
 
+            var esUsuarioSinFiltro = !string.IsNullOrWhiteSpace(email) && UsuariosSinFiltro.Contains(email);
+
+            if (esUsuarioSinFiltro)
+            {
+                try
+                {
+                    vm.Impresoras = await GetImpresorasAsync();
+                }
+                catch (Exception ex)
+                {
+                    TempData["ImpresorasError"] = $"No se pudieron cargar las impresoras. Detalle: {ex.Message}";
+                }
+
+                return View(vm);
+            }
+
             var clienteInfo = await _clienteService.GetClienteByEmailAsync(email ?? string.Empty);
             if (clienteInfo == null || clienteInfo.Id == Guid.Empty)
             {
@@ -41,7 +64,7 @@ namespace DigitalTechClientPortal.Controllers
 
             try
             {
-                vm.Impresoras = await GetImpresorasPorClienteAsync(clienteInfo.Id);
+                vm.Impresoras = await GetImpresorasAsync(clienteInfo.Id);
             }
             catch (Exception ex)
             {
@@ -62,15 +85,17 @@ namespace DigitalTechClientPortal.Controllers
             return File(file.Value.Stream, contentType, fileName);
         }
 
-        private async Task<List<ImpresoraVm>> GetImpresorasPorClienteAsync(Guid clienteId)
+        private async Task<List<ImpresoraVm>> GetImpresorasAsync(Guid? clienteId = null)
         {
-                        var filter = $"_cr07a_cliente_value eq {clienteId:D}";
-
             var query = "cr07a_equipos" +
                         "?$select=cr07a_nombredelequipo,cr07a_categoriadeequipo,cr07a_referencia,cr07a_ultimoniveldetoner,cr07a_fechaultimalectura,cr07a_equipoid" +
-                                               $"&$filter={filter}" +
-
                         "&$orderby=cr07a_nombredelequipo";
+
+            if (clienteId.HasValue && clienteId.Value != Guid.Empty)
+            {
+                var filter = $"_cr07a_cliente_value eq {clienteId:D}";
+                query += $"&$filter={filter}";
+            }
 
             using var printersJson = await _dv.GetAsync(query);
             var impresoras = new List<ImpresoraVm>();
