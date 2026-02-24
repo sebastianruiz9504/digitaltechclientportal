@@ -23,6 +23,12 @@ using System.Security.Claims; // <-- importante: este es el ClaimTypes correcto
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Configuración solo desde appsettings.json para Dataverse (sin variables de entorno ni secretos locales)
+var appsettingsOnlyConfiguration = new ConfigurationBuilder()
+    .SetBasePath(builder.Environment.ContentRootPath)
+    .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
+    .Build();
+
 // Servicios propios
 builder.Services.AddScoped<CapacitacionService>();
 builder.Services.AddScoped<GraphCalendarService>();
@@ -34,7 +40,7 @@ builder.Services.AddControllersWithViews();
 // Dataverse Options
 builder.Services
     .AddOptions<DataverseOptions>()
-    .Bind(builder.Configuration.GetSection("Dataverse"))
+    .Bind(appsettingsOnlyConfiguration.GetSection("Dataverse"))
     .ValidateDataAnnotations()
     .Validate(o => Uri.TryCreate(o.Url, UriKind.Absolute, out _), "Dataverse:Url inválida")
     .ValidateOnStart();
@@ -144,6 +150,7 @@ builder.Services
         {
             OnRedirectToIdentityProvider = ctx =>
             {
+                
                 var req = ctx.Request;
                 var scheme = req.Headers["X-Forwarded-Proto"].ToString();
                 var host = req.Headers["X-Forwarded-Host"].ToString();
@@ -168,7 +175,8 @@ builder.Services.AddControllersWithViews();
 // Dataverse: registro único
 builder.Services.AddSingleton<IOrganizationService>(sp =>
 {
-    var connString = builder.Configuration.GetConnectionString("Dataverse");
+    var logger = sp.GetRequiredService<ILogger<ServiceClient>>();
+    var connString = appsettingsOnlyConfiguration.GetConnectionString("Dataverse");
 
     if (string.IsNullOrWhiteSpace(connString))
     {
@@ -190,9 +198,12 @@ builder.Services.AddSingleton<IOrganizationService>(sp =>
         .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
         .Select(part => part.Split('=', 2, StringSplitOptions.TrimEntries))
         .Where(parts => parts.Length == 2 && !string.IsNullOrWhiteSpace(parts[0]))
-        .ToDictionary(parts => parts[0], parts => parts[1], StringComparer.OrdinalIgnoreCase);
+        .ToDictionary(
+            parts => parts[0].Trim(),
+            parts => parts[1].Trim().Trim('"', '\''),
+            StringComparer.OrdinalIgnoreCase);
 
-    var requiredKeys = new[] { "AuthType", "Url", "ClientId" };
+    var requiredKeys = new[] { "AuthType", "Url", "ClientId", "ClientSecret", "TenantId" };
     var missingKeys = requiredKeys
         .Where(key => !parsedPairs.TryGetValue(key, out var value) || string.IsNullOrWhiteSpace(value))
         .ToArray();
@@ -203,15 +214,53 @@ builder.Services.AddSingleton<IOrganizationService>(sp =>
             $"La cadena de conexión de Dataverse es inválida. Faltan claves requeridas: {string.Join(", ", missingKeys)}.");
     }
 
+    if (!string.Equals(parsedPairs["AuthType"], "ClientSecret", StringComparison.OrdinalIgnoreCase))
+    {
+        throw new InvalidOperationException(
+            $"La cadena de conexión de Dataverse tiene AuthType={parsedPairs["AuthType"]}. Para este portal se espera AuthType=ClientSecret.");
+    }
+
+    var rawUrl = parsedPairs["Url"];
+    var urlCandidate = rawUrl;
+    if (!urlCandidate.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+        !urlCandidate.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+    {
+        urlCandidate = $"https://{urlCandidate.TrimStart('/')}";
+    }
+
+    var urlForConnectionString = rawUrl;
+    if (Uri.TryCreate(urlCandidate, UriKind.Absolute, out var normalizedUri) && !string.IsNullOrWhiteSpace(normalizedUri.Host))
+    {
+        // Cuando se puede, enviamos la URL canónica para evitar variaciones de formato.
+        urlForConnectionString = normalizedUri.GetLeftPart(UriPartial.Authority);
+    }
+    else
+    {
+        // No bloquear el arranque por validación estricta de URL; delegar la validación final al SDK
+        // y reportar el error real con serviceClient.LastError/ExceptionMessage.
+        logger.LogWarning("Dataverse Url con formato no canónico: {DataverseUrl}. Se intentará conexión con el valor original.", rawUrl);
+    }
+
+    var normalizedConnString =
+        $"AuthType=ClientSecret;Url={urlForConnectionString};TenantId={parsedPairs["TenantId"]};ClientId={parsedPairs["ClientId"]};ClientSecret={parsedPairs["ClientSecret"]}";
+
     ServiceClient serviceClient;
     try
     {
-        serviceClient = new ServiceClient(connString);
+        // Nota: en algunas versiones del SDK, construir ServiceClient sin logger puede lanzar
+        // NullReferenceException dentro de ConnectToService y ocultar el error real.
+        serviceClient = new ServiceClient(normalizedConnString, logger);
     }
     catch (NullReferenceException ex)
     {
         throw new InvalidOperationException(
-            "No se pudo inicializar ServiceClient. Revisa ConnectionStrings:Dataverse y valida que tenga todos los valores requeridos.",
+            "No se pudo inicializar ServiceClient. Revisa ConnectionStrings:Dataverse y valida AuthType=ClientSecret, Url, ClientId, ClientSecret y TenantId.",
+            ex);
+    }
+    catch (Exception ex)
+    {
+        throw new InvalidOperationException(
+            "No se pudo crear ServiceClient para Dataverse. Revisa que Url, TenantId, ClientId y ClientSecret correspondan al mismo App Registration.",
             ex);
     }
 
