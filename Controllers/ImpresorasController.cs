@@ -4,6 +4,7 @@ using System.Linq;
 using System.Security.Claims;
 using System.Text.Json;
 using System.Threading.Tasks;
+using System.Threading;
 using DigitalTechClientPortal.Models;
 using DigitalTechClientPortal.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -50,7 +51,7 @@ namespace DigitalTechClientPortal.Controllers
                 try
                 {
                     vm.ClienteSeleccionadoId = clienteId;
-                    vm.Impresoras = await GetImpresorasAsync(clienteId);
+                    vm.Impresoras = await GetImpresorasAsync(clientes, clienteId);
                 }
                 catch (Exception ex)
                 {
@@ -70,7 +71,7 @@ namespace DigitalTechClientPortal.Controllers
             try
             {
                 vm.ClienteSeleccionadoId = clienteInfo.Id;
-                vm.Impresoras = await GetImpresorasAsync(clienteInfo.Id);
+                vm.Impresoras = await GetImpresorasAsync(clientes, clienteInfo.Id);
             }
             catch (Exception ex)
             {
@@ -91,7 +92,7 @@ namespace DigitalTechClientPortal.Controllers
             return File(file.Value.Stream, contentType, fileName);
         }
 
-        private async Task<List<ImpresoraVm>> GetImpresorasAsync(Guid? clienteId = null)
+        private async Task<List<ImpresoraVm>> GetImpresorasAsync(List<ClienteFiltroVm> clientes, Guid? clienteId = null)
         {
             var query = "cr07a_equipos" +
                         "?$select=cr07a_nombredelequipo,cr07a_categoriadeequipo,cr07a_referencia,cr07a_ultimoniveldetoner,cr07a_fechaultimalectura,cr07a_equipoid,_cr07a_cliente_value" +
@@ -103,32 +104,56 @@ namespace DigitalTechClientPortal.Controllers
                 query += $"&$filter={filter}";
             }
 
-            var clientes = await GetClientesAsync();
             using var printersJson = await _dv.GetAsync(query);
-            var impresoras = new List<ImpresoraVm>();
+            var clientePorId = (clientes ?? new List<ClienteFiltroVm>())
+                .GroupBy(c => c.Id)
+                .ToDictionary(g => g.Key, g => g.First().Nombre);
 
-            foreach (var e in printersJson.RootElement.GetProperty("value").EnumerateArray())
-            {
-                var serial = GetString(e, "cr07a_nombredelequipo");
-                var clienteGuid = GetGuid(e, "_cr07a_cliente_value");
-                var clienteNombre = clientes.FirstOrDefault(c => c.Id == clienteGuid)?.Nombre ?? string.Empty;
-                var impresora = new ImpresoraVm
+            var impresorasBase = printersJson.RootElement.GetProperty("value")
+                .EnumerateArray()
+                .Select(e =>
                 {
-                    Id = GetGuid(e, "cr07a_equipoid"),
-                    Serial = serial,
-                    Categoria = GetString(e, "cr07a_categoriadeequipo"),
-                    ClienteNombre = clienteNombre,
-                    Referencia = GetString(e, "cr07a_referencia"),
-                    UltimoNivelToner = GetString(e, "cr07a_ultimoniveldetoner"),
-                    FechaUltimaLectura = GetDateTime(e, "cr07a_fechaultimalectura")
-                };
+                    var serial = GetString(e, "cr07a_nombredelequipo");
+                    var clienteGuid = GetGuid(e, "_cr07a_cliente_value");
+                    clientePorId.TryGetValue(clienteGuid, out var clienteNombre);
 
-                impresora.Contadores = await GetContadoresPorSerialAsync(impresora.Id, serial);
-                impresora.Mantenimientos = await GetMantenimientosPorEquipoAsync(impresora.Id);
-                impresoras.Add(impresora);
-            }
+                    return new ImpresoraVm
+                    {
+                        Id = GetGuid(e, "cr07a_equipoid"),
+                        Serial = serial,
+                        Categoria = GetString(e, "cr07a_categoriadeequipo"),
+                        ClienteNombre = clienteNombre ?? string.Empty,
+                        Referencia = GetString(e, "cr07a_referencia"),
+                        UltimoNivelToner = GetString(e, "cr07a_ultimoniveldetoner"),
+                        FechaUltimaLectura = GetDateTime(e, "cr07a_fechaultimalectura")
+                    };
+                })
+                .ToList();
 
-            return impresoras;
+            var semaphore = new SemaphoreSlim(6);
+            var impresorasTasks = impresorasBase.Select(async impresora =>
+            {
+                await semaphore.WaitAsync();
+                try
+                {
+                    var serial = impresora.Serial;
+                    var contadoresTask = GetContadoresPorSerialAsync(impresora.Id, serial);
+                    var mantenimientosTask = GetMantenimientosPorEquipoAsync(impresora.Id);
+
+                    await Task.WhenAll(contadoresTask, mantenimientosTask);
+                    impresora.Contadores = contadoresTask.Result;
+                    impresora.Mantenimientos = mantenimientosTask.Result;
+                }
+                finally
+                {
+                    semaphore.Release();
+                }
+
+                return impresora;
+            });
+
+            var impresoras = await Task.WhenAll(impresorasTasks);
+            return impresoras.ToList();
         }
 
         private async Task<List<ClienteFiltroVm>> GetClientesAsync()
