@@ -238,10 +238,10 @@ app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Login}/{action=Index}/{id?}");
 
-// Test Dataverse
-var serviceClient = app.Services.GetRequiredService<ServiceClient>();
+// Test Dataverse (no bloquear el arranque si la conexión falla)
 try
 {
+    var serviceClient = app.Services.GetRequiredService<ServiceClient>();
     var query = new QueryExpression("cr07a_capacitacion")
     {
         ColumnSet = new ColumnSet("cr07a_fecha")
@@ -252,7 +252,7 @@ try
 }
 catch (Exception ex)
 {
-    Console.WriteLine($"❌ Error al acceder a cr07a_capacitacion: {ex.Message}");
+    Console.WriteLine($"⚠️ Dataverse no disponible durante startup: {ex}");
 }
 
 // Dump de endpoints
