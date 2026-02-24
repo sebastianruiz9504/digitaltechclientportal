@@ -94,19 +94,19 @@
             gap: .35rem;
             padding: .35rem .75rem;
             border-radius: 9999px;
-            background: rgba(255, 255, 255, 0.16);
-            color: #f8fafc;
+            background: rgba(255, 255, 255, 0.75);
+            color: #1e293b;
             font-weight: 600;
-            border: 1px solid rgba(255, 255, 255, 0.14);
+            border: 1px solid rgba(148, 163, 184, 0.24);
         }
 
         .panel-surface {
-            background: radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.38), transparent 32%),
-                        radial-gradient(circle at 80% 0%, rgba(148, 163, 184, 0.16), transparent 28%),
-                        #020617;
+            background: radial-gradient(circle at 18% 20%, rgba(255, 255, 255, 0.9), transparent 34%),
+                        radial-gradient(circle at 82% 10%, rgba(186, 230, 253, 0.45), transparent 30%),
+                        linear-gradient(135deg, #f8fafc 0%, #eef2f7 55%, #e5ebf3 100%);
             border-radius: 1.5rem;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            box-shadow: 0 20px 60px rgba(15, 23, 42, 0.35);
+            border: 1px solid rgba(148, 163, 184, 0.24);
+            box-shadow: 0 18px 44px rgba(148, 163, 184, 0.22);
         }
 
         #promoSwiper { background: transparent; }
@@ -119,18 +119,14 @@
 @section Main {
 <div class="min-h-screen bg-gradient-to-b from-slate-100 via-white to-slate-200 w-full px-4 sm:px-6 lg:px-8 py-8">
   <!-- Encabezado hero -->
-  <section class="panel-surface text-white p-8 md:p-10 mb-8 relative overflow-hidden">
-    <div class="absolute inset-0 opacity-70" style="background: radial-gradient(circle at 20% 20%, rgba(148,163,184,.20), transparent 32%), radial-gradient(circle at 80% 10%, rgba(100,116,139,.18), transparent 26%);"></div>
+  <section class="panel-surface text-slate-900 p-8 md:p-10 mb-8 relative overflow-hidden">
+    <div class="absolute inset-0 opacity-80" style="background: radial-gradient(circle at 20% 20%, rgba(255,255,255,.8), transparent 34%), radial-gradient(circle at 80% 10%, rgba(186,230,253,.32), transparent 26%);"></div>
     <div class="relative flex flex-col lg:flex-row lg:items-center gap-8">
       <div class="space-y-4 lg:w-7/12">
-        <div class="highlight-badge">
-          <span class="icon-circle w-8 h-8 text-xs shadow-none">⚡</span>
-          Panel ejecutivo digital
-        </div>
         <h1 class="text-4xl md:text-5xl font-bold leading-tight">Tu operación en un panel unificado</h1>
-        <p class="text-slate-200 text-lg max-w-2xl">Visualiza métricas críticas, gestiona servicios y mantén tus productos organizados con una interfaz moderna inspirada en plataformas tecnológicas.</p>
+        <p class="text-slate-600 text-lg max-w-2xl">Visualiza métricas críticas, gestiona servicios y mantén tus productos organizados con una interfaz moderna inspirada en plataformas tecnológicas.</p>
         <div class="flex flex-wrap gap-3">
-          <a href="@Url.Action("Index","Soporte")" class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/15 border border-white/20 text-white hover:bg-white/25 transition">
+          <a href="@Url.Action("Index","Soporte")" class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white border border-slate-200 text-slate-900 hover:bg-slate-50 transition shadow-sm">
             <span class="icon-circle w-9 h-9 text-base shadow-none">↗</span>
             Ir a soporte
           </a>
