@@ -52,8 +52,8 @@
             border-radius: .375rem;
         }
 
-        .tag-blue { background: #dbeafe; color: #1e40af; }
-        .tag-blue:hover { background: #bfdbfe; }
+        .tag-blue { background: #e2e8f0; color: #0f172a; }
+        .tag-blue:hover { background: #cbd5e1; }
 
         .range-tab {
             padding: .375rem .75rem;
@@ -67,7 +67,7 @@
         }
 
         .range-tab.active {
-            background: linear-gradient(135deg, #0ea5e9, #6366f1);
+            background: linear-gradient(135deg, #111827, #475569);
             color: #fff;
             border-color: transparent;
         }
@@ -83,9 +83,9 @@
             border-radius: 9999px;
             width: 2.5rem;
             height: 2.5rem;
-            background: linear-gradient(135deg, #0ea5e9, #6366f1);
+            background: linear-gradient(135deg, #111827, #4b5563);
             color: #fff;
-            box-shadow: 0 10px 25px rgba(14, 165, 233, 0.35);
+            box-shadow: 0 10px 25px rgba(15, 23, 42, 0.24);
         }
 
         .highlight-badge {
@@ -95,15 +95,15 @@
             padding: .35rem .75rem;
             border-radius: 9999px;
             background: rgba(255, 255, 255, 0.16);
-            color: #e0f2fe;
+            color: #f8fafc;
             font-weight: 600;
             border: 1px solid rgba(255, 255, 255, 0.14);
         }
 
         .panel-surface {
             background: radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.38), transparent 32%),
-                        radial-gradient(circle at 80% 0%, rgba(59, 130, 246, 0.14), transparent 28%),
-                        #0b1224;
+                        radial-gradient(circle at 80% 0%, rgba(148, 163, 184, 0.16), transparent 28%),
+                        #020617;
             border-radius: 1.5rem;
             border: 1px solid rgba(255, 255, 255, 0.1);
             box-shadow: 0 20px 60px rgba(15, 23, 42, 0.35);
@@ -111,16 +111,16 @@
 
         #promoSwiper { background: transparent; }
         .swiper-pagination-bullet { background: #94a3b8; opacity: 0.6; }
-        .swiper-pagination-bullet-active { background: #0ea5e9; opacity: 1; }
+        .swiper-pagination-bullet-active { background: #0f172a; opacity: 1; }
         .swiper-slide img { border-radius: 1rem; box-shadow: 0 20px 60px rgba(15, 23, 42, 0.08); }
     </style>
 }
 
 @section Main {
-<div class="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-100 w-full px-4 sm:px-6 lg:px-8 py-8">
+<div class="min-h-screen bg-gradient-to-b from-slate-100 via-white to-slate-200 w-full px-4 sm:px-6 lg:px-8 py-8">
   <!-- Encabezado hero -->
   <section class="panel-surface text-white p-8 md:p-10 mb-8 relative overflow-hidden">
-    <div class="absolute inset-0 opacity-70" style="background: radial-gradient(circle at 20% 20%, rgba(14,165,233,.25), transparent 32%), radial-gradient(circle at 80% 10%, rgba(99,102,241,.25), transparent 26%);"></div>
+    <div class="absolute inset-0 opacity-70" style="background: radial-gradient(circle at 20% 20%, rgba(148,163,184,.20), transparent 32%), radial-gradient(circle at 80% 10%, rgba(100,116,139,.18), transparent 26%);"></div>
     <div class="relative flex flex-col lg:flex-row lg:items-center gap-8">
       <div class="space-y-4 lg:w-7/12">
         <div class="highlight-badge">
@@ -164,7 +164,7 @@
           <div class="text-sm text-slate-600 mb-3">@TempData["SummaryError"]</div>
         }
   <div class="grid grid-cols-2 gap-3">
-          <a href="@Url.Action("Index","Soporte")" class="card bg-gradient-to-br from-cyan-50 via-white to-indigo-50 border-transparent shadow-lg p-4 hover:-translate-y-1 transition" aria-label="Ir a Soporte: detalle de horas entregadas">
+          <a href="@Url.Action("Index","Soporte")" class="card bg-gradient-to-br from-slate-100 via-white to-slate-200 border-transparent shadow-lg p-4 hover:-translate-y-1 transition" aria-label="Ir a Soporte: detalle de horas entregadas">
             <div class="flex items-start justify-between">
               <div class="space-y-1">
                 <p class="text-xs uppercase tracking-wide text-slate-500">Horas entregadas</p>
@@ -182,7 +182,7 @@
                   <span class="label">Tickets Cloud</span>
                   <span class="value">@resumen.TicketsCloud</span>
                 </div>
-                <span class="icon-circle bg-gradient-to-br from-sky-500 to-indigo-500">☁️</span>
+                <span class="icon-circle bg-gradient-to-br from-slate-700 to-slate-900">☁️</span>
               </div>
             </a>
             <a href="@Url.Action("Index","Soporte")" class="card border-slate-200 p-3 shadow-sm hover:-translate-y-1 transition" aria-label="Ir a Soporte: Tickets Copiers">
@@ -191,7 +191,7 @@
                   <span class="label">Tickets Copiers</span>
                   <span class="value">@resumen.TicketsCopiers</span>
                 </div>
-                <span class="icon-circle bg-gradient-to-br from-amber-400 to-orange-500">🖨️</span>
+                <span class="icon-circle bg-gradient-to-br from-zinc-600 to-zinc-900">🖨️</span>
               </div>
             </a>
           </div>
@@ -202,7 +202,7 @@
                 <span class="label">Capacitaciones</span>
                 <span class="value">@resumen.Capacitaciones</span>
               </div>
-              <span class="icon-circle bg-gradient-to-br from-emerald-400 to-teal-500">🎓</span>
+              <span class="icon-circle bg-gradient-to-br from-slate-600 to-slate-800">🎓</span>
             </div>
           </a>
 
@@ -212,7 +212,7 @@
                 <span class="label">Reportes Cloud</span>
                 <span class="value">@resumen.Reportes</span>
               </div>
-              <span class="icon-circle bg-gradient-to-br from-fuchsia-500 to-indigo-600">📊</span>
+              <span class="icon-circle bg-gradient-to-br from-neutral-700 to-neutral-900">📊</span>
             </div>
           </a>
         </div>
@@ -228,7 +228,7 @@
         <p class="text-xs uppercase tracking-[0.3em] text-slate-500">Productos y licencias</p>
         <h2 class="text-2xl font-semibold text-slate-900">Organiza tus verticales</h2>
       </div>
-    <a href="https://wa.me/573153405758" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-sky-500 to-indigo-600 text-white shadow-lg hover:shadow-xl transition">
+    <a href="https://wa.me/573153405758" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-slate-700 to-slate-900 text-white shadow-lg hover:shadow-xl transition">
         Solicitar más productos ↗
       </a>
     </div>
@@ -260,7 +260,7 @@
               <h3 class="text-xl font-semibold text-slate-900">Copiers</h3>
             </div>
           </div>
-          <span class="icon-circle bg-gradient-to-br from-amber-400 to-orange-500">🖨️</span>
+          <span class="icon-circle bg-gradient-to-br from-zinc-700 to-zinc-900">🖨️</span>
         </div>
 
         <div class="text-sm text-slate-700 space-y-1.5 mb-5 max-h-48 overflow-y-auto pr-1">
@@ -279,7 +279,7 @@
               {
                 <li class="flex items-center justify-between border-b border-slate-100 pb-2 last:border-0 last:pb-0">
                   <div class="flex items-center gap-2 text-slate-900">
-                    <span class="icon-circle w-8 h-8 bg-gradient-to-br from-orange-500 to-amber-400 text-xs">✦</span>
+                    <span class="icon-circle w-8 h-8 bg-gradient-to-br from-zinc-700 to-zinc-900 text-xs">✦</span>
                     <span class="font-medium">@p.ProductName</span>
                   </div>
                   <span class="tag tag-blue text-[11px]">@p.Quantity</span>
@@ -289,7 +289,7 @@
           }
         </div>
 
-        <a href="https://wa.me/573153405758" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 text-sm font-semibold text-indigo-600 hover:text-indigo-700">
+        <a href="https://wa.me/573153405758" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 text-sm font-semibold text-slate-700 hover:text-slate-900">
           Solicitar más unidades ↗
         </a>
       </section>
@@ -319,7 +319,7 @@
               <h3 class="text-xl font-semibold text-slate-900">Cloud</h3>
             </div>
           </div>
-          <span class="icon-circle bg-gradient-to-br from-sky-500 to-indigo-500">☁️</span>
+          <span class="icon-circle bg-gradient-to-br from-slate-700 to-slate-900">☁️</span>
         </div>
 
         <div class="text-sm text-slate-700 space-y-1.5 mb-5 max-h-48 overflow-y-auto pr-1">
@@ -338,7 +338,7 @@
               {
                 <li class="flex items-center justify-between border-b border-slate-100 pb-2 last:border-0 last:pb-0">
                   <div class="flex items-center gap-2 text-slate-900">
-                    <span class="icon-circle w-8 h-8 bg-gradient-to-br from-sky-500 to-indigo-500 text-xs">✦</span>
+                    <span class="icon-circle w-8 h-8 bg-gradient-to-br from-slate-700 to-slate-900 text-xs">✦</span>
                     <span class="font-medium">@p.ProductName</span>
                   </div>
                   <span class="tag tag-blue text-[11px]">@p.Quantity</span>
@@ -348,7 +348,7 @@
           }
         </div>
 
-        <a href="https://wa.me/573153405758" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 text-sm font-semibold text-indigo-600 hover:text-indigo-700">
+        <a href="https://wa.me/573153405758" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 text-sm font-semibold text-slate-700 hover:text-slate-900">
           Ampliar licenciamiento ↗
 
         </a>
