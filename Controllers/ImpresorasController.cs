@@ -29,7 +29,7 @@ namespace DigitalTechClientPortal.Controllers
         }
 
         [HttpGet]
-        public async Task<IActionResult> Index()
+        public async Task<IActionResult> Index(Guid? clienteId = null)
         {
             var vm = new ImpresorasVm();
 
@@ -40,12 +40,17 @@ namespace DigitalTechClientPortal.Controllers
                         ?? User.FindFirst("upn")?.Value;
 
             var esUsuarioSinFiltro = !string.IsNullOrWhiteSpace(email) && UsuariosSinFiltro.Contains(email);
+            vm.PuedeFiltrarPorCliente = esUsuarioSinFiltro;
+
+            var clientes = await GetClientesAsync();
+            vm.Clientes = clientes;
 
             if (esUsuarioSinFiltro)
             {
                 try
                 {
-                    vm.Impresoras = await GetImpresorasAsync();
+                    vm.ClienteSeleccionadoId = clienteId;
+                    vm.Impresoras = await GetImpresorasAsync(clienteId);
                 }
                 catch (Exception ex)
                 {
@@ -64,6 +69,7 @@ namespace DigitalTechClientPortal.Controllers
 
             try
             {
+                vm.ClienteSeleccionadoId = clienteInfo.Id;
                 vm.Impresoras = await GetImpresorasAsync(clienteInfo.Id);
             }
             catch (Exception ex)
@@ -88,7 +94,7 @@ namespace DigitalTechClientPortal.Controllers
         private async Task<List<ImpresoraVm>> GetImpresorasAsync(Guid? clienteId = null)
         {
             var query = "cr07a_equipos" +
-                        "?$select=cr07a_nombredelequipo,cr07a_categoriadeequipo,cr07a_referencia,cr07a_ultimoniveldetoner,cr07a_fechaultimalectura,cr07a_equipoid" +
+                        "?$select=cr07a_nombredelequipo,cr07a_categoriadeequipo,cr07a_referencia,cr07a_ultimoniveldetoner,cr07a_fechaultimalectura,cr07a_equipoid,_cr07a_cliente_value" +
                         "&$orderby=cr07a_nombredelequipo";
 
             if (clienteId.HasValue && clienteId.Value != Guid.Empty)
@@ -97,17 +103,21 @@ namespace DigitalTechClientPortal.Controllers
                 query += $"&$filter={filter}";
             }
 
+            var clientes = await GetClientesAsync();
             using var printersJson = await _dv.GetAsync(query);
             var impresoras = new List<ImpresoraVm>();
 
             foreach (var e in printersJson.RootElement.GetProperty("value").EnumerateArray())
             {
                 var serial = GetString(e, "cr07a_nombredelequipo");
+                var clienteGuid = GetGuid(e, "_cr07a_cliente_value");
+                var clienteNombre = clientes.FirstOrDefault(c => c.Id == clienteGuid)?.Nombre ?? string.Empty;
                 var impresora = new ImpresoraVm
                 {
                     Id = GetGuid(e, "cr07a_equipoid"),
                     Serial = serial,
                     Categoria = GetString(e, "cr07a_categoriadeequipo"),
+                    ClienteNombre = clienteNombre,
                     Referencia = GetString(e, "cr07a_referencia"),
                     UltimoNivelToner = GetString(e, "cr07a_ultimoniveldetoner"),
                     FechaUltimaLectura = GetDateTime(e, "cr07a_fechaultimalectura")
@@ -119,6 +129,22 @@ namespace DigitalTechClientPortal.Controllers
             }
 
             return impresoras;
+        }
+
+        private async Task<List<ClienteFiltroVm>> GetClientesAsync()
+        {
+            const string query = "cr07a_clientes?$select=cr07a_clienteid,cr07a_nombre&$orderby=cr07a_nombre";
+            using var clientesJson = await _dv.GetAsync(query);
+
+            return clientesJson.RootElement.GetProperty("value")
+                .EnumerateArray()
+                .Select(c => new ClienteFiltroVm
+                {
+                    Id = GetGuid(c, "cr07a_clienteid"),
+                    Nombre = GetString(c, "cr07a_nombre")
+                })
+                .Where(c => c.Id != Guid.Empty)
+                .ToList();
         }
 
         private async Task<List<MantenimientoVm>> GetMantenimientosPorEquipoAsync(Guid equipoId)
