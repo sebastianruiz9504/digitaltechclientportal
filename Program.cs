@@ -17,6 +17,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Identity.Client; // app-only Graph
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Security.Claims; // <-- importante: este es el ClaimTypes correcto
 
@@ -185,7 +186,42 @@ builder.Services.AddSingleton<IOrganizationService>(sp =>
             $"AuthType=ClientSecret;Url={opt.Url};TenantId={opt.TenantId};ClientId={opt.ClientId};ClientSecret={opt.ClientSecret}";
     }
 
-    return new ServiceClient(connString);
+    var parsedPairs = connString
+        .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Select(part => part.Split('=', 2, StringSplitOptions.TrimEntries))
+        .Where(parts => parts.Length == 2 && !string.IsNullOrWhiteSpace(parts[0]))
+        .ToDictionary(parts => parts[0], parts => parts[1], StringComparer.OrdinalIgnoreCase);
+
+    var requiredKeys = new[] { "AuthType", "Url", "ClientId" };
+    var missingKeys = requiredKeys
+        .Where(key => !parsedPairs.TryGetValue(key, out var value) || string.IsNullOrWhiteSpace(value))
+        .ToArray();
+
+    if (missingKeys.Length > 0)
+    {
+        throw new InvalidOperationException(
+            $"La cadena de conexión de Dataverse es inválida. Faltan claves requeridas: {string.Join(", ", missingKeys)}.");
+    }
+
+    ServiceClient serviceClient;
+    try
+    {
+        serviceClient = new ServiceClient(connString);
+    }
+    catch (NullReferenceException ex)
+    {
+        throw new InvalidOperationException(
+            "No se pudo inicializar ServiceClient. Revisa ConnectionStrings:Dataverse y valida que tenga todos los valores requeridos.",
+            ex);
+    }
+
+    if (!serviceClient.IsReady)
+    {
+        throw new InvalidOperationException(
+            $"No se pudo conectar a Dataverse. {serviceClient.LastError ?? "Error desconocido."}");
+    }
+
+    return serviceClient;
 });
 
 // También registrar ServiceClient
