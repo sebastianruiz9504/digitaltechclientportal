@@ -123,8 +123,8 @@ namespace DigitalTechClientPortal.Controllers
                 await semaphore.WaitAsync();
                 try
                 {
-                    var actual = await GetUltimaLecturaPorMesAsync(equipo.EquipoId, inicioMes, inicioMesSiguiente);
-                    var anterior = await GetUltimaLecturaPorMesAsync(equipo.EquipoId, inicioMesAnterior, inicioMes);
+                    var actual = await GetUltimaLecturaPorMesAsync(equipo.EquipoId, equipo.EquipoNombre, inicioMes, inicioMesSiguiente);
+                    var anterior = await GetUltimaLecturaPorMesAsync(equipo.EquipoId, equipo.EquipoNombre, inicioMesAnterior, inicioMes);
 
                     var consumoCopias = CalculateDelta(actual.ContadorCopias, anterior.ContadorCopias);
                     var consumoEscaneos = CalculateDelta(actual.ContadorEscaneos, anterior.ContadorEscaneos);
@@ -200,9 +200,9 @@ namespace DigitalTechClientPortal.Controllers
                 .ToList();
         }
 
-        private async Task<(DateTime? Fecha, long? ContadorCopias, long? ContadorEscaneos)> GetUltimaLecturaPorMesAsync(Guid equipoId, DateTime inicio, DateTime fin)
+        private async Task<(DateTime? Fecha, long? ContadorCopias, long? ContadorEscaneos)> GetUltimaLecturaPorMesAsync(Guid equipoId, string? serial, DateTime inicio, DateTime fin)
         {
-            if (equipoId == Guid.Empty)
+            if (equipoId == Guid.Empty && string.IsNullOrWhiteSpace(serial))
             {
                 return (null, null, null);
             }
@@ -210,6 +210,7 @@ namespace DigitalTechClientPortal.Controllers
             var inicioTxt = inicio.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);
             var finTxt = fin.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);
 
+<<<<<<< ours
             var filter = $"_cr07a_maquina_value eq {equipoId:D} and cr07a_fechadetomadecontador ge {inicioTxt} and cr07a_fechadetomadecontador lt {finTxt}";
             foreach (var entitySet in new[] { "cr07a_contadors", "cr07a_contadores" })
             {
@@ -217,6 +218,66 @@ namespace DigitalTechClientPortal.Controllers
                             "?$select=cr07a_contador,cr07a_contadorescaner,cr07a_fechadetomadecontador,_cr07a_maquina_value" +
                             $"&$filter={filter}" +
                             "&$orderby=cr07a_fechadetomadecontador desc" +
+=======
+            var serialSafe = (serial ?? string.Empty).Replace("'", "''");
+            var queryOptions = new List<(string EntitySet, string Select, string Filter, string OrderBy, string Fecha, string Copias, string Escaneos)>();
+
+            if (equipoId != Guid.Empty)
+            {
+                queryOptions.Add((
+                    EntitySet: "cr07a_contadoresmensualesequipos",
+                    Select: "cr07a_dt_contadorpaginas,cr07a_dt_paginasescaneadas,cr07a_dt_fechalectura,_cr07a_equipo_value,cr07a_equipo",
+                    Filter: $"_cr07a_equipo_value eq {equipoId:D} and cr07a_dt_fechalectura ge {inicioTxt} and cr07a_dt_fechalectura lt {finTxt}",
+                    OrderBy: "cr07a_dt_fechalectura desc",
+                    Fecha: "cr07a_dt_fechalectura",
+                    Copias: "cr07a_dt_contadorpaginas",
+                    Escaneos: "cr07a_dt_paginasescaneadas"
+                ));
+            }
+
+            if (!string.IsNullOrWhiteSpace(serialSafe))
+            {
+                queryOptions.Add((
+                    EntitySet: "cr07a_contadoresmensualesequipos",
+                    Select: "cr07a_dt_contadorpaginas,cr07a_dt_paginasescaneadas,cr07a_dt_fechalectura,_cr07a_equipo_value,cr07a_equipo",
+                    Filter: $"cr07a_equipo eq '{serialSafe}' and cr07a_dt_fechalectura ge {inicioTxt} and cr07a_dt_fechalectura lt {finTxt}",
+                    OrderBy: "cr07a_dt_fechalectura desc",
+                    Fecha: "cr07a_dt_fechalectura",
+                    Copias: "cr07a_dt_contadorpaginas",
+                    Escaneos: "cr07a_dt_paginasescaneadas"
+                ));
+            }
+
+            if (equipoId != Guid.Empty)
+            {
+                queryOptions.Add((
+                    EntitySet: "cr07a_contadors",
+                    Select: "cr07a_contador,cr07a_contadorescaner,cr07a_fechadetomadecontador,_cr07a_maquina_value",
+                    Filter: $"_cr07a_maquina_value eq {equipoId:D} and cr07a_fechadetomadecontador ge {inicioTxt} and cr07a_fechadetomadecontador lt {finTxt}",
+                    OrderBy: "cr07a_fechadetomadecontador desc",
+                    Fecha: "cr07a_fechadetomadecontador",
+                    Copias: "cr07a_contador",
+                    Escaneos: "cr07a_contadorescaner"
+                ));
+
+                queryOptions.Add((
+                    EntitySet: "cr07a_contadores",
+                    Select: "cr07a_contador,cr07a_contadorescaner,cr07a_fechadetomadecontador,_cr07a_maquina_value",
+                    Filter: $"_cr07a_maquina_value eq {equipoId:D} and cr07a_fechadetomadecontador ge {inicioTxt} and cr07a_fechadetomadecontador lt {finTxt}",
+                    OrderBy: "cr07a_fechadetomadecontador desc",
+                    Fecha: "cr07a_fechadetomadecontador",
+                    Copias: "cr07a_contador",
+                    Escaneos: "cr07a_contadorescaner"
+                ));
+            }
+
+            foreach (var option in queryOptions)
+            {
+                var query = option.EntitySet +
+                            $"?$select={option.Select}" +
+                            $"&$filter={option.Filter}" +
+                            $"&$orderby={option.OrderBy}" +
+>>>>>>> theirs
                             "&$top=1";
 
                 try
@@ -225,6 +286,7 @@ namespace DigitalTechClientPortal.Controllers
                     var first = json.RootElement.GetProperty("value").EnumerateArray().FirstOrDefault();
                     if (first.ValueKind == JsonValueKind.Undefined)
                     {
+<<<<<<< ours
                         return (null, null, null);
                     }
 
@@ -237,6 +299,22 @@ namespace DigitalTechClientPortal.Controllers
                 catch (HttpRequestException ex) when (ex.Message.Contains("Resource not found for the segment", StringComparison.OrdinalIgnoreCase))
                 {
                     // Continúa con el siguiente posible entity set.
+=======
+                        continue;
+                    }
+
+                    return (
+                        Fecha: GetDateTime(first, option.Fecha),
+                        ContadorCopias: GetLong(first, option.Copias),
+                        ContadorEscaneos: GetLong(first, option.Escaneos)
+                    );
+                }
+                catch (HttpRequestException ex) when (
+                    ex.Message.Contains("Resource not found for the segment", StringComparison.OrdinalIgnoreCase) ||
+                    ex.Message.Contains("Could not find a property", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Continúa con el siguiente entity set / esquema posible.
+>>>>>>> theirs
                 }
             }
 
