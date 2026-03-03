@@ -211,24 +211,36 @@ namespace DigitalTechClientPortal.Controllers
             var finTxt = fin.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);
 
             var filter = $"_cr07a_maquina_value eq {equipoId:D} and cr07a_fechadetomadecontador ge {inicioTxt} and cr07a_fechadetomadecontador lt {finTxt}";
-            var query = "cr07a_contadores" +
-                        "?$select=cr07a_contador,cr07a_contadorescaner,cr07a_fechadetomadecontador,_cr07a_maquina_value" +
-                        $"&$filter={filter}" +
-                        "&$orderby=cr07a_fechadetomadecontador desc" +
-                        "&$top=1";
-
-            using var json = await _dv.GetAsync(query);
-            var first = json.RootElement.GetProperty("value").EnumerateArray().FirstOrDefault();
-            if (first.ValueKind == JsonValueKind.Undefined)
+            foreach (var entitySet in new[] { "cr07a_contadors", "cr07a_contadores" })
             {
-                return (null, null, null);
+                var query = entitySet +
+                            "?$select=cr07a_contador,cr07a_contadorescaner,cr07a_fechadetomadecontador,_cr07a_maquina_value" +
+                            $"&$filter={filter}" +
+                            "&$orderby=cr07a_fechadetomadecontador desc" +
+                            "&$top=1";
+
+                try
+                {
+                    using var json = await _dv.GetAsync(query);
+                    var first = json.RootElement.GetProperty("value").EnumerateArray().FirstOrDefault();
+                    if (first.ValueKind == JsonValueKind.Undefined)
+                    {
+                        return (null, null, null);
+                    }
+
+                    return (
+                        Fecha: GetDateTime(first, "cr07a_fechadetomadecontador"),
+                        ContadorCopias: GetLong(first, "cr07a_contador"),
+                        ContadorEscaneos: GetLong(first, "cr07a_contadorescaner")
+                    );
+                }
+                catch (HttpRequestException ex) when (ex.Message.Contains("Resource not found for the segment", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Continúa con el siguiente posible entity set.
+                }
             }
 
-            return (
-                Fecha: GetDateTime(first, "cr07a_fechadetomadecontador"),
-                ContadorCopias: GetLong(first, "cr07a_contador"),
-                ContadorEscaneos: GetLong(first, "cr07a_contadorescaner")
-            );
+            return (null, null, null);
         }
 
         private static string GetString(JsonElement e, string prop)
