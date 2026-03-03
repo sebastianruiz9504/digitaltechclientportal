@@ -6,9 +6,18 @@ namespace DigitalTechClientPortal.Models
     public class ImpresorasVm
     {
         public List<ImpresoraVm> Impresoras { get; set; } = new();
+        public List<ConsumoMensualVm> ConsumosMensuales { get; set; } = new();
         public List<ClienteFiltroVm> Clientes { get; set; } = new();
         public Guid? ClienteSeleccionadoId { get; set; }
         public bool PuedeFiltrarPorCliente { get; set; }
+    }
+
+    public class ConsumoMensualVm
+    {
+        public string Serial { get; set; } = string.Empty;
+        public string ClienteNombre { get; set; } = string.Empty;
+        public DateTime Periodo { get; set; }
+        public long ConsumoPaginas { get; set; }
     }
 
     public class ClienteFiltroVm

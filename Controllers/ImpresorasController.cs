@@ -16,7 +16,10 @@ namespace DigitalTechClientPortal.Controllers
         private static readonly HashSet<string> UsuariosSinFiltro = new(StringComparer.OrdinalIgnoreCase)
         {
             "germanruiz@digitaltechcolombia.com",
+            "germanruiz@digitaltechcolombia",
             "sruiz@digitaltechcolombia.com",
+            "sruiz@digitaltechcolombia",
+            "jromero@digitaltechcolombia",
             "jromero@digitaltechcolombia.com"
         };
 
@@ -52,6 +55,7 @@ namespace DigitalTechClientPortal.Controllers
                 {
                     vm.ClienteSeleccionadoId = clienteId;
                     vm.Impresoras = await GetImpresorasAsync(clientes, clienteId);
+                    vm.ConsumosMensuales = BuildConsumosMensuales(vm.Impresoras);
                 }
                 catch (Exception ex)
                 {
@@ -79,6 +83,68 @@ namespace DigitalTechClientPortal.Controllers
             }
 
             return View(vm);
+        }
+
+        private static List<ConsumoMensualVm> BuildConsumosMensuales(List<ImpresoraVm> impresoras)
+        {
+            var resultado = new List<ConsumoMensualVm>();
+            if (impresoras == null || impresoras.Count == 0) return resultado;
+
+            foreach (var impresora in impresoras)
+            {
+                var lecturas = (impresora.Contadores ?? new List<ContadorVm>())
+                    .Where(c => c.FechaLectura.HasValue)
+                    .Select(c => new
+                    {
+                        Fecha = c.FechaLectura!.Value,
+                        Valor = ParseCounter(c.ContadorPaginas)
+                    })
+                    .Where(x => x.Valor.HasValue)
+                    .OrderBy(x => x.Fecha)
+                    .ToList();
+
+                if (lecturas.Count < 2) continue;
+
+                var consumoPorMes = new Dictionary<(int Year, int Month), long>();
+
+                for (var i = 1; i < lecturas.Count; i++)
+                {
+                    var lecturaActual = lecturas[i];
+                    var lecturaAnterior = lecturas[i - 1];
+                    var delta = lecturaActual.Valor!.Value - lecturaAnterior.Valor!.Value;
+                    if (delta < 0) continue;
+
+                    var llaveMes = (lecturaActual.Fecha.Year, lecturaActual.Fecha.Month);
+                    consumoPorMes.TryGetValue(llaveMes, out var acumulado);
+                    consumoPorMes[llaveMes] = acumulado + delta;
+                }
+
+                resultado.AddRange(consumoPorMes
+                    .OrderBy(k => k.Key.Year)
+                    .ThenBy(k => k.Key.Month)
+                    .Select(k => new ConsumoMensualVm
+                    {
+                        Serial = impresora.Serial,
+                        ClienteNombre = impresora.ClienteNombre,
+                        Periodo = new DateTime(k.Key.Year, k.Key.Month, 1),
+                        ConsumoPaginas = k.Value
+                    }));
+            }
+
+            return resultado
+                .OrderByDescending(c => c.Periodo)
+                .ThenBy(c => c.Serial)
+                .ToList();
+        }
+
+        private static long? ParseCounter(string valor)
+        {
+            if (string.IsNullOrWhiteSpace(valor)) return null;
+
+            var digits = new string(valor.Where(char.IsDigit).ToArray());
+            if (string.IsNullOrWhiteSpace(digits)) return null;
+
+            return long.TryParse(digits, out var parsed) ? parsed : null;
         }
 
         [HttpGet]

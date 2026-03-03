@@ -4,6 +4,8 @@
     ViewData["Title"] = "Impresoras";
 
     string FormatDate(DateTime? date) => date.HasValue ? date.Value.ToString("dd/MM/yyyy") : "—";
+    string FormatMonth(DateTime date) => date.ToString("MMMM yyyy", new System.Globalization.CultureInfo("es-CO"));
+    string FormatNumber(long value) => value.ToString("N0", new System.Globalization.CultureInfo("es-CO"));
     bool IsLecturaReciente(DateTime? date) => date.HasValue && date.Value.Date >= DateTime.Today.AddDays(-5);
 }
 
@@ -41,6 +43,40 @@
         </select>
       </div>
     </form>
+  }
+
+
+  @if (Model.PuedeFiltrarPorCliente && Model.ConsumosMensuales.Any())
+  {
+    <section class="mb-6 rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div class="border-b border-slate-100 px-4 py-3">
+        <h2 class="text-base font-semibold text-slate-900">Consumo mensual por equipo</h2>
+        <p class="text-xs text-slate-600">Se consolida un único consumo por mes para cada serial, incluso cuando hay múltiples lecturas en el mismo mes.</p>
+      </div>
+      <div class="overflow-auto">
+        <table class="min-w-full divide-y divide-slate-200 text-sm">
+          <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-600">
+            <tr>
+              <th class="px-4 py-2 text-left">Periodo</th>
+              <th class="px-4 py-2 text-left">Cliente</th>
+              <th class="px-4 py-2 text-left">Serial</th>
+              <th class="px-4 py-2 text-right">Consumo páginas</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            @foreach (var consumo in Model.ConsumosMensuales)
+            {
+              <tr class="hover:bg-slate-50">
+                <td class="px-4 py-2 text-slate-700">@FormatMonth(consumo.Periodo)</td>
+                <td class="px-4 py-2 text-slate-700">@(string.IsNullOrWhiteSpace(consumo.ClienteNombre) ? "—" : consumo.ClienteNombre)</td>
+                <td class="px-4 py-2 font-semibold text-slate-900">@consumo.Serial</td>
+                <td class="px-4 py-2 text-right font-semibold text-slate-900">@FormatNumber(consumo.ConsumoPaginas)</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </section>
   }
 
   @if (Model.Impresoras == null || !Model.Impresoras.Any())
