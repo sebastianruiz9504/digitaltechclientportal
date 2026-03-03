@@ -1,0 +1,190 @@
+@model DigitalTechClientPortal.Models.ContadoresIndexVm
+
+@{
+    ViewData["Title"] = "Contadores";
+    var cultura = new System.Globalization.CultureInfo("es-CO");
+
+    string FormatDate(DateTime? date) => date.HasValue ? date.Value.ToString("dd/MM/yyyy") : "—";
+    string FormatNumber(long? value) => value.HasValue ? value.Value.ToString("N0", cultura) : "—";
+
+    var totalCopias = Model.Equipos.Sum(x => x.ConsumoCopias ?? 0);
+    var totalEscaneos = Model.Equipos.Sum(x => x.ConsumoEscaneos ?? 0);
+    var totalGeneral = totalCopias + totalEscaneos;
+}
+
+<div class="w-full px-4 sm:px-6 lg:px-8 py-8">
+    <header class="mb-4">
+        <h1 class="text-3xl font-semibold tracking-tight text-slate-900">Contadores</h1>
+        <p class="mt-1 text-slate-500">Consumo mensual de copias y escaneos por equipo y cliente.</p>
+    </header>
+
+    @if (!string.IsNullOrWhiteSpace(Model.Mensaje))
+    {
+        <div class="rounded-lg bg-yellow-50 border border-yellow-200 p-4 text-sm text-yellow-800 mb-4">
+            @Model.Mensaje
+        </div>
+    }
+
+    <section class="mb-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <form method="get" class="grid gap-3 md:grid-cols-4 md:items-end">
+            <div>
+                <label for="mes" class="block text-sm font-medium text-slate-700 mb-1">Mes</label>
+                <select id="mes" name="mes" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800">
+                    @for (var m = 1; m <= 12; m++)
+                    {
+                        if (m == Model.MesSeleccionado)
+                        {
+                            <option value="@m" selected>@cultura.DateTimeFormat.GetMonthName(m)</option>
+                        }
+                        else
+                        {
+                            <option value="@m">@cultura.DateTimeFormat.GetMonthName(m)</option>
+                        }
+                    }
+                </select>
+            </div>
+
+            <div>
+                <label for="anio" class="block text-sm font-medium text-slate-700 mb-1">Año</label>
+                <select id="anio" name="anio" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800">
+                    @for (var y = DateTime.Today.Year + 1; y >= DateTime.Today.Year - 5; y--)
+                    {
+                        if (y == Model.AnioSeleccionado)
+                        {
+                            <option value="@y" selected>@y</option>
+                        }
+                        else
+                        {
+                            <option value="@y">@y</option>
+                        }
+                    }
+                </select>
+            </div>
+
+            <div>
+                <label for="clienteId" class="block text-sm font-medium text-slate-700 mb-1">Cliente</label>
+                <select id="clienteId" name="clienteId" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800">
+                    <option value="">Todos los clientes</option>
+                    @foreach (var cliente in Model.Clientes)
+                    {
+                        if (Model.ClienteSeleccionadoId == cliente.Id)
+                        {
+                            <option value="@cliente.Id" selected>@cliente.Nombre</option>
+                        }
+                        else
+                        {
+                            <option value="@cliente.Id">@cliente.Nombre</option>
+                        }
+                    }
+                </select>
+            </div>
+
+            <div>
+                <button type="submit" class="inline-flex w-full justify-center rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">
+                    Aplicar filtros
+                </button>
+            </div>
+        </form>
+    </section>
+
+    <section class="mb-6 grid gap-4 md:grid-cols-3">
+        <article class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <p class="text-xs uppercase tracking-wide text-slate-500">Copias del mes</p>
+            <p class="mt-2 text-2xl font-semibold text-slate-900">@FormatNumber(totalCopias)</p>
+        </article>
+        <article class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <p class="text-xs uppercase tracking-wide text-slate-500">Escaneos del mes</p>
+            <p class="mt-2 text-2xl font-semibold text-slate-900">@FormatNumber(totalEscaneos)</p>
+        </article>
+        <article class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <p class="text-xs uppercase tracking-wide text-slate-500">Consumo total</p>
+            <p class="mt-2 text-2xl font-semibold text-slate-900">@FormatNumber(totalGeneral)</p>
+        </article>
+    </section>
+
+    <section class="mb-6 rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div class="border-b border-slate-100 px-4 py-3">
+            <h2 class="text-base font-semibold text-slate-900">Total por cliente</h2>
+        </div>
+        <div class="overflow-auto">
+            <table class="min-w-full divide-y divide-slate-200 text-sm">
+                <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-600">
+                    <tr>
+                        <th class="px-4 py-2 text-left">Cliente</th>
+                        <th class="px-4 py-2 text-right">Copias</th>
+                        <th class="px-4 py-2 text-right">Escaneos</th>
+                        <th class="px-4 py-2 text-right">Total</th>
+                        <th class="px-4 py-2 text-right">Equipos con consumo</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                    @if (!Model.ConsumoPorCliente.Any())
+                    {
+                        <tr>
+                            <td colspan="5" class="px-4 py-6 text-center text-slate-500">No hay datos para el período seleccionado.</td>
+                        </tr>
+                    }
+                    else
+                    {
+                        @foreach (var item in Model.ConsumoPorCliente)
+                        {
+                            <tr class="hover:bg-slate-50">
+                                <td class="px-4 py-2 font-medium text-slate-900">@item.ClienteNombre</td>
+                                <td class="px-4 py-2 text-right">@FormatNumber(item.TotalCopias)</td>
+                                <td class="px-4 py-2 text-right">@FormatNumber(item.TotalEscaneos)</td>
+                                <td class="px-4 py-2 text-right font-semibold text-slate-900">@FormatNumber(item.TotalConsumo)</td>
+                                <td class="px-4 py-2 text-right">@item.EquiposConConsumo</td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div class="border-b border-slate-100 px-4 py-3">
+            <h2 class="text-base font-semibold text-slate-900">Detalle por equipo</h2>
+        </div>
+        <div class="overflow-auto">
+            <table class="min-w-full divide-y divide-slate-200 text-sm">
+                <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-600">
+                    <tr>
+                        <th class="px-4 py-2 text-left">Cliente</th>
+                        <th class="px-4 py-2 text-left">Equipo</th>
+                        <th class="px-4 py-2 text-right">Contador actual copias</th>
+                        <th class="px-4 py-2 text-right">Consumo copias</th>
+                        <th class="px-4 py-2 text-right">Contador actual escaneos</th>
+                        <th class="px-4 py-2 text-right">Consumo escaneos</th>
+                        <th class="px-4 py-2 text-right">Días entre tomas</th>
+                        <th class="px-4 py-2 text-right">Total equipo</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                    @if (!Model.Equipos.Any())
+                    {
+                        <tr>
+                            <td colspan="8" class="px-4 py-6 text-center text-slate-500">No hay equipos con lecturas para el período seleccionado.</td>
+                        </tr>
+                    }
+                    else
+                    {
+                        @foreach (var equipo in Model.Equipos)
+                        {
+                            <tr class="hover:bg-slate-50">
+                                <td class="px-4 py-2 text-slate-700">@(string.IsNullOrWhiteSpace(equipo.ClienteNombre) ? "—" : equipo.ClienteNombre)</td>
+                                <td class="px-4 py-2 font-medium text-slate-900">@equipo.EquipoNombre</td>
+                                <td class="px-4 py-2 text-right">@FormatNumber(equipo.ContadorActualCopias)</td>
+                                <td class="px-4 py-2 text-right">@FormatNumber(equipo.ConsumoCopias)</td>
+                                <td class="px-4 py-2 text-right">@FormatNumber(equipo.ContadorActualEscaneos)</td>
+                                <td class="px-4 py-2 text-right">@FormatNumber(equipo.ConsumoEscaneos)</td>
+                                <td class="px-4 py-2 text-right">@(equipo.DiasEntreTomas?.ToString() ?? "—")</td>
+                                <td class="px-4 py-2 text-right font-semibold text-slate-900">@FormatNumber(equipo.ConsumoTotal)</td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>

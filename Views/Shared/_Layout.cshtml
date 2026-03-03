@@ -36,6 +36,14 @@
 
     // *** NUEVO: detectar si el usuario tiene acceso limitado (claim agregado en Program.cs)
     var isLimited = User?.HasClaim("limited_access", "true") ?? false;
+
+    var usuariosContadores = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "jromero@digitaltechcolombia.com",
+        "germanruiz@digitaltechcolombia.com",
+        "sruiz@digitaltechcolombia.com"
+    };
+    var canSeeContadores = !string.IsNullOrWhiteSpace(email) && usuariosContadores.Contains(email);
 }
 
 <!DOCTYPE html>
@@ -204,6 +212,14 @@ body {
               <i class="ti ti-printer"></i> <span class="nav-text">Impresoras</span>
             </a>
           </li>
+          @if (canSeeContadores)
+          {
+            <li>
+              <a class='@navClasses("Contadores","Index")' href='@Url.Action("Index","Contadores")'>
+                <i class="ti ti-calculator"></i> <span class="nav-text">Contadores</span>
+              </a>
+            </li>
+          }
         </ul>
 
         <p class="mt-5 px-2 py-2 text-xs uppercase tracking-wide nav-text">Productos</p>
