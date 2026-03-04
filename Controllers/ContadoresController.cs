@@ -216,6 +216,29 @@ namespace DigitalTechClientPortal.Controllers
             if (equipoId != Guid.Empty)
             {
                 queryOptions.Add((
+                    EntitySet: "cr07a_contadores",
+                    Select: "cr07a_contador,cr07a_contadorescaner,cr07a_fechadetomadecontador,_cr07a_maquina_value",
+                    Filter: $"_cr07a_maquina_value eq {equipoId:D} and cr07a_fechadetomadecontador ge {inicioTxt} and cr07a_fechadetomadecontador lt {finTxt}",
+                    OrderBy: "cr07a_fechadetomadecontador desc",
+                    Fecha: "cr07a_fechadetomadecontador",
+                    Copias: "cr07a_contador",
+                    Escaneos: "cr07a_contadorescaner"
+                ));
+
+                queryOptions.Add((
+                    EntitySet: "cr07a_contadors",
+                    Select: "cr07a_contador,cr07a_contadorescaner,cr07a_fechadetomadecontador,_cr07a_maquina_value",
+                    Filter: $"_cr07a_maquina_value eq {equipoId:D} and cr07a_fechadetomadecontador ge {inicioTxt} and cr07a_fechadetomadecontador lt {finTxt}",
+                    OrderBy: "cr07a_fechadetomadecontador desc",
+                    Fecha: "cr07a_fechadetomadecontador",
+                    Copias: "cr07a_contador",
+                    Escaneos: "cr07a_contadorescaner"
+                ));
+            }
+
+            if (equipoId != Guid.Empty)
+            {
+                queryOptions.Add((
                     EntitySet: "cr07a_contadoresmensualesequipos",
                     Select: "cr07a_dt_contadorpaginas,cr07a_dt_paginasescaneadas,cr07a_dt_fechalectura,_cr07a_equipo_value,cr07a_equipo",
                     Filter: $"_cr07a_equipo_value eq {equipoId:D} and cr07a_dt_fechalectura ge {inicioTxt} and cr07a_dt_fechalectura lt {finTxt}",
@@ -236,29 +259,6 @@ namespace DigitalTechClientPortal.Controllers
                     Fecha: "cr07a_dt_fechalectura",
                     Copias: "cr07a_dt_contadorpaginas",
                     Escaneos: "cr07a_dt_paginasescaneadas"
-                ));
-            }
-
-            if (equipoId != Guid.Empty)
-            {
-                queryOptions.Add((
-                    EntitySet: "cr07a_contadors",
-                    Select: "cr07a_contador,cr07a_contadorescaner,cr07a_fechadetomadecontador,_cr07a_maquina_value",
-                    Filter: $"_cr07a_maquina_value eq {equipoId:D} and cr07a_fechadetomadecontador ge {inicioTxt} and cr07a_fechadetomadecontador lt {finTxt}",
-                    OrderBy: "cr07a_fechadetomadecontador desc",
-                    Fecha: "cr07a_fechadetomadecontador",
-                    Copias: "cr07a_contador",
-                    Escaneos: "cr07a_contadorescaner"
-                ));
-
-                queryOptions.Add((
-                    EntitySet: "cr07a_contadores",
-                    Select: "cr07a_contador,cr07a_contadorescaner,cr07a_fechadetomadecontador,_cr07a_maquina_value",
-                    Filter: $"_cr07a_maquina_value eq {equipoId:D} and cr07a_fechadetomadecontador ge {inicioTxt} and cr07a_fechadetomadecontador lt {finTxt}",
-                    OrderBy: "cr07a_fechadetomadecontador desc",
-                    Fecha: "cr07a_fechadetomadecontador",
-                    Copias: "cr07a_contador",
-                    Escaneos: "cr07a_contadorescaner"
                 ));
             }
 
