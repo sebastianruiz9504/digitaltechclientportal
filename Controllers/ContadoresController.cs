@@ -144,7 +144,9 @@ namespace DigitalTechClientPortal.Controllers
                         FechaActual = actual.Fecha,
                         FechaAnterior = anterior.Fecha,
                         ContadorActualCopias = actual.ContadorCopias,
+                        ContadorAnteriorCopias = anterior.ContadorCopias,
                         ContadorActualEscaneos = actual.ContadorEscaneos,
+                        ContadorAnteriorEscaneos = anterior.ContadorEscaneos,
                         ConsumoCopias = consumoCopias,
                         ConsumoEscaneos = consumoEscaneos,
                         DiasEntreTomas = dias

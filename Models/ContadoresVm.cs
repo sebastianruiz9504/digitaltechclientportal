@@ -28,9 +28,11 @@ namespace DigitalTechClientPortal.Models
         public DateTime? FechaAnterior { get; set; }
 
         public long? ContadorActualCopias { get; set; }
+        public long? ContadorAnteriorCopias { get; set; }
         public long? ConsumoCopias { get; set; }
 
         public long? ContadorActualEscaneos { get; set; }
+        public long? ContadorAnteriorEscaneos { get; set; }
         public long? ConsumoEscaneos { get; set; }
 
         public int? DiasEntreTomas { get; set; }

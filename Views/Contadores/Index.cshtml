@@ -152,10 +152,14 @@
                     <tr>
                         <th class="px-4 py-2 text-left">Cliente</th>
                         <th class="px-4 py-2 text-left">Equipo</th>
-                        <th class="px-4 py-2 text-right">Contador actual copias</th>
-                        <th class="px-4 py-2 text-right">Consumo copias</th>
-                        <th class="px-4 py-2 text-right">Contador actual escaneos</th>
-                        <th class="px-4 py-2 text-right">Consumo escaneos</th>
+                        <th class="bg-amber-50 px-4 py-2 text-right text-amber-800">Fecha toma anterior</th>
+                        <th class="bg-emerald-50 px-4 py-2 text-right text-emerald-800">Fecha toma actual</th>
+                        <th class="bg-emerald-50 px-4 py-2 text-right text-emerald-800">Contador actual copias</th>
+                        <th class="bg-amber-50 px-4 py-2 text-right text-amber-800">Contador anterior copias</th>
+                        <th class="px-4 py-2 text-right">Copias</th>
+                        <th class="bg-emerald-50 px-4 py-2 text-right text-emerald-800">Contador actual escaneos</th>
+                        <th class="bg-amber-50 px-4 py-2 text-right text-amber-800">Contador anterior escaneos</th>
+                        <th class="px-4 py-2 text-right">Escaneos</th>
                         <th class="px-4 py-2 text-right">Días entre tomas</th>
                         <th class="px-4 py-2 text-right">Total equipo</th>
                     </tr>
@@ -164,7 +168,7 @@
                     @if (!Model.Equipos.Any())
                     {
                         <tr>
-                            <td colspan="8" class="px-4 py-6 text-center text-slate-500">No hay equipos con lecturas para el período seleccionado.</td>
+                            <td colspan="12" class="px-4 py-6 text-center text-slate-500">No hay equipos con lecturas para el período seleccionado.</td>
                         </tr>
                     }
                     else
@@ -174,9 +178,13 @@
                             <tr class="hover:bg-slate-50">
                                 <td class="px-4 py-2 text-slate-700">@(string.IsNullOrWhiteSpace(equipo.ClienteNombre) ? "—" : equipo.ClienteNombre)</td>
                                 <td class="px-4 py-2 font-medium text-slate-900">@equipo.EquipoNombre</td>
-                                <td class="px-4 py-2 text-right">@FormatNumber(equipo.ContadorActualCopias)</td>
+                                <td class="bg-amber-50 px-4 py-2 text-right text-amber-900">@FormatDate(equipo.FechaAnterior)</td>
+                                <td class="bg-emerald-50 px-4 py-2 text-right text-emerald-900">@FormatDate(equipo.FechaActual)</td>
+                                <td class="bg-emerald-50 px-4 py-2 text-right text-emerald-900">@FormatNumber(equipo.ContadorActualCopias)</td>
+                                <td class="bg-amber-50 px-4 py-2 text-right text-amber-900">@FormatNumber(equipo.ContadorAnteriorCopias)</td>
                                 <td class="px-4 py-2 text-right">@FormatNumber(equipo.ConsumoCopias)</td>
-                                <td class="px-4 py-2 text-right">@FormatNumber(equipo.ContadorActualEscaneos)</td>
+                                <td class="bg-emerald-50 px-4 py-2 text-right text-emerald-900">@FormatNumber(equipo.ContadorActualEscaneos)</td>
+                                <td class="bg-amber-50 px-4 py-2 text-right text-amber-900">@FormatNumber(equipo.ContadorAnteriorEscaneos)</td>
                                 <td class="px-4 py-2 text-right">@FormatNumber(equipo.ConsumoEscaneos)</td>
                                 <td class="px-4 py-2 text-right">@(equipo.DiasEntreTomas?.ToString() ?? "—")</td>
                                 <td class="px-4 py-2 text-right font-semibold text-slate-900">@FormatNumber(equipo.ConsumoTotal)</td>
