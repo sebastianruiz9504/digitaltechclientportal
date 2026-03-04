@@ -210,15 +210,6 @@ namespace DigitalTechClientPortal.Controllers
             var inicioTxt = inicio.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);
             var finTxt = fin.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);
 
-<<<<<<< ours
-            var filter = $"_cr07a_maquina_value eq {equipoId:D} and cr07a_fechadetomadecontador ge {inicioTxt} and cr07a_fechadetomadecontador lt {finTxt}";
-            foreach (var entitySet in new[] { "cr07a_contadors", "cr07a_contadores" })
-            {
-                var query = entitySet +
-                            "?$select=cr07a_contador,cr07a_contadorescaner,cr07a_fechadetomadecontador,_cr07a_maquina_value" +
-                            $"&$filter={filter}" +
-                            "&$orderby=cr07a_fechadetomadecontador desc" +
-=======
             var serialSafe = (serial ?? string.Empty).Replace("'", "''");
             var queryOptions = new List<(string EntitySet, string Select, string Filter, string OrderBy, string Fecha, string Copias, string Escaneos)>();
 
@@ -277,7 +268,6 @@ namespace DigitalTechClientPortal.Controllers
                             $"?$select={option.Select}" +
                             $"&$filter={option.Filter}" +
                             $"&$orderby={option.OrderBy}" +
->>>>>>> theirs
                             "&$top=1";
 
                 try
@@ -286,20 +276,6 @@ namespace DigitalTechClientPortal.Controllers
                     var first = json.RootElement.GetProperty("value").EnumerateArray().FirstOrDefault();
                     if (first.ValueKind == JsonValueKind.Undefined)
                     {
-<<<<<<< ours
-                        return (null, null, null);
-                    }
-
-                    return (
-                        Fecha: GetDateTime(first, "cr07a_fechadetomadecontador"),
-                        ContadorCopias: GetLong(first, "cr07a_contador"),
-                        ContadorEscaneos: GetLong(first, "cr07a_contadorescaner")
-                    );
-                }
-                catch (HttpRequestException ex) when (ex.Message.Contains("Resource not found for the segment", StringComparison.OrdinalIgnoreCase))
-                {
-                    // Continúa con el siguiente posible entity set.
-=======
                         continue;
                     }
 
@@ -314,7 +290,6 @@ namespace DigitalTechClientPortal.Controllers
                     ex.Message.Contains("Could not find a property", StringComparison.OrdinalIgnoreCase))
                 {
                     // Continúa con el siguiente entity set / esquema posible.
->>>>>>> theirs
                 }
             }
 
