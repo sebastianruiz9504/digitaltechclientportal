@@ -216,6 +216,16 @@ namespace DigitalTechClientPortal.Controllers
             if (equipoId != Guid.Empty)
             {
                 queryOptions.Add((
+                    EntitySet: "cr07a_contadoreses",
+                    Select: "cr07a_contador,cr07a_contadorescaner,cr07a_fechadetomadecontador,_cr07a_maquina_value",
+                    Filter: $"_cr07a_maquina_value eq {equipoId:D} and cr07a_fechadetomadecontador ge {inicioTxt} and cr07a_fechadetomadecontador lt {finTxt}",
+                    OrderBy: "cr07a_fechadetomadecontador desc",
+                    Fecha: "cr07a_fechadetomadecontador",
+                    Copias: "cr07a_contador",
+                    Escaneos: "cr07a_contadorescaner"
+                ));
+
+                queryOptions.Add((
                     EntitySet: "cr07a_contadores",
                     Select: "cr07a_contador,cr07a_contadorescaner,cr07a_fechadetomadecontador,_cr07a_maquina_value",
                     Filter: $"_cr07a_maquina_value eq {equipoId:D} and cr07a_fechadetomadecontador ge {inicioTxt} and cr07a_fechadetomadecontador lt {finTxt}",
