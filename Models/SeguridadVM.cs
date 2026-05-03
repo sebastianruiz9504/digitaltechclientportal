@@ -24,6 +24,7 @@ namespace DigitalTechClientPortal.Models
         public List<SecurityDataSourceStatus> DataSources { get; set; } = new();
 
         public string? GraphError { get; set; }
+        public SecurityPermissionStatus PermissionStatus { get; set; } = new();
 
         // KPIs rápidos para tarjetas (nullable para poder usar ?? en Razor)
         public int? KpiAlertasTotal => Alertas?.Count;
@@ -83,5 +84,17 @@ namespace DigitalTechClientPortal.Models
         public bool IsAvailable { get; set; }
         public int Count { get; set; }
         public string Message { get; set; } = "";
+    }
+
+    public class SecurityPermissionStatus
+    {
+        public List<string> RequiredScopes { get; set; } = new();
+        public List<string> GrantedScopes { get; set; } = new();
+        public List<string> MissingScopes { get; set; } = new();
+        public Dictionary<string, string> ScopeDescriptions { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+        public bool HasMissingRequiredScopes => MissingScopes.Count > 0;
+        public int GrantedRequiredCount => RequiredScopes.Count - MissingScopes.Count;
+        public int RequiredCount => RequiredScopes.Count;
     }
 }

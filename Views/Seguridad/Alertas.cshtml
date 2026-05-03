@@ -92,6 +92,22 @@
     </div>
   </div>
 
+  @if (!string.IsNullOrWhiteSpace(Model.GraphError))
+  {
+    var currentReturnUrl = $"{Context.Request.PathBase}{Context.Request.Path}{Context.Request.QueryString}";
+    <div class="alert alert-warning border-0 shadow-sm">
+      <strong>No se pudieron leer todas las alertas.</strong>
+      <div>@Model.GraphError</div>
+      @if (Model.PermissionStatus?.HasMissingRequiredScopes == true)
+      {
+        <div class="d-flex flex-wrap gap-2 mt-3">
+          <a class="btn btn-primary btn-sm" href='@Url.Action("Consent","Login", new { returnUrl = currentReturnUrl, admin = false })'>Pedir consentimiento</a>
+          <a class="btn btn-outline-primary btn-sm" href='@Url.Action("Consent","Login", new { returnUrl = currentReturnUrl, admin = true })'>Consentimiento admin</a>
+        </div>
+      }
+    </div>
+  }
+
   <!-- Filtros ejecutivos -->
   <div class="card shadow-sm border-0 mb-4">
     <div class="card-body">

@@ -12,6 +12,7 @@ using DigitalTechClientPortal.Services;
 using Microsoft.Xrm.Sdk.Query;
 using Microsoft.AspNetCore.Routing;
 using DigitalTechClientPortal.Web.Services;
+using DigitalTechClientPortal.Security;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -70,6 +71,7 @@ builder.Services.AddScoped<DigitalTechApp.Services.OpenAIClientAdapter>();
 
 // GraphClientFactory (delegated)
 builder.Services.AddScoped<GraphClientFactory>();
+builder.Services.AddScoped<GraphPermissionService>();
 
 builder.Services.AddScoped<SecurityDataService>();
 
@@ -137,14 +139,10 @@ builder.Services
         options.CallbackPath = "/signin-oidc";
 
         options.Scope.Clear();
-        options.Scope.Add("openid");
-        options.Scope.Add("profile");
-        options.Scope.Add("email");
-        options.Scope.Add("User.Read");
-        options.Scope.Add("User.Read.All");
-        options.Scope.Add("Directory.Read.All");
-        options.Scope.Add("SecurityEvents.Read.All");
-        options.Scope.Add("offline_access");
+        foreach (var scope in GraphPermissionRequirements.DefaultLoginScopes)
+        {
+            options.Scope.Add(scope);
+        }
 
         options.TokenValidationParameters.NameClaimType = "name";
         options.TokenValidationParameters.RoleClaimType = "roles";
@@ -153,7 +151,6 @@ builder.Services
         {
             OnRedirectToIdentityProvider = ctx =>
             {
-                
                 var req = ctx.Request;
                 var scheme = req.Headers["X-Forwarded-Proto"].ToString();
                 var host = req.Headers["X-Forwarded-Host"].ToString();
@@ -161,6 +158,19 @@ builder.Services
                 {
                     ctx.ProtocolMessage.RedirectUri = $"{scheme}://{host}{req.PathBase}{ctx.Options.CallbackPath}";
                 }
+
+                var prompt = ctx.Properties.GetParameter<string>("prompt");
+                if (!string.IsNullOrWhiteSpace(prompt))
+                {
+                    ctx.ProtocolMessage.Prompt = prompt;
+                }
+
+                var scopeOverride = ctx.Properties.GetParameter<string>("scope");
+                if (!string.IsNullOrWhiteSpace(scopeOverride))
+                {
+                    ctx.ProtocolMessage.Scope = scopeOverride;
+                }
+
                 return Task.CompletedTask;
             },
             OnRemoteFailure = ctx =>

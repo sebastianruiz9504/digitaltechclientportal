@@ -13,11 +13,16 @@ namespace DigitalTechClientPortal.Controllers
     public class SeguridadController : Controller
     {
         private readonly GraphClientFactory _graphDelegated;
+        private readonly GraphPermissionService _graphPermissions;
         private readonly ILogger<SeguridadController> _logger;
 
-        public SeguridadController(GraphClientFactory graphDelegated, ILogger<SeguridadController> logger)
+        public SeguridadController(
+            GraphClientFactory graphDelegated,
+            GraphPermissionService graphPermissions,
+            ILogger<SeguridadController> logger)
         {
             _graphDelegated = graphDelegated;
+            _graphPermissions = graphPermissions;
             _logger = logger;
         }
 
@@ -38,6 +43,18 @@ namespace DigitalTechClientPortal.Controllers
                 From = from?.Date,
                 To = to?.Date,
             };
+
+            vm.PermissionStatus = await _graphPermissions.GetSecurityPermissionStatusAsync();
+            if (vm.PermissionStatus.HasMissingRequiredScopes)
+            {
+                if (!Request.Query.ContainsKey("consentChecked"))
+                {
+                    return RedirectToAction("Consent", "Login", new { returnUrl = BuildConsentReturnUrl() });
+                }
+
+                vm.GraphError = BuildMissingPermissionsMessage(vm.PermissionStatus);
+                return View("Alertas", vm);
+            }
 
             try
             {
@@ -68,6 +85,12 @@ namespace DigitalTechClientPortal.Controllers
             [FromQuery] string? search = null)
         {
             List<SecurityAlert> alertas;
+
+            var permissionStatus = await _graphPermissions.GetSecurityPermissionStatusAsync();
+            if (permissionStatus.HasMissingRequiredScopes)
+            {
+                return RedirectToAction("Consent", "Login", new { returnUrl = BuildConsentReturnUrl() });
+            }
 
             try
             {
@@ -122,6 +145,18 @@ namespace DigitalTechClientPortal.Controllers
                 From = from?.Date,
                 To = to?.Date
             };
+
+            vm.PermissionStatus = await _graphPermissions.GetSecurityPermissionStatusAsync();
+            if (vm.PermissionStatus.HasMissingRequiredScopes)
+            {
+                if (!Request.Query.ContainsKey("consentChecked"))
+                {
+                    return RedirectToAction("Consent", "Login", new { returnUrl = BuildConsentReturnUrl() });
+                }
+
+                vm.GraphError = BuildMissingPermissionsMessage(vm.PermissionStatus);
+                return View("PanelSeguridad", vm);
+            }
 
             try
             {
@@ -226,6 +261,23 @@ namespace DigitalTechClientPortal.Controllers
         {
             var text = value ?? "";
             return "\"" + text.Replace("\"", "\"\"") + "\"";
+        }
+
+        private string BuildConsentReturnUrl()
+        {
+            var path = $"{Request.PathBase}{Request.Path}";
+            var query = Request.QueryString.HasValue ? Request.QueryString.Value! : "";
+
+            if (Request.Query.ContainsKey("consentChecked"))
+                return path + query;
+
+            var separator = string.IsNullOrWhiteSpace(query) ? "?" : "&";
+            return $"{path}{query}{separator}consentChecked=1";
+        }
+
+        private static string BuildMissingPermissionsMessage(SecurityPermissionStatus permissionStatus)
+        {
+            return $"El token actual solo tiene {permissionStatus.GrantedRequiredCount} de {permissionStatus.RequiredCount} permisos requeridos para leer todo el módulo de seguridad. Se necesita consentimiento del tenant para continuar.";
         }
 
         // ------------------ Fetch helpers ------------------

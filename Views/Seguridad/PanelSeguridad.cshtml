@@ -91,6 +91,8 @@
     }
 
     var dataSources = Model.DataSources?.ToList() ?? new List<DigitalTechClientPortal.Models.SecurityDataSourceStatus>();
+    var permissionStatus = Model.PermissionStatus ?? new DigitalTechClientPortal.Models.SecurityPermissionStatus();
+    var hasMissingPermissions = permissionStatus.HasMissingRequiredScopes;
     var availableSources = dataSources.Count(s => s.IsAvailable);
     var unavailableSources = dataSources.Where(s => !s.IsAvailable).ToList();
     var criticalAlerts = (Model.Alertas ?? new List<DigitalTechClientPortal.Models.SecurityAlert>()).Count(a => IsHighSeverity(a.Severity));
@@ -99,11 +101,18 @@
     var deviceRiskCount = Model.DispositivosRiesgo?.Count ?? 0;
     var activeSignals = criticalAlerts + highRiskUsers + deviceRiskCount;
     var latestSignal = Model.LastSecuritySignalUtc?.ToLocalTime().ToString("dd MMM yyyy HH:mm", es) ?? "Sin señales recientes";
-    var coverageLabel = dataSources.Any() ? $"{availableSources}/{dataSources.Count} fuentes" : "Sin consulta";
+    var coverageLabel = hasMissingPermissions
+        ? $"{permissionStatus.GrantedRequiredCount}/{permissionStatus.RequiredCount} permisos"
+        : dataSources.Any() ? $"{availableSources}/{dataSources.Count} fuentes" : "Sin consulta";
 
     var tenantStatus = "Saludable";
     var tenantTone = "success";
-    if (!string.IsNullOrWhiteSpace(Model.GraphError) || unavailableSources.Count == dataSources.Count && dataSources.Any())
+    if (hasMissingPermissions)
+    {
+        tenantStatus = "Faltan permisos";
+        tenantTone = "warning";
+    }
+    else if (!string.IsNullOrWhiteSpace(Model.GraphError) || unavailableSources.Count == dataSources.Count && dataSources.Any())
     {
         tenantStatus = "Sin conexión";
         tenantTone = "muted";
@@ -128,7 +137,9 @@
         priorityActions.Add(("Revisar endpoints", $"{deviceRiskCount} dispositivo(s) reportan hallazgos.", "warning", "ti-device-desktop-exclamation"));
     if (secureMonthly.Any() && secureScoreActualPct < 65)
         priorityActions.Add(("Subir Secure Score", $"El tenant está en {secureScoreActualPct:0.##}%; prioriza controles de alto impacto.", "warning", "ti-chart-arrows-vertical"));
-    if (unavailableSources.Any())
+    if (hasMissingPermissions)
+        priorityActions.Add(("Conceder permisos de Graph", $"{permissionStatus.MissingScopes.Count} permiso(s) faltan para leer todo el tenant.", "warning", "ti-lock-access"));
+    else if (unavailableSources.Any())
         priorityActions.Add(("Completar permisos de lectura", $"{unavailableSources.Count} fuente(s) no pudieron consultarse en Graph.", "info", "ti-plug-connected-x"));
     if (!priorityActions.Any())
         priorityActions.Add(("Mantener revisión semanal", "No se detectan señales prioritarias en los datos consultados.", "success", "ti-circle-check"));
@@ -457,7 +468,37 @@
     </aside>
   </section>
 
-  @if (!string.IsNullOrWhiteSpace(Model.GraphError) || unavailableSources.Any())
+  @if (hasMissingPermissions)
+  {
+    var currentReturnUrl = $"{Context.Request.PathBase}{Context.Request.Path}{Context.Request.QueryString}";
+    <div class="security-alert">
+      <div class="d-flex flex-column flex-lg-row gap-3 align-items-lg-start justify-content-between">
+        <div>
+          <strong>Faltan permisos de Microsoft Graph.</strong>
+          <p class="mb-2 mt-1">
+            El token actual tiene @permissionStatus.GrantedRequiredCount de @permissionStatus.RequiredCount permisos requeridos. Para leer todo el tenant, un administrador del cliente debe conceder los permisos pendientes.
+          </p>
+          <div class="d-flex flex-wrap gap-2">
+            @foreach (var scope in permissionStatus.MissingScopes)
+            {
+              <span class="security-pill warning">
+                @(permissionStatus.ScopeDescriptions.TryGetValue(scope, out var description) ? description : scope)
+              </span>
+            }
+          </div>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          <a class="btn btn-primary" href='@Url.Action("Consent","Login", new { returnUrl = currentReturnUrl, admin = false })'>
+            <i class="ti ti-key"></i> Pedir consentimiento
+          </a>
+          <a class="btn btn-outline-primary" href='@Url.Action("Consent","Login", new { returnUrl = currentReturnUrl, admin = true })'>
+            <i class="ti ti-shield-lock"></i> Consentimiento admin
+          </a>
+        </div>
+      </div>
+    </div>
+  }
+  else if (!string.IsNullOrWhiteSpace(Model.GraphError) || unavailableSources.Any())
   {
     <div class="security-alert">
       <strong>Hay fuentes sin lectura completa.</strong>
