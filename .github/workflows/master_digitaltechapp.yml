@@ -55,6 +55,12 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_EF63A5CAA42349D9992010498BC1D42D }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_EB31D56806A14C92B8DB29A42FE8FF09 }}
 
+      - name: Show Azure deployment target
+        shell: pwsh
+        run: |
+          az account show --query "{subscription:name, subscriptionId:id, tenantId:tenantId}" -o table
+          az webapp list --query "[].{name:name, resourceGroup:resourceGroup, state:state, location:location, defaultHostName:defaultHostName}" -o table
+
       - name: Deploy to Azure Web App
         id: deploy-to-webapp
         uses: azure/webapps-deploy@v3
