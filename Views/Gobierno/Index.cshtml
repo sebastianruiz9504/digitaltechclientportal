@@ -1,0 +1,351 @@
+@model DigitalTechClientPortal.Models.M365GovernanceVm
+@using System.Globalization
+@{
+    ViewData["Title"] = "Gobierno Microsoft 365";
+    var es = CultureInfo.GetCultureInfo("es-CO");
+    var sources = Model.DataSources?.ToList() ?? new List<DigitalTechClientPortal.Models.SecurityDataSourceStatus>();
+    var unavailable = sources.Where(s => !s.IsAvailable).ToList();
+    var topOpportunities = Model.Opportunities
+        .OrderByDescending(o => (o.Severity ?? "").ToLowerInvariant() is "alta" ? 3 : (o.Severity ?? "").ToLowerInvariant() is "media" ? 2 : 1)
+        .ThenByDescending(o => o.Count)
+        .Take(8)
+        .ToList();
+
+    string PeriodClass(string period) => string.Equals(Model.Period, period, StringComparison.OrdinalIgnoreCase) ? "btn-primary" : "btn-outline-secondary";
+    string SeverityClass(string? value) => (value ?? "").ToLowerInvariant() switch
+    {
+        "alta" or "alto" or "critica" or "crítica" => "gov-chip danger",
+        "media" or "medio" => "gov-chip warning",
+        "baja" or "bajo" => "gov-chip success",
+        _ => "gov-chip muted"
+    };
+    string DateText(DateTime? value) => value.HasValue ? value.Value.ToString("dd MMM yyyy", es) : "Sin actividad";
+    string DateOffsetText(DateTimeOffset? value) => value.HasValue ? value.Value.ToLocalTime().ToString("dd MMM yyyy", es) : "Sin fecha";
+    string Short(string? value, int max = 72)
+    {
+        var text = value ?? "";
+        return text.Length <= max ? text : text[..max] + "...";
+    }
+}
+
+<style>
+  .gov-page { display: grid; gap: 18px; }
+  .gov-header {
+    display: grid;
+    gap: 16px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    padding: 22px;
+    background: #fff;
+    border: 1px solid #dbe4ef;
+    border-radius: 8px;
+    box-shadow: 0 8px 22px rgba(4,16,33,.07);
+  }
+  .gov-eyebrow { margin: 0 0 7px; color: #64748b; font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+  .gov-title { margin: 0; color: #0f172a; font-size: 1.75rem; font-weight: 650; line-height: 1.18; }
+  .gov-copy { margin: 10px 0 0; color: #52647a; max-width: 850px; line-height: 1.5; }
+  .gov-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+  .gov-kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
+  .gov-card {
+    background: #fff;
+    border: 1px solid #dbe4ef;
+    border-radius: 8px;
+    box-shadow: 0 6px 18px rgba(4,16,33,.055);
+  }
+  .gov-kpi { padding: 16px; min-height: 124px; display: grid; align-content: space-between; }
+  .gov-kpi i { color: #2563eb; font-size: 1.3rem; }
+  .gov-label { margin: 0; color: #64748b; font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+  .gov-number { color: #0f172a; font-size: 1.85rem; font-weight: 700; line-height: 1.05; }
+  .gov-note { color: #64748b; font-size: .86rem; }
+  .gov-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, .45fr); gap: 16px; align-items: start; }
+  .gov-section { padding: 18px; }
+  .gov-section-head { display: flex; gap: 10px; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .gov-section-title { margin: 0; color: #0f172a; font-size: 1.05rem; font-weight: 650; }
+  .gov-list { display: grid; gap: 10px; }
+  .gov-row { display: grid; gap: 6px; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc; }
+  .gov-row-top { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+  .gov-row-title { color: #172033; font-weight: 650; }
+  .gov-chip { display: inline-flex; align-items: center; min-height: 24px; padding: 0 8px; border-radius: 999px; font-size: .74rem; font-weight: 700; white-space: nowrap; }
+  .gov-chip.danger { color: #991b1b; background: #fee2e2; }
+  .gov-chip.warning { color: #92400e; background: #fef3c7; }
+  .gov-chip.success { color: #166534; background: #dcfce7; }
+  .gov-chip.info { color: #075985; background: #e0f2fe; }
+  .gov-chip.muted { color: #475569; background: #e2e8f0; }
+  .gov-table { width: 100%; border-collapse: separate; border-spacing: 0; }
+  .gov-table th { color: #64748b; font-size: .78rem; font-weight: 700; border-bottom: 1px solid #e2e8f0; padding: 10px; }
+  .gov-table td { border-bottom: 1px solid #edf2f7; padding: 10px; color: #334155; vertical-align: top; }
+  .gov-progress { height: 8px; background: #e2e8f0; border-radius: 999px; overflow: hidden; }
+  .gov-progress span { display: block; height: 100%; background: #2563eb; border-radius: inherit; }
+  .gov-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .gov-source-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  @@media (max-width: 1200px) { .gov-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } .gov-grid, .gov-two { grid-template-columns: 1fr; } .gov-source-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @@media (max-width: 760px) { .gov-header { grid-template-columns: 1fr; } .gov-actions { justify-content: flex-start; } .gov-kpis, .gov-source-grid { grid-template-columns: 1fr; } }
+</style>
+
+<div class="container-fluid py-4 gov-page">
+  <section class="gov-header">
+    <div>
+      <p class="gov-eyebrow">Centro de gobierno Microsoft 365</p>
+      <h1 class="gov-title">Uso, adopción y optimización del tenant</h1>
+      <p class="gov-copy">
+        Vista ejecutiva de licencias, actividad, colaboración, almacenamiento, dispositivos, políticas, Purview y salud de servicios Microsoft 365.
+      </p>
+    </div>
+    <div class="gov-actions">
+      <a class="btn @PeriodClass("D30")" href='@Url.Action("Index","Gobierno", new { period = "D30" })'>30 días</a>
+      <a class="btn @PeriodClass("D90")" href='@Url.Action("Index","Gobierno", new { period = "D90" })'>90 días</a>
+      <a class="btn @PeriodClass("D180")" href='@Url.Action("Index","Gobierno", new { period = "D180" })'>180 días</a>
+      <a class="btn btn-outline-secondary" href="javascript:location.reload()"><i class="ti ti-refresh"></i> Actualizar</a>
+      <a class="btn btn-primary" href='@Url.Action("PlanOptimizacion","Gobierno", new { period = Model.Period })'><i class="ti ti-sparkles"></i> Plan AI</a>
+    </div>
+  </section>
+
+  @if (!string.IsNullOrWhiteSpace(Model.GraphError))
+  {
+    <div class="alert alert-warning mb-0">@Model.GraphError</div>
+  }
+
+  @if (unavailable.Any())
+  {
+    <div class="alert alert-info mb-0">
+      Hay fuentes pendientes de permisos o licenciamiento: @string.Join(", ", unavailable.Take(4).Select(s => s.Name)).
+    </div>
+  }
+
+  <section class="gov-kpis">
+    <div class="gov-card gov-kpi">
+      <i class="ti ti-license"></i>
+      <div><div class="gov-number">@Model.AvailableLicenses</div><p class="gov-label">Licencias libres</p></div>
+      <div class="gov-note">@Model.AssignedLicenses asignadas de @Model.TotalPurchasedLicenses</div>
+    </div>
+    <div class="gov-card gov-kpi">
+      <i class="ti ti-users-minus"></i>
+      <div><div class="gov-number">@Model.UsersWithoutCoreActivity.Count</div><p class="gov-label">Sin actividad core</p></div>
+      <div class="gov-note">@Model.PeriodDays días · @Model.LicensedEnabledUsers usuarios licenciados</div>
+    </div>
+    <div class="gov-card gov-kpi">
+      <i class="ti ti-cloud-data-connection"></i>
+      <div><div class="gov-number">@Model.LargeInactiveSharePointSites.Count</div><p class="gov-label">Sitios inactivos</p></div>
+      <div class="gov-note">SharePoint con más de 1 GB usado</div>
+    </div>
+    <div class="gov-card gov-kpi">
+      <i class="ti ti-device-laptop"></i>
+      <div><div class="gov-number">@Model.StaleOrNonCompliantDevices.Count</div><p class="gov-label">Dispositivos a revisar</p></div>
+      <div class="gov-note">@Model.NonCompliantDevices no conformes · @Model.StaleDevices sin sync</div>
+    </div>
+    <div class="gov-card gov-kpi">
+      <i class="ti ti-settings-exclamation"></i>
+      <div><div class="gov-number">@Model.UnassignedPolicies.Count</div><p class="gov-label">Políticas sin asignar</p></div>
+      <div class="gov-note">@Model.IntunePolicyCount políticas consultadas</div>
+    </div>
+    <div class="gov-card gov-kpi">
+      <i class="ti ti-speakerphone"></i>
+      <div><div class="gov-number">@Model.MajorUpcomingChanges</div><p class="gov-label">Cambios Microsoft</p></div>
+      <div class="gov-note">@Model.ActiveServiceIssues incidencias activas</div>
+    </div>
+  </section>
+
+  <section class="gov-grid">
+    <div class="gov-card gov-section">
+      <div class="gov-section-head">
+        <h2 class="gov-section-title">Adopción por servicio</h2>
+        <span class="gov-chip info">@Model.UsageIdentityNote</span>
+      </div>
+      <table class="gov-table">
+        <thead>
+          <tr><th>Servicio</th><th>Actividad</th><th>Activos</th><th>Inactivos</th><th>Uso / almacenamiento</th></tr>
+        </thead>
+        <tbody>
+        @foreach (var w in Model.Workloads)
+        {
+          var width = Math.Clamp(w.ActivityPercent, 0, 100).ToString("0.#", CultureInfo.InvariantCulture);
+          <tr>
+            <td><strong>@w.Name</strong><div class="gov-note">@w.Area</div></td>
+            <td style="min-width:150px"><div class="gov-progress"><span style="width:@width%"></span></div><div class="gov-note">@w.ActivityPercent.ToString("0.#")%</div></td>
+            <td>@w.ActiveItems</td>
+            <td>@w.InactiveItems</td>
+            <td>
+              @if (w.StorageUsedBytes > 0)
+              {
+                <span>@w.StorageUsedGb.ToString("0.##") GB</span>
+              }
+              else
+              {
+                <span>@w.ActivityCount.ToString("N0", es) acciones</span>
+              }
+            </td>
+          </tr>
+        }
+        </tbody>
+      </table>
+    </div>
+
+    <aside class="gov-card gov-section">
+      <div class="gov-section-head">
+        <h2 class="gov-section-title">Oportunidades</h2>
+        <span class="gov-chip muted">@topOpportunities.Count hallazgos</span>
+      </div>
+      <div class="gov-list">
+        @foreach (var item in topOpportunities)
+        {
+          <div class="gov-row">
+            <div class="gov-row-top">
+              <span class="gov-row-title">@item.Title</span>
+              <span class="@SeverityClass(item.Severity)">@item.Severity</span>
+            </div>
+            <div class="gov-note">@item.Detail</div>
+            <div class="gov-note"><strong>@item.Area:</strong> @item.RecommendedAction</div>
+          </div>
+        }
+        @if (!topOpportunities.Any())
+        {
+          <div class="gov-row"><span class="gov-row-title">Sin oportunidades críticas visibles</span><div class="gov-note">Las fuentes consultadas no muestran brechas claras para el período.</div></div>
+        }
+      </div>
+    </aside>
+  </section>
+
+  <section class="gov-two">
+    <div class="gov-card gov-section">
+      <div class="gov-section-head"><h2 class="gov-section-title">Licenciamiento</h2><span class="gov-chip muted">@Model.Licenses.Count SKU</span></div>
+      <table class="gov-table">
+        <thead><tr><th>SKU</th><th>Asignadas</th><th>Libres</th><th>Uso</th></tr></thead>
+        <tbody>
+        @foreach (var sku in Model.Licenses.OrderByDescending(l => l.AvailableUnits).ThenBy(l => l.DisplayName).Take(12))
+        {
+          <tr>
+            <td><strong>@Short(sku.DisplayName, 38)</strong><div class="gov-note">@sku.CapabilityStatus</div></td>
+            <td>@sku.ConsumedUnits / @sku.EnabledUnits</td>
+            <td>@sku.AvailableUnits</td>
+            <td>@sku.UtilizationPercent.ToString("0.#")%</td>
+          </tr>
+        }
+        </tbody>
+      </table>
+    </div>
+
+    <div class="gov-card gov-section">
+      <div class="gov-section-head"><h2 class="gov-section-title">Usuarios licenciados sin actividad core</h2><span class="gov-chip muted">@Model.UsersWithoutCoreActivity.Count</span></div>
+      <div class="gov-list">
+        @foreach (var user in Model.UsersWithoutCoreActivity.Take(8))
+        {
+          <div class="gov-row">
+            <div class="gov-row-top"><span class="gov-row-title">@Short(user.DisplayName, 42)</span><span class="gov-chip warning">@user.LicenseCount lic.</span></div>
+            <div class="gov-note">@user.UserPrincipalName</div>
+            <div class="gov-note">@user.Reason</div>
+          </div>
+        }
+        @if (!Model.UsersWithoutCoreActivity.Any())
+        {
+          <div class="gov-row"><span class="gov-row-title">Sin usuarios identificables</span><div class="gov-note">@Model.UsageIdentityNote</div></div>
+        }
+      </div>
+    </div>
+  </section>
+
+  <section class="gov-two">
+    <div class="gov-card gov-section">
+      <div class="gov-section-head"><h2 class="gov-section-title">SharePoint y OneDrive inactivos</h2><span class="gov-chip muted">Top almacenamiento</span></div>
+      <div class="gov-list">
+        @foreach (var item in Model.LargeInactiveSharePointSites.Concat(Model.LargeInactiveOneDriveAccounts).OrderByDescending(i => i.StorageUsedBytes).Take(10))
+        {
+          <div class="gov-row">
+            <div class="gov-row-top"><span class="gov-row-title">@item.Workload</span><span class="gov-chip warning">@item.StorageUsedGb.ToString("0.##") GB</span></div>
+            <div class="gov-note">@Short(string.IsNullOrWhiteSpace(item.OwnerPrincipalName) ? item.Name : item.OwnerPrincipalName, 88)</div>
+            <div class="gov-note">Última actividad: @DateText(item.LastActivityDate)</div>
+          </div>
+        }
+        @if (!Model.LargeInactiveSharePointSites.Any() && !Model.LargeInactiveOneDriveAccounts.Any())
+        {
+          <div class="gov-row"><span class="gov-row-title">Sin almacenamiento inactivo relevante</span><div class="gov-note">No se detectaron elementos sobre 1 GB sin actividad en el período.</div></div>
+        }
+      </div>
+    </div>
+
+    <div class="gov-card gov-section">
+      <div class="gov-section-head"><h2 class="gov-section-title">Intune y dispositivos</h2><span class="gov-chip muted">@Model.ManagedDevices.Count dispositivos</span></div>
+      <div class="gov-list">
+        @foreach (var policy in Model.UnassignedPolicies.Take(5))
+        {
+          <div class="gov-row">
+            <div class="gov-row-top"><span class="gov-row-title">@Short(policy.Name, 58)</span><span class="gov-chip warning">Sin asignar</span></div>
+            <div class="gov-note">@policy.PolicyType · @policy.Platform @policy.Technology</div>
+          </div>
+        }
+        @foreach (var device in Model.StaleOrNonCompliantDevices.Take(5))
+        {
+          <div class="gov-row">
+            <div class="gov-row-top"><span class="gov-row-title">@Short(device.DeviceName, 58)</span><span class="gov-chip danger">@device.ComplianceState</span></div>
+            <div class="gov-note">@device.UserPrincipalName · @device.OperatingSystem · sync @DateOffsetText(device.LastSyncDateTime)</div>
+          </div>
+        }
+        @if (!Model.UnassignedPolicies.Any() && !Model.StaleOrNonCompliantDevices.Any())
+        {
+          <div class="gov-row"><span class="gov-row-title">Sin hallazgos Intune prioritarios</span><div class="gov-note">No se detectaron políticas sin asignar ni dispositivos con revisión pendiente.</div></div>
+        }
+      </div>
+    </div>
+  </section>
+
+  <section class="gov-two">
+    <div class="gov-card gov-section">
+      <div class="gov-section-head"><h2 class="gov-section-title">Purview y aplicaciones</h2><span class="gov-chip muted">Gobierno</span></div>
+      <div class="gov-list">
+        <div class="gov-row">
+          <div class="gov-row-top"><span class="gov-row-title">Etiquetas de sensibilidad</span><span class="gov-chip @(Model.Purview.LabelsAvailable ? "info" : "muted")">@Model.Purview.SensitivityLabels</span></div>
+          <div class="gov-note">Fuente @(Model.Purview.LabelsAvailable ? "disponible" : "pendiente de permiso o licencia").</div>
+        </div>
+        <div class="gov-row">
+          <div class="gov-row-top"><span class="gov-row-title">Casos eDiscovery</span><span class="gov-chip @(Model.Purview.EdiscoveryAvailable ? "info" : "muted")">@Model.Purview.EdiscoveryCases</span></div>
+          <div class="gov-note">Uso de Purview sujeto a licenciamiento y permisos del tenant.</div>
+        </div>
+        <div class="gov-row">
+          <div class="gov-row-top"><span class="gov-row-title">Aplicaciones empresariales</span><span class="gov-chip info">@Model.EnterpriseApps.Count</span></div>
+          <div class="gov-note">@Model.EnterpriseApps.Count(a => !a.AppRoleAssignmentRequired) con asignación de rol no obligatoria en la muestra consultada.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="gov-card gov-section">
+      <div class="gov-section-head"><h2 class="gov-section-title">Salud y cambios Microsoft</h2><span class="gov-chip muted">@Model.MessageCenter.Count mensajes</span></div>
+      <div class="gov-list">
+        @foreach (var health in Model.ServiceHealth.Where(h => !h.IsHealthy).Take(5))
+        {
+          <div class="gov-row">
+            <div class="gov-row-top"><span class="gov-row-title">@health.Service</span><span class="gov-chip warning">@health.Status</span></div>
+          </div>
+        }
+        @foreach (var msg in Model.MessageCenter.OrderByDescending(m => m.IsMajorChange).ThenBy(m => m.ActionRequiredByDateTime ?? DateTimeOffset.MaxValue).Take(5))
+        {
+          <div class="gov-row">
+            <div class="gov-row-top"><span class="gov-row-title">@Short(msg.Title, 72)</span><span class="gov-chip @(msg.IsMajorChange ? "warning" : "muted")">@(msg.IsMajorChange ? "Cambio mayor" : msg.Category)</span></div>
+            <div class="gov-note">Acción: @DateOffsetText(msg.ActionRequiredByDateTime) · @msg.Services</div>
+          </div>
+        }
+        @if (!Model.ServiceHealth.Any(h => !h.IsHealthy) && !Model.MessageCenter.Any())
+        {
+          <div class="gov-row"><span class="gov-row-title">Sin mensajes relevantes</span><div class="gov-note">No se detectaron incidencias ni cambios próximos en las fuentes consultadas.</div></div>
+        }
+      </div>
+    </div>
+  </section>
+
+  <section class="gov-card gov-section">
+    <div class="gov-section-head">
+      <h2 class="gov-section-title">Fuentes consultadas</h2>
+      <span class="gov-chip muted">@sources.Count fuentes · @Model.GeneratedAtLocal</span>
+    </div>
+    <div class="gov-source-grid">
+      @foreach (var source in sources.OrderBy(s => s.IsAvailable).ThenBy(s => s.Name))
+      {
+        <div class="gov-row">
+          <div class="gov-row-top">
+            <span class="gov-row-title">@source.Name</span>
+            <span class="gov-chip @(source.IsAvailable ? "success" : "warning")">@(source.IsAvailable ? "OK" : "Pendiente")</span>
+          </div>
+          <div class="gov-note">@source.Count registros · @source.Message</div>
+        </div>
+      }
+    </div>
+  </section>
+</div>

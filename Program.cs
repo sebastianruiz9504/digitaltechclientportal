@@ -69,6 +69,8 @@ builder.Services.AddScoped<GraphPermissionService>();
 
 builder.Services.AddScoped<SecurityDataService>();
 builder.Services.AddScoped<SecurityAiPlanService>();
+builder.Services.AddScoped<M365GovernanceDataService>();
+builder.Services.AddScoped<M365OptimizationAiService>();
 
 // Cookies cross-site
 builder.Services.Configure<CookiePolicyOptions>(options =>
