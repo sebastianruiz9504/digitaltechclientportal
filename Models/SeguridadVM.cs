@@ -19,6 +19,12 @@ namespace DigitalTechClientPortal.Models
         // Agregación mensual de Secure Score para UI y gráficos
         public List<SecureScoreMonthly> SecureScoreMensual { get; set; } = new();
 
+        // Estado de las consultas a Microsoft Graph. Permite diferenciar "sin hallazgos"
+        // de "no se pudo leer esta fuente".
+        public List<SecurityDataSourceStatus> DataSources { get; set; } = new();
+
+        public string? GraphError { get; set; }
+
         // KPIs rápidos para tarjetas (nullable para poder usar ?? en Razor)
         public int? KpiAlertasTotal => Alertas?.Count;
         public int? KpiUsuariosRiesgoTotal => UsuariosRiesgo?.Count;
@@ -39,6 +45,23 @@ namespace DigitalTechClientPortal.Models
 
         // Si quieres seguir mostrando el valor formateado como antes
         public string? KpiSecureScoreActualFormatted => SecureScoreMensual.LastOrDefault()?.CurrentScoreFormatted;
+
+        public DateTimeOffset? LastSecuritySignalUtc
+        {
+            get
+            {
+                var dates = new List<DateTimeOffset>();
+
+                dates.AddRange(Alertas.Select(a => a.LastUpdatedDateTime ?? a.CreatedDateTime).Where(d => d.HasValue).Select(d => d!.Value));
+                dates.AddRange(Incidentes.Select(i => i.LastUpdatedDateTime ?? i.CreatedDateTime).Where(d => d.HasValue).Select(d => d!.Value));
+                dates.AddRange(UsuariosRiesgo.Select(u => u.LastUpdatedDateTime).Where(d => d.HasValue).Select(d => d!.Value));
+                dates.AddRange(DispositivosRiesgo.Select(d => d.LastSeenDateTime).Where(d => d.HasValue).Select(d => d!.Value));
+                dates.AddRange(SecureScores.Select(s => s.CreatedDateTime).Where(d => d.HasValue).Select(d => d!.Value));
+                dates.AddRange(SimulacionesAtaque.Select(s => s.CompletionDateTime ?? s.LaunchDateTime).Where(d => d.HasValue).Select(d => d!.Value));
+
+                return dates.Count == 0 ? null : dates.Max();
+            }
+        }
     }
 
     public class SecureScoreMonthly
@@ -52,5 +75,13 @@ namespace DigitalTechClientPortal.Models
         public string Label => $"{Year}-{Month.ToString().PadLeft(2, '0')}";
         public string CurrentScoreFormatted => CurrentScore.HasValue ? CurrentScore.Value.ToString("0.##") : "-";
         public string MaxScoreFormatted => MaxScore.HasValue ? MaxScore.Value.ToString("0.##") : "-";
+    }
+
+    public class SecurityDataSourceStatus
+    {
+        public string Name { get; set; } = "";
+        public bool IsAvailable { get; set; }
+        public int Count { get; set; }
+        public string Message { get; set; } = "";
     }
 }

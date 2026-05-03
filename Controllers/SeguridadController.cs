@@ -2,6 +2,8 @@ using DigitalTechClientPortal.Models;
 using DigitalTechClientPortal.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Net;
+using System.Text;
 using System.Text.Json;
 
 namespace DigitalTechClientPortal.Controllers
@@ -11,10 +13,12 @@ namespace DigitalTechClientPortal.Controllers
     public class SeguridadController : Controller
     {
         private readonly GraphClientFactory _graphDelegated;
+        private readonly ILogger<SeguridadController> _logger;
 
-        public SeguridadController(GraphClientFactory graphDelegated)
+        public SeguridadController(GraphClientFactory graphDelegated, ILogger<SeguridadController> logger)
         {
             _graphDelegated = graphDelegated;
+            _logger = logger;
         }
 
         // ------------------ Vistas ------------------
@@ -29,25 +33,78 @@ namespace DigitalTechClientPortal.Controllers
             if (top <= 0) top = 50;
             if (top > 999) top = 999;
 
-            var client = await _graphDelegated.CreateClientAsync();
-
             var vm = new SeguridadVM
             {
                 From = from?.Date,
                 To = to?.Date,
-                Alertas = await FetchAlerts(client, from, to, top),
-
-                // Inicializaciones para evitar nulls en la vista (coherencia con Panel)
-                Incidentes = new List<SecurityIncident>(),
-                UsuariosRiesgo = new List<RiskyUser>(),
-                DispositivosRiesgo = new List<DeviceSecurityState>(),
-                SecureScores = new List<SecureScore>(),
-                SecureScoreControles = new List<SecureScoreControl>(),
-                SimulacionesAtaque = new List<AttackSimulation>(),
-                SecureScoreMensual = new List<SecureScoreMonthly>()
             };
 
+            try
+            {
+                var client = await _graphDelegated.CreateClientAsync();
+                vm.Alertas = await FetchAlerts(client, from, to, top, vm.DataSources);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "No fue posible inicializar Microsoft Graph para Alertas.");
+                vm.GraphError = "No fue posible conectar con Microsoft Graph. Inicia sesión nuevamente o valida el consentimiento de permisos.";
+                vm.DataSources.Add(new SecurityDataSourceStatus
+                {
+                    Name = "Alertas",
+                    IsAvailable = false,
+                    Count = 0,
+                    Message = vm.GraphError
+                });
+            }
+
             return View("Alertas", vm);
+        }
+
+        [HttpGet("ExportarAlertasCsv")]
+        public async Task<IActionResult> ExportarAlertasCsv(
+            [FromQuery] DateTime? from = null,
+            [FromQuery] DateTime? to = null,
+            [FromQuery] string? severity = null,
+            [FromQuery] string? search = null)
+        {
+            List<SecurityAlert> alertas;
+
+            try
+            {
+                var client = await _graphDelegated.CreateClientAsync();
+                alertas = await FetchAlerts(client, from, to, 999);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "No fue posible exportar alertas desde Microsoft Graph.");
+                return StatusCode(StatusCodes.Status503ServiceUnavailable, "No fue posible consultar Microsoft Graph para exportar alertas.");
+            }
+
+            alertas = FilterAlerts(alertas, from, to, severity, search)
+                .OrderByDescending(a => a.CreatedDateTime ?? a.LastUpdatedDateTime ?? DateTimeOffset.MinValue)
+                .ToList();
+
+            var csv = new StringBuilder();
+            csv.AppendLine("Titulo,Severidad,Categoria,Estado,Proveedor,Creada,Actualizada,Descripcion");
+
+            foreach (var alerta in alertas)
+            {
+                csv.AppendLine(string.Join(",", new[]
+                {
+                    Csv(alerta.Title),
+                    Csv(alerta.Severity),
+                    Csv(alerta.Category),
+                    Csv(alerta.Status),
+                    Csv(alerta.Provider),
+                    Csv(alerta.CreatedDateTime?.ToLocalTime().ToString("yyyy-MM-dd HH:mm") ?? ""),
+                    Csv(alerta.LastUpdatedDateTime?.ToLocalTime().ToString("yyyy-MM-dd HH:mm") ?? ""),
+                    Csv(alerta.Description)
+                }));
+            }
+
+            var bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(csv.ToString())).ToArray();
+            var fileName = $"alertas-seguridad-{DateTime.UtcNow:yyyyMMdd-HHmm}.csv";
+            return File(bytes, "text/csv; charset=utf-8", fileName);
         }
 
         // Panel con todos los módulos
@@ -60,20 +117,36 @@ namespace DigitalTechClientPortal.Controllers
             if (top <= 0) top = 50;
             if (top > 200) top = 200;
 
-            var client = await _graphDelegated.CreateClientAsync();
-
             var vm = new SeguridadVM
             {
                 From = from?.Date,
-                To = to?.Date,
-                Alertas = await FetchAlerts(client, from, to, top),
-                Incidentes = await FetchIncidents(client, from, to, top),
-                UsuariosRiesgo = await FetchRiskyUsers(client, top),
-                DispositivosRiesgo = await FetchDeviceSecurityStates(client, top),
-                SecureScores = await FetchSecureScores(client, top),
-                SecureScoreControles = await FetchSecureScoreControls(client, top),
-                SimulacionesAtaque = await FetchAttackSimulations(client, top)
+                To = to?.Date
             };
+
+            try
+            {
+                var client = await _graphDelegated.CreateClientAsync();
+
+                vm.Alertas = await FetchAlerts(client, from, to, top, vm.DataSources);
+                vm.Incidentes = await FetchIncidents(client, from, to, top, vm.DataSources);
+                vm.UsuariosRiesgo = await FetchRiskyUsers(client, top, vm.DataSources);
+                vm.DispositivosRiesgo = await FetchDeviceSecurityStates(client, top, vm.DataSources);
+                vm.SecureScores = await FetchSecureScores(client, top, vm.DataSources);
+                vm.SecureScoreControles = await FetchSecureScoreControls(client, top, vm.DataSources);
+                vm.SimulacionesAtaque = await FetchAttackSimulations(client, top, vm.DataSources);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "No fue posible inicializar Microsoft Graph para el panel de seguridad.");
+                vm.GraphError = "No fue posible conectar con Microsoft Graph. Inicia sesión nuevamente o valida el consentimiento de permisos.";
+                vm.DataSources.Add(new SecurityDataSourceStatus
+                {
+                    Name = "Microsoft Graph",
+                    IsAvailable = false,
+                    Count = 0,
+                    Message = vm.GraphError
+                });
+            }
 
             // Agregación mensual de Secure Score: último registro por mes
             vm.SecureScoreMensual = vm.SecureScores
@@ -97,11 +170,77 @@ namespace DigitalTechClientPortal.Controllers
             return View("PanelSeguridad", vm);
         }
 
+        private static IEnumerable<SecurityAlert> FilterAlerts(
+            IEnumerable<SecurityAlert> alertas,
+            DateTime? from,
+            DateTime? to,
+            string? severity,
+            string? search)
+        {
+            var query = alertas;
+
+            if (from.HasValue)
+            {
+                var fromDate = from.Value.Date;
+                query = query.Where(a => (a.CreatedDateTime ?? a.LastUpdatedDateTime)?.LocalDateTime >= fromDate);
+            }
+
+            if (to.HasValue)
+            {
+                var toDate = to.Value.Date.AddDays(1).AddSeconds(-1);
+                query = query.Where(a => (a.CreatedDateTime ?? a.LastUpdatedDateTime)?.LocalDateTime <= toDate);
+            }
+
+            if (!string.IsNullOrWhiteSpace(severity))
+            {
+                var expected = NormalizeComparable(severity);
+                query = query.Where(a => NormalizeComparable(a.Severity) == expected);
+            }
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var text = search.Trim();
+                query = query.Where(a =>
+                    (a.Title ?? "").Contains(text, StringComparison.OrdinalIgnoreCase) ||
+                    (a.Category ?? "").Contains(text, StringComparison.OrdinalIgnoreCase) ||
+                    (a.Provider ?? "").Contains(text, StringComparison.OrdinalIgnoreCase) ||
+                    (a.Status ?? "").Contains(text, StringComparison.OrdinalIgnoreCase));
+            }
+
+            return query;
+        }
+
+        private static string NormalizeComparable(string? value)
+        {
+            return (value ?? "")
+                .Trim()
+                .ToLowerInvariant()
+                .Replace("í", "i")
+                .Replace("á", "a")
+                .Replace("é", "e")
+                .Replace("ó", "o")
+                .Replace("ú", "u");
+        }
+
+        private static string Csv(string? value)
+        {
+            var text = value ?? "";
+            return "\"" + text.Replace("\"", "\"\"") + "\"";
+        }
+
         // ------------------ Fetch helpers ------------------
 
-        private static async Task<List<SecurityAlert>> FetchAlerts(HttpClient client, DateTime? from, DateTime? to, int top)
+        private static async Task<List<SecurityAlert>> FetchAlerts(
+            HttpClient client,
+            DateTime? from,
+            DateTime? to,
+            int top,
+            List<SecurityDataSourceStatus>? dataSources = null)
         {
+            const string sourceName = "Alertas";
             var list = new List<SecurityAlert>();
+            var available = true;
+            string? message = null;
             var url = $"https://graph.microsoft.com/v1.0/security/alerts?$top={top}";
             var filters = new List<string>();
 
@@ -122,17 +261,24 @@ namespace DigitalTechClientPortal.Controllers
             if (filters.Count > 0) url += $"&$filter={string.Join(" and ", filters)}";
 
             string? nextLink = url;
-            while (!string.IsNullOrEmpty(nextLink))
+            while (!string.IsNullOrEmpty(nextLink) && list.Count < top)
             {
                 var resp = await client.GetAsync(nextLink);
                 var raw = await resp.Content.ReadAsStringAsync();
-                if (!resp.IsSuccessStatusCode) break;
+                if (!resp.IsSuccessStatusCode)
+                {
+                    available = false;
+                    message = BuildGraphWarning(resp.StatusCode, raw);
+                    break;
+                }
 
                 using var doc = JsonDocument.Parse(raw);
                 if (doc.RootElement.TryGetProperty("value", out var arr) && arr.ValueKind == JsonValueKind.Array)
                 {
                     foreach (var a in arr.EnumerateArray())
                     {
+                        if (list.Count >= top) break;
+
                         list.Add(new SecurityAlert
                         {
                             Id = a.GetPropertyOrDefault("id"),
@@ -151,12 +297,21 @@ namespace DigitalTechClientPortal.Controllers
                 nextLink = doc.RootElement.TryGetProperty("@odata.nextLink", out var nl) ? nl.GetString() : null;
             }
 
+            RegisterDataSource(dataSources, sourceName, available, list.Count, message);
             return list;
         }
 
-        private static async Task<List<SecurityIncident>> FetchIncidents(HttpClient client, DateTime? from, DateTime? to, int top)
+        private static async Task<List<SecurityIncident>> FetchIncidents(
+            HttpClient client,
+            DateTime? from,
+            DateTime? to,
+            int top,
+            List<SecurityDataSourceStatus>? dataSources = null)
         {
+            const string sourceName = "Incidentes";
             var list = new List<SecurityIncident>();
+            var available = true;
+            string? message = null;
             var url = $"https://graph.microsoft.com/v1.0/security/incidents?$top={top}";
             var filters = new List<string>();
 
@@ -177,17 +332,24 @@ namespace DigitalTechClientPortal.Controllers
             if (filters.Count > 0) url += $"&$filter={string.Join(" and ", filters)}";
 
             string? nextLink = url;
-            while (!string.IsNullOrEmpty(nextLink))
+            while (!string.IsNullOrEmpty(nextLink) && list.Count < top)
             {
                 var resp = await client.GetAsync(nextLink);
                 var raw = await resp.Content.ReadAsStringAsync();
-                if (!resp.IsSuccessStatusCode) break;
+                if (!resp.IsSuccessStatusCode)
+                {
+                    available = false;
+                    message = BuildGraphWarning(resp.StatusCode, raw);
+                    break;
+                }
 
                 using var doc = JsonDocument.Parse(raw);
                 if (doc.RootElement.TryGetProperty("value", out var arr) && arr.ValueKind == JsonValueKind.Array)
                 {
                     foreach (var i in arr.EnumerateArray())
                     {
+                        if (list.Count >= top) break;
+
                         list.Add(new SecurityIncident
                         {
                             Id = i.GetPropertyOrDefault("id"),
@@ -196,7 +358,7 @@ namespace DigitalTechClientPortal.Controllers
                             Status = TranslateStatus(i.GetPropertyOrDefault("status")),
                             CreatedDateTime = i.GetDateTimeOrNull("createdDateTime"),
                             LastUpdatedDateTime = i.GetDateTimeOrNull("lastUpdatedDateTime"),
-                            AlertCount = i.TryGetInt("alerts", out var cnt) ? cnt : (int?)null
+                            AlertCount = i.TryGetArrayCount("alerts", out var cnt) ? cnt : (int?)null
                         });
                     }
                 }
@@ -204,26 +366,40 @@ namespace DigitalTechClientPortal.Controllers
                 nextLink = doc.RootElement.TryGetProperty("@odata.nextLink", out var nl) ? nl.GetString() : null;
             }
 
+            RegisterDataSource(dataSources, sourceName, available, list.Count, message);
             return list;
         }
 
-        private static async Task<List<RiskyUser>> FetchRiskyUsers(HttpClient client, int top)
+        private static async Task<List<RiskyUser>> FetchRiskyUsers(
+            HttpClient client,
+            int top,
+            List<SecurityDataSourceStatus>? dataSources = null)
         {
+            const string sourceName = "Usuarios en riesgo";
             var list = new List<RiskyUser>();
+            var available = true;
+            string? message = null;
             var url = $"https://graph.microsoft.com/v1.0/identityProtection/riskyUsers?$top={top}";
             string? nextLink = url;
 
-            while (!string.IsNullOrEmpty(nextLink))
+            while (!string.IsNullOrEmpty(nextLink) && list.Count < top)
             {
                 var resp = await client.GetAsync(nextLink);
                 var raw = await resp.Content.ReadAsStringAsync();
-                if (!resp.IsSuccessStatusCode) break;
+                if (!resp.IsSuccessStatusCode)
+                {
+                    available = false;
+                    message = BuildGraphWarning(resp.StatusCode, raw);
+                    break;
+                }
 
                 using var doc = JsonDocument.Parse(raw);
                 if (doc.RootElement.TryGetProperty("value", out var arr) && arr.ValueKind == JsonValueKind.Array)
                 {
                     foreach (var u in arr.EnumerateArray())
                     {
+                        if (list.Count >= top) break;
+
                         list.Add(new RiskyUser
                         {
                             UserId = u.GetPropertyOrDefault("id"),
@@ -240,26 +416,40 @@ namespace DigitalTechClientPortal.Controllers
                 nextLink = doc.RootElement.TryGetProperty("@odata.nextLink", out var nl) ? nl.GetString() : null;
             }
 
+            RegisterDataSource(dataSources, sourceName, available, list.Count, message);
             return list;
         }
 
-        private static async Task<List<DeviceSecurityState>> FetchDeviceSecurityStates(HttpClient client, int top)
+        private static async Task<List<DeviceSecurityState>> FetchDeviceSecurityStates(
+            HttpClient client,
+            int top,
+            List<SecurityDataSourceStatus>? dataSources = null)
         {
+            const string sourceName = "Dispositivos";
             var list = new List<DeviceSecurityState>();
+            var available = true;
+            string? message = null;
             var url = $"https://graph.microsoft.com/v1.0/security/deviceSecurityStates?$top={top}";
             string? nextLink = url;
 
-            while (!string.IsNullOrEmpty(nextLink))
+            while (!string.IsNullOrEmpty(nextLink) && list.Count < top)
             {
                 var resp = await client.GetAsync(nextLink);
                 var raw = await resp.Content.ReadAsStringAsync();
-                if (!resp.IsSuccessStatusCode) break;
+                if (!resp.IsSuccessStatusCode)
+                {
+                    available = false;
+                    message = BuildGraphWarning(resp.StatusCode, raw);
+                    break;
+                }
 
                 using var doc = JsonDocument.Parse(raw);
                 if (doc.RootElement.TryGetProperty("value", out var arr) && arr.ValueKind == JsonValueKind.Array)
                 {
                     foreach (var d in arr.EnumerateArray())
                     {
+                        if (list.Count >= top) break;
+
                         list.Add(new DeviceSecurityState
                         {
                             DeviceId = d.GetPropertyOrDefault("deviceId"),
@@ -276,23 +466,34 @@ namespace DigitalTechClientPortal.Controllers
                 nextLink = doc.RootElement.TryGetProperty("@odata.nextLink", out var nl) ? nl.GetString() : null;
             }
 
+            RegisterDataSource(dataSources, sourceName, available, list.Count, message);
             return list;
         }
 
-        private static async Task<List<SecureScore>> FetchSecureScores(HttpClient client, int top)
+        private static async Task<List<SecureScore>> FetchSecureScores(
+            HttpClient client,
+            int top,
+            List<SecurityDataSourceStatus>? dataSources = null)
         {
+            const string sourceName = "Secure Score";
             var list = new List<SecureScore>();
             var url = $"https://graph.microsoft.com/v1.0/security/secureScores?$top={top}";
 
             var resp = await client.GetAsync(url);
             var raw = await resp.Content.ReadAsStringAsync();
-            if (!resp.IsSuccessStatusCode) return list;
+            if (!resp.IsSuccessStatusCode)
+            {
+                RegisterDataSource(dataSources, sourceName, false, list.Count, BuildGraphWarning(resp.StatusCode, raw));
+                return list;
+            }
 
             using var doc = JsonDocument.Parse(raw);
             if (doc.RootElement.TryGetProperty("value", out var arr) && arr.ValueKind == JsonValueKind.Array)
             {
                 foreach (var s in arr.EnumerateArray())
                 {
+                    if (list.Count >= top) break;
+
                     list.Add(new SecureScore
                     {
                         Id = s.GetPropertyOrDefault("id"),
@@ -305,26 +506,40 @@ namespace DigitalTechClientPortal.Controllers
                 }
             }
 
+            RegisterDataSource(dataSources, sourceName, true, list.Count, null);
             return list;
         }
 
-        private static async Task<List<SecureScoreControl>> FetchSecureScoreControls(HttpClient client, int top)
+        private static async Task<List<SecureScoreControl>> FetchSecureScoreControls(
+            HttpClient client,
+            int top,
+            List<SecurityDataSourceStatus>? dataSources = null)
         {
+            const string sourceName = "Controles recomendados";
             var list = new List<SecureScoreControl>();
+            var available = true;
+            string? message = null;
             var url = $"https://graph.microsoft.com/v1.0/security/secureScoreControlProfiles?$top={top}";
             string? nextLink = url;
 
-            while (!string.IsNullOrEmpty(nextLink))
+            while (!string.IsNullOrEmpty(nextLink) && list.Count < top)
             {
                 var resp = await client.GetAsync(nextLink);
                 var raw = await resp.Content.ReadAsStringAsync();
-                if (!resp.IsSuccessStatusCode) break;
+                if (!resp.IsSuccessStatusCode)
+                {
+                    available = false;
+                    message = BuildGraphWarning(resp.StatusCode, raw);
+                    break;
+                }
 
                 using var doc = JsonDocument.Parse(raw);
                 if (doc.RootElement.TryGetProperty("value", out var arr) && arr.ValueKind == JsonValueKind.Array)
                 {
                     foreach (var c in arr.EnumerateArray())
                     {
+                        if (list.Count >= top) break;
+
                         list.Add(new SecureScoreControl
                         {
                             Id = c.GetPropertyOrDefault("id"),
@@ -341,23 +556,34 @@ namespace DigitalTechClientPortal.Controllers
                 nextLink = doc.RootElement.TryGetProperty("@odata.nextLink", out var nl) ? nl.GetString() : null;
             }
 
+            RegisterDataSource(dataSources, sourceName, available, list.Count, message);
             return list;
         }
 
-        private static async Task<List<AttackSimulation>> FetchAttackSimulations(HttpClient client, int top)
+        private static async Task<List<AttackSimulation>> FetchAttackSimulations(
+            HttpClient client,
+            int top,
+            List<SecurityDataSourceStatus>? dataSources = null)
         {
+            const string sourceName = "Simulaciones";
             var list = new List<AttackSimulation>();
             var url = $"https://graph.microsoft.com/v1.0/security/attackSimulation?$top={top}";
 
             var resp = await client.GetAsync(url);
             var raw = await resp.Content.ReadAsStringAsync();
-            if (!resp.IsSuccessStatusCode) return list;
+            if (!resp.IsSuccessStatusCode)
+            {
+                RegisterDataSource(dataSources, sourceName, false, list.Count, BuildGraphWarning(resp.StatusCode, raw));
+                return list;
+            }
 
             using var doc = JsonDocument.Parse(raw);
             if (doc.RootElement.TryGetProperty("value", out var arr) && arr.ValueKind == JsonValueKind.Array)
             {
                 foreach (var a in arr.EnumerateArray())
                 {
+                    if (list.Count >= top) break;
+
                     list.Add(new AttackSimulation
                     {
                         Id = a.GetPropertyOrDefault("id"),
@@ -371,7 +597,68 @@ namespace DigitalTechClientPortal.Controllers
                 }
             }
 
+            RegisterDataSource(dataSources, sourceName, true, list.Count, null);
             return list;
+        }
+
+        private static void RegisterDataSource(
+            List<SecurityDataSourceStatus>? dataSources,
+            string name,
+            bool isAvailable,
+            int count,
+            string? message)
+        {
+            if (dataSources == null) return;
+
+            dataSources.Add(new SecurityDataSourceStatus
+            {
+                Name = name,
+                IsAvailable = isAvailable,
+                Count = count,
+                Message = message ?? (count > 0 ? "Datos actualizados" : "Sin hallazgos recientes")
+            });
+        }
+
+        private static string BuildGraphWarning(HttpStatusCode statusCode, string raw)
+        {
+            var detail = TryExtractGraphErrorMessage(raw);
+            var baseMessage = statusCode switch
+            {
+                HttpStatusCode.Unauthorized => "Microsoft Graph devolvió 401. Inicia sesión nuevamente para renovar el token.",
+                HttpStatusCode.Forbidden => "Microsoft Graph devolvió 403. Falta consentimiento o permisos para leer esta fuente.",
+                HttpStatusCode.TooManyRequests => "Microsoft Graph limitó temporalmente la consulta. Intenta actualizar en unos minutos.",
+                _ => $"Microsoft Graph devolvió {(int)statusCode}."
+            };
+
+            return string.IsNullOrWhiteSpace(detail)
+                ? baseMessage
+                : $"{baseMessage} {detail}";
+        }
+
+        private static string? TryExtractGraphErrorMessage(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return null;
+
+            try
+            {
+                using var doc = JsonDocument.Parse(raw);
+                if (doc.RootElement.TryGetProperty("error", out var error))
+                {
+                    if (error.TryGetProperty("message", out var message) && message.ValueKind == JsonValueKind.String)
+                    {
+                        var text = message.GetString();
+                        return string.IsNullOrWhiteSpace(text)
+                            ? null
+                            : text.Length > 180 ? text.Substring(0, 180) + "..." : text;
+                    }
+                }
+            }
+            catch
+            {
+                return null;
+            }
+
+            return null;
         }
 
         // ------------------ Traducciones ------------------
@@ -535,6 +822,17 @@ namespace DigitalTechClientPortal.Controllers
                     value = v;
                     return true;
                 }
+            }
+            return false;
+        }
+
+        public static bool TryGetArrayCount(this JsonElement el, string name, out int value)
+        {
+            value = 0;
+            if (el.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.Array)
+            {
+                value = p.GetArrayLength();
+                return true;
             }
             return false;
         }

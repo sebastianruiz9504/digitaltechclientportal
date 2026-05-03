@@ -123,9 +123,12 @@ builder.Services
     .AddOpenIdConnect(options =>
     {
         // Azure AD (Entra ID)
-        options.Authority = "https://login.microsoftonline.com/common/v2.0";
-        options.ClientId = "28c4c8cf-5a82-4744-8d16-6cb007a645d5";
-        options.ClientSecret = "-ox8Q~SLdEt1JJnuCL0qdoR~w5XmR33jAghgIbaZ";
+        var azureAdTenantId = builder.Configuration["AzureAd:TenantId"] ?? "common";
+        options.Authority = $"https://login.microsoftonline.com/{azureAdTenantId}/v2.0";
+        options.ClientId = builder.Configuration["AzureAd:ClientId"]
+            ?? throw new InvalidOperationException("Configura AzureAd:ClientId.");
+        options.ClientSecret = builder.Configuration["AzureAd:ClientSecret"]
+            ?? throw new InvalidOperationException("Configura AzureAd:ClientSecret.");
 
         options.TokenValidationParameters.ValidateIssuer = false;
         options.ResponseType = "code";
