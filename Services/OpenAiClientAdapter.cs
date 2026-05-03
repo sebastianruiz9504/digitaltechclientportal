@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Azure.Core;
 using Azure.Identity;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace DigitalTechApp.Services
 {
@@ -18,6 +19,7 @@ namespace DigitalTechApp.Services
     {
         private readonly HttpClient _http;
         private readonly IConfiguration _configuration;
+        private readonly ILogger<OpenAIClientAdapter> _logger;
         private readonly string _endpoint;     // https://<resource>.openai.azure.com
         private readonly string _deployment;   // o4-mini
         private readonly string _apiVersion;   // 2024-12-01-preview
@@ -27,10 +29,14 @@ namespace DigitalTechApp.Services
         private readonly string? _verbosity;
         private readonly TimeSpan _timeout;
 
-        public OpenAIClientAdapter(HttpClient httpClient, IConfiguration configuration)
+        public OpenAIClientAdapter(
+            HttpClient httpClient,
+            IConfiguration configuration,
+            ILogger<OpenAIClientAdapter> logger)
         {
             _http = httpClient;
             _configuration = configuration;
+            _logger = logger;
             _endpoint = (GetConfig("AZURE_OPENAI_ENDPOINT", "AzureOpenAI:Endpoint")
                 ?.TrimEnd('/'))
                 ?? throw new InvalidOperationException("AZURE_OPENAI_ENDPOINT no configurado");
@@ -147,6 +153,7 @@ namespace DigitalTechApp.Services
 
             var choice = choices[0];
             var finishReason = choice.TryGetProperty("finish_reason", out var finish) ? finish.GetString() : null;
+            LogUsage(doc.RootElement, finishReason);
             if (string.Equals(finishReason, "content_filter", StringComparison.OrdinalIgnoreCase))
             {
                 throw new OpenAiCallException("Azure OpenAI bloqueó la respuesta por filtros de contenido.");
@@ -222,6 +229,43 @@ namespace DigitalTechApp.Services
             {
                 return (null, null);
             }
+        }
+
+        private void LogUsage(JsonElement root, string? finishReason)
+        {
+            if (!root.TryGetProperty("usage", out var usage))
+            {
+                return;
+            }
+
+            var promptTokens = TryGetInt(usage, "prompt_tokens");
+            var completionTokens = TryGetInt(usage, "completion_tokens");
+            var totalTokens = TryGetInt(usage, "total_tokens");
+            int? reasoningTokens = null;
+
+            if (usage.TryGetProperty("completion_tokens_details", out var completionDetails))
+            {
+                reasoningTokens = TryGetInt(completionDetails, "reasoning_tokens");
+            }
+
+            _logger.LogInformation(
+                "Azure OpenAI usage. Deployment={Deployment}, FinishReason={FinishReason}, PromptTokens={PromptTokens}, CompletionTokens={CompletionTokens}, ReasoningTokens={ReasoningTokens}, TotalTokens={TotalTokens}",
+                _deployment,
+                finishReason ?? "",
+                promptTokens,
+                completionTokens,
+                reasoningTokens,
+                totalTokens);
+        }
+
+        private static int? TryGetInt(JsonElement parent, string propertyName)
+        {
+            if (!parent.TryGetProperty(propertyName, out var value) || value.ValueKind != JsonValueKind.Number)
+            {
+                return null;
+            }
+
+            return value.TryGetInt32(out var parsed) ? parsed : null;
         }
 
         private static string Truncate(string? value, int maxChars)
