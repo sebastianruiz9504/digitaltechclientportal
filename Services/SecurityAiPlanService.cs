@@ -25,6 +25,8 @@ namespace DigitalTechClientPortal.Services
 
         public async Task<SecurityAiPlan> GenerateAsync(SeguridadVM vm, CancellationToken cancellationToken = default)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             var snapshot = BuildSnapshot(vm);
             var snapshotJson = JsonSerializer.Serialize(snapshot, JsonOptions);
 
@@ -70,7 +72,7 @@ namespace DigitalTechClientPortal.Services
                     systemPrompt,
                     userPrompt,
                     BuildResponseFormat(),
-                    maxTokens: 5200,
+                    maxTokens: 3600,
                     temperature: 0);
 
                 return ParsePlan(response);
@@ -78,8 +80,19 @@ namespace DigitalTechClientPortal.Services
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "No se pudo generar el plan de seguridad con structured outputs; se intentará respuesta JSON simple.");
-                var fallback = await _openAi.ChatCompletionsAsync(systemPrompt, userPrompt, maxTokens: 5200, temperature: 0);
-                return ParsePlan(fallback);
+                try
+                {
+                    var fallbackPrompt = userPrompt + "\n\nDevuelve solamente un objeto JSON. No uses Markdown ni texto antes o después del JSON.";
+                    var fallback = await _openAi.ChatCompletionsAsync(systemPrompt, fallbackPrompt, maxTokens: 3600, temperature: 0);
+                    return ParsePlan(fallback);
+                }
+                catch (Exception fallbackEx)
+                {
+                    _logger.LogWarning(fallbackEx, "No se pudo generar el plan de seguridad con respuesta JSON simple.");
+                    throw new InvalidOperationException(
+                        $"Structured outputs: {DescribeException(ex)}. Fallback JSON: {DescribeException(fallbackEx)}",
+                        fallbackEx);
+                }
             }
         }
 
@@ -119,8 +132,9 @@ namespace DigitalTechClientPortal.Services
                     Message = Truncate(s.Message, 260)
                 }),
                 alerts = vm.Alertas
-                    .OrderByDescending(a => a.CreatedDateTime ?? a.LastUpdatedDateTime ?? DateTimeOffset.MinValue)
-                    .Take(35)
+                    .OrderByDescending(a => SeverityRank(a.Severity))
+                    .ThenByDescending(a => a.CreatedDateTime ?? a.LastUpdatedDateTime ?? DateTimeOffset.MinValue)
+                    .Take(12)
                     .Select(a => new
                     {
                         a.Id,
@@ -137,9 +151,9 @@ namespace DigitalTechClientPortal.Services
                         a.ServiceSource,
                         a.DetectionSource,
                         a.MitreTechniques,
-                        Description = Truncate(a.Description, 700),
-                        RecommendedActions = Truncate(a.RecommendedActions, 900),
-                        Evidence = a.Evidence.Take(8).Select(e => new
+                        Description = Truncate(a.Description, 420),
+                        RecommendedActions = Truncate(a.RecommendedActions, 520),
+                        Evidence = a.Evidence.Take(4).Select(e => new
                         {
                             e.Type,
                             e.UserPrincipalName,
@@ -156,8 +170,9 @@ namespace DigitalTechClientPortal.Services
                         })
                     }),
                 incidents = vm.Incidentes
-                    .OrderByDescending(i => i.CreatedDateTime ?? i.LastUpdatedDateTime ?? DateTimeOffset.MinValue)
-                    .Take(20)
+                    .OrderByDescending(i => SeverityRank(i.Severity))
+                    .ThenByDescending(i => i.CreatedDateTime ?? i.LastUpdatedDateTime ?? DateTimeOffset.MinValue)
+                    .Take(8)
                     .Select(i => new
                     {
                         i.Id,
@@ -170,12 +185,13 @@ namespace DigitalTechClientPortal.Services
                         i.AssignedTo,
                         i.Classification,
                         i.Determination,
-                        Description = Truncate(i.Description, 700),
-                        Summary = Truncate(i.Summary, 700)
+                        Description = Truncate(i.Description, 420),
+                        Summary = Truncate(i.Summary, 420)
                     }),
                 riskyUsers = vm.UsuariosRiesgo
-                    .OrderByDescending(u => u.LastUpdatedDateTime ?? DateTimeOffset.MinValue)
-                    .Take(25)
+                    .OrderByDescending(u => SeverityRank(u.RiskLevel))
+                    .ThenByDescending(u => u.LastUpdatedDateTime ?? DateTimeOffset.MinValue)
+                    .Take(12)
                     .Select(u => new
                     {
                         u.UserDisplayName,
@@ -187,7 +203,7 @@ namespace DigitalTechClientPortal.Services
                     }),
                 riskyDevices = vm.DispositivosRiesgo
                     .OrderByDescending(d => d.LastSeenDateTime ?? DateTimeOffset.MinValue)
-                    .Take(25)
+                    .Take(12)
                     .Select(d => new
                     {
                         d.DeviceName,
@@ -211,7 +227,7 @@ namespace DigitalTechClientPortal.Services
                 },
                 secureScoreControls = vm.SecureScoreControles
                     .OrderByDescending(c => c.MaxScore ?? 0)
-                    .Take(18)
+                    .Take(10)
                     .Select(c => new
                     {
                         Title = Truncate(c.Title, 180),
@@ -223,7 +239,7 @@ namespace DigitalTechClientPortal.Services
                     }),
                 attackSimulations = vm.SimulacionesAtaque
                     .OrderByDescending(s => s.LaunchDateTime ?? s.CompletionDateTime ?? DateTimeOffset.MinValue)
-                    .Take(10)
+                    .Take(5)
                     .Select(s => new
                     {
                         s.DisplayName,
@@ -398,6 +414,29 @@ namespace DigitalTechClientPortal.Services
         private static string FirstNonEmpty(params string?[] values)
         {
             return values.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v)) ?? "";
+        }
+
+        private static int SeverityRank(string? value)
+        {
+            var v = (value ?? "").Trim().ToLowerInvariant();
+            return v switch
+            {
+                "critical" or "crítica" or "critico" or "crítico" => 4,
+                "high" or "alta" or "alto" => 3,
+                "medium" or "media" or "medio" => 2,
+                "low" or "baja" or "bajo" => 1,
+                _ => 0
+            };
+        }
+
+        private static string DescribeException(Exception ex)
+        {
+            return ex switch
+            {
+                OpenAiCallException openAiEx => openAiEx.ToUserMessage(),
+                JsonException jsonEx => $"JSON inválido: {jsonEx.Message}",
+                _ => ex.Message
+            };
         }
     }
 }

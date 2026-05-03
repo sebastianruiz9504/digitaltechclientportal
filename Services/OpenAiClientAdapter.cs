@@ -25,6 +25,7 @@ namespace DigitalTechApp.Services
         private readonly bool _includeTemperature;
         private readonly string? _reasoningEffort;
         private readonly string? _verbosity;
+        private readonly TimeSpan _timeout;
 
         public OpenAIClientAdapter(HttpClient httpClient, IConfiguration configuration)
         {
@@ -45,6 +46,11 @@ namespace DigitalTechApp.Services
 
             _reasoningEffort = GetConfig("AzureOpenAI:ReasoningEffort", "AZURE_OPENAI_REASONING_EFFORT");
             _verbosity = GetConfig("AzureOpenAI:Verbosity", "AZURE_OPENAI_VERBOSITY");
+            _timeout = int.TryParse(GetConfig("AzureOpenAI:TimeoutSeconds", "AZURE_OPENAI_TIMEOUT_SECONDS"), out var timeoutSeconds) && timeoutSeconds > 0
+                ? TimeSpan.FromSeconds(timeoutSeconds)
+                : TimeSpan.FromSeconds(220);
+
+            _http.Timeout = _timeout;
         }
 
         public async Task<string> ChatCompletionsAsync(string systemPrompt, string userContent, int maxTokens = 800, double temperature = 0.0)
@@ -109,18 +115,51 @@ namespace DigitalTechApp.Services
 
             await AddAuthAsync(req);
 
-            using var res = await _http.SendAsync(req);
+            HttpResponseMessage res;
+            try
+            {
+                res = await _http.SendAsync(req);
+            }
+            catch (TaskCanceledException ex)
+            {
+                throw new OpenAiCallException(
+                    $"La llamada a Azure OpenAI superó el timeout de {_timeout.TotalSeconds:0} segundos.",
+                    innerException: ex);
+            }
+
+            using (res)
+            {
             var json = await res.Content.ReadAsStringAsync();
 
             if (!res.IsSuccessStatusCode)
-                throw new InvalidOperationException($"OpenAI chat/completions fallo ({(int)res.StatusCode}): {json}");
+            {
+                var (errorCode, message) = TryExtractError(json);
+                throw new OpenAiCallException(
+                    message ?? $"Azure OpenAI devolvió una respuesta no exitosa. Detalle: {Truncate(json, 700)}",
+                    res.StatusCode,
+                    errorCode,
+                    Truncate(json, 1200));
+            }
 
             using var doc = JsonDocument.Parse(json);
             var choices = doc.RootElement.GetProperty("choices");
             if (choices.GetArrayLength() == 0) return string.Empty;
 
-            var content = choices[0].GetProperty("message").GetProperty("content").GetString();
+            var choice = choices[0];
+            var finishReason = choice.TryGetProperty("finish_reason", out var finish) ? finish.GetString() : null;
+            if (string.Equals(finishReason, "content_filter", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new OpenAiCallException("Azure OpenAI bloqueó la respuesta por filtros de contenido.");
+            }
+
+            var content = choice.GetProperty("message").GetProperty("content").GetString();
+            if (string.Equals(finishReason, "length", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new OpenAiCallException("Azure OpenAI cortó la respuesta por límite de tokens. Reduce el rango o vuelve a generar el plan.");
+            }
+
             return content ?? string.Empty;
+            }
         }
 
         private async Task AddAuthAsync(HttpRequestMessage req)
@@ -153,6 +192,43 @@ namespace DigitalTechApp.Services
         {
             return deployment.StartsWith("o", StringComparison.OrdinalIgnoreCase)
                 || deployment.StartsWith("gpt-5", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static (string? Code, string? Message) TryExtractError(string json)
+        {
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                return (null, null);
+            }
+
+            try
+            {
+                using var doc = JsonDocument.Parse(json);
+                if (!doc.RootElement.TryGetProperty("error", out var error))
+                {
+                    return (null, null);
+                }
+
+                var code = error.TryGetProperty("code", out var codeElement)
+                    ? codeElement.GetString()
+                    : null;
+                var message = error.TryGetProperty("message", out var messageElement)
+                    ? messageElement.GetString()
+                    : null;
+
+                return (code, message);
+            }
+            catch
+            {
+                return (null, null);
+            }
+        }
+
+        private static string Truncate(string? value, int maxChars)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return "";
+            var cleaned = value.Replace("\r", " ").Replace("\n", " ").Trim();
+            return cleaned.Length <= maxChars ? cleaned : cleaned[..maxChars] + "...";
         }
     }
 }

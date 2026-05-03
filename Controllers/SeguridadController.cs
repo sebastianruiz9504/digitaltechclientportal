@@ -255,7 +255,7 @@ namespace DigitalTechClientPortal.Controllers
                 catch (Exception ex)
                 {
                     _logger.LogWarning(ex, "No se pudo generar el plan de trabajo de seguridad con Azure OpenAI.");
-                    vm.AiPlanError = "No se pudo generar el plan de trabajo con AI. Valida la configuración de Azure OpenAI y vuelve a intentarlo.";
+                    vm.AiPlanError = BuildAiPlanError(ex);
                 }
             }
 
@@ -356,6 +356,23 @@ namespace DigitalTechClientPortal.Controllers
         private static string BuildMissingPermissionsMessage(SecurityPermissionStatus permissionStatus)
         {
             return $"El token actual solo tiene {permissionStatus.GrantedRequiredCount} de {permissionStatus.RequiredCount} permisos requeridos para leer todo el módulo de seguridad. Se necesita consentimiento del tenant para continuar.";
+        }
+
+        private static string BuildAiPlanError(Exception ex)
+        {
+            var message = ex.Message;
+            if (ex.InnerException != null && !string.Equals(ex.InnerException.Message, message, StringComparison.Ordinal))
+            {
+                message = $"{message} | Inner: {ex.InnerException.Message}";
+            }
+
+            message = message.Replace("\r", " ").Replace("\n", " ").Trim();
+            if (message.Length > 900)
+            {
+                message = message[..900] + "...";
+            }
+
+            return $"No se pudo generar el plan de trabajo con AI. Detalle técnico: {message}";
         }
 
         // ------------------ Fetch helpers ------------------
