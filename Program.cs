@@ -24,12 +24,6 @@ using System.Security.Claims; // <-- importante: este es el ClaimTypes correcto
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Configuración solo desde appsettings.json para Dataverse (sin variables de entorno ni secretos locales)
-var appsettingsOnlyConfiguration = new ConfigurationBuilder()
-    .SetBasePath(builder.Environment.ContentRootPath)
-    .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
-    .Build();
-
 // Servicios propios
 builder.Services.AddScoped<CapacitacionService>();
 builder.Services.AddScoped<GraphCalendarService>();
@@ -41,7 +35,7 @@ builder.Services.AddControllersWithViews();
 // Dataverse Options
 builder.Services
     .AddOptions<DataverseOptions>()
-    .Bind(appsettingsOnlyConfiguration.GetSection("Dataverse"))
+    .Bind(builder.Configuration.GetSection("Dataverse"))
     .ValidateDataAnnotations()
     .Validate(o => Uri.TryCreate(o.Url, UriKind.Absolute, out _), "Dataverse:Url inválida")
     .ValidateOnStart();
@@ -74,6 +68,7 @@ builder.Services.AddScoped<GraphClientFactory>();
 builder.Services.AddScoped<GraphPermissionService>();
 
 builder.Services.AddScoped<SecurityDataService>();
+builder.Services.AddScoped<SecurityAiPlanService>();
 
 // Cookies cross-site
 builder.Services.Configure<CookiePolicyOptions>(options =>
@@ -125,12 +120,20 @@ builder.Services
     .AddOpenIdConnect(options =>
     {
         // Azure AD (Entra ID)
-        var azureAdTenantId = builder.Configuration["AzureAd:TenantId"] ?? "common";
+        var azureAdTenantId = string.IsNullOrWhiteSpace(builder.Configuration["AzureAd:TenantId"])
+            ? "common"
+            : builder.Configuration["AzureAd:TenantId"];
         options.Authority = $"https://login.microsoftonline.com/{azureAdTenantId}/v2.0";
-        options.ClientId = builder.Configuration["AzureAd:ClientId"]
-            ?? throw new InvalidOperationException("Configura AzureAd:ClientId.");
-        options.ClientSecret = builder.Configuration["AzureAd:ClientSecret"]
-            ?? throw new InvalidOperationException("Configura AzureAd:ClientSecret.");
+
+        var azureAdClientId = builder.Configuration["AzureAd:ClientId"];
+        var azureAdClientSecret = builder.Configuration["AzureAd:ClientSecret"];
+        if (string.IsNullOrWhiteSpace(azureAdClientId))
+            throw new InvalidOperationException("Configura AzureAd:ClientId.");
+        if (string.IsNullOrWhiteSpace(azureAdClientSecret))
+            throw new InvalidOperationException("Configura AzureAd:ClientSecret.");
+
+        options.ClientId = azureAdClientId;
+        options.ClientSecret = azureAdClientSecret;
 
         options.TokenValidationParameters.ValidateIssuer = false;
         options.ResponseType = "code";
@@ -189,7 +192,8 @@ builder.Services.AddControllersWithViews();
 builder.Services.AddSingleton<IOrganizationService>(sp =>
 {
     var logger = sp.GetRequiredService<ILogger<ServiceClient>>();
-    var connString = appsettingsOnlyConfiguration.GetConnectionString("Dataverse");
+    var cfg = sp.GetRequiredService<IConfiguration>();
+    var connString = cfg.GetConnectionString("Dataverse");
 
     if (string.IsNullOrWhiteSpace(connString))
     {

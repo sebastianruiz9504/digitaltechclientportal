@@ -24,6 +24,8 @@ namespace DigitalTechClientPortal.Models
         public List<SecurityDataSourceStatus> DataSources { get; set; } = new();
 
         public string? GraphError { get; set; }
+        public string? AiPlanError { get; set; }
+        public SecurityAiPlan? PlanTrabajoAi { get; set; }
         public SecurityPermissionStatus PermissionStatus { get; set; } = new();
 
         // KPIs rápidos para tarjetas (nullable para poder usar ?? en Razor)

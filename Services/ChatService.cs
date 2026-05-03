@@ -8,6 +8,7 @@ using System.Net.Http.Headers;
 using System.Threading.Tasks;
 using Azure.Core;
 using Azure.Identity;
+using Microsoft.Extensions.Configuration;
 
 using DigitalTechApp.Services; // para SearchService y SearchChunk
 
@@ -24,6 +25,7 @@ namespace DigitalTechApp.Services
     {
         private readonly HttpClient _http;
         private readonly SearchService _search;
+        private readonly IConfiguration _configuration;
 
         // OpenAI
         private readonly string _oaEndpoint;    // https://<recurso>.openai.azure.com
@@ -31,15 +33,18 @@ namespace DigitalTechApp.Services
         private readonly string _oaApiVersion;  // 2024-12-01-preview
         private readonly string? _oaApiKey;     // preferido (desde App Service)
 
-        public ChatService(HttpClient httpClient, SearchService searchService)
+        public ChatService(HttpClient httpClient, SearchService searchService, IConfiguration configuration)
         {
             _http = httpClient;
             _search = searchService;
+            _configuration = configuration;
 
-            _oaEndpoint   = Environment.GetEnvironmentVariable("AZURE_OPENAI_ENDPOINT") ?? throw new InvalidOperationException("AZURE_OPENAI_ENDPOINT no configurado");
-            _oaDeployment = Environment.GetEnvironmentVariable("AZURE_OPENAI_DEPLOYMENT") ?? "o4-mini";
-            _oaApiVersion = Environment.GetEnvironmentVariable("AZURE_OPENAI_API_VERSION") ?? "2024-12-01-preview";
-            _oaApiKey     = Environment.GetEnvironmentVariable("AZURE_OPENAI_KEY"); // opcional
+            _oaEndpoint = (GetConfig("AZURE_OPENAI_ENDPOINT", "AzureOpenAI:Endpoint")
+                ?.TrimEnd('/'))
+                ?? throw new InvalidOperationException("AZURE_OPENAI_ENDPOINT no configurado");
+            _oaDeployment = GetConfig("AZURE_OPENAI_DEPLOYMENT", "AZURE_OPENAI_CHAT_DEPLOYMENT", "AzureOpenAI:DeploymentName") ?? "o4-mini";
+            _oaApiVersion = GetConfig("AZURE_OPENAI_API_VERSION", "AzureOpenAI:ApiVersion") ?? "2024-12-01-preview";
+            _oaApiKey = GetConfig("AZURE_OPENAI_KEY", "AZURE_OPENAI_API_KEY", "AzureOpenAI:ApiKey"); // opcional
         }
 
         /// <summary>
@@ -141,6 +146,20 @@ namespace DigitalTechApp.Services
             var credential = new DefaultAzureCredential();
             var token = await credential.GetTokenAsync(new TokenRequestContext(new[] { "https://cognitiveservices.azure.com/.default" }));
             req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.Token);
+        }
+
+        private string? GetConfig(params string[] keys)
+        {
+            foreach (var key in keys)
+            {
+                var value = _configuration[key] ?? Environment.GetEnvironmentVariable(key);
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    return value.Trim();
+                }
+            }
+
+            return null;
         }
 
         private List<SearchChunk> FilterChunks(List<SearchChunk> input, float minScore)

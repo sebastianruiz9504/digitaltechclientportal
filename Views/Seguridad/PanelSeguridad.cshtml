@@ -433,6 +433,7 @@
       <div class="security-actions">
         <a class="btn btn-outline-secondary" href="javascript:location.reload()"><i class="ti ti-refresh"></i> Actualizar</a>
         <a class="btn btn-primary" href='@Url.Action("SeguridadContinuidad","Assessment")'><i class="ti ti-clipboard-check"></i> Assessment</a>
+        <a class="btn btn-outline-primary" href='@Url.Action("PlanTrabajo","Seguridad", new { from = Model.From?.ToString("yyyy-MM-dd"), to = Model.To?.ToString("yyyy-MM-dd"), top = 80 })'><i class="ti ti-sparkles"></i> Plan de trabajo</a>
         <a class="btn btn-outline-primary" href='@Url.Action("Alertas","Seguridad")'><i class="ti ti-list-search"></i> Ver alertas</a>
       </div>
       <div class="security-meta-grid">

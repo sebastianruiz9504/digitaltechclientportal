@@ -14,15 +14,18 @@ namespace DigitalTechClientPortal.Controllers
     {
         private readonly GraphClientFactory _graphDelegated;
         private readonly GraphPermissionService _graphPermissions;
+        private readonly SecurityAiPlanService _securityAiPlan;
         private readonly ILogger<SeguridadController> _logger;
 
         public SeguridadController(
             GraphClientFactory graphDelegated,
             GraphPermissionService graphPermissions,
+            SecurityAiPlanService securityAiPlan,
             ILogger<SeguridadController> logger)
         {
             _graphDelegated = graphDelegated;
             _graphPermissions = graphPermissions;
+            _securityAiPlan = securityAiPlan;
             _logger = logger;
         }
 
@@ -184,7 +187,84 @@ namespace DigitalTechClientPortal.Controllers
             }
 
             // Agregación mensual de Secure Score: último registro por mes
-            vm.SecureScoreMensual = vm.SecureScores
+            vm.SecureScoreMensual = BuildSecureScoreMonthly(vm.SecureScores);
+
+            return View("PanelSeguridad", vm);
+        }
+
+        [HttpGet("PlanTrabajo")]
+        public async Task<IActionResult> PlanTrabajo(
+            [FromQuery] DateTime? from = null,
+            [FromQuery] DateTime? to = null,
+            [FromQuery] int top = 80)
+        {
+            if (top <= 0) top = 80;
+            if (top > 200) top = 200;
+
+            var vm = new SeguridadVM
+            {
+                From = from?.Date,
+                To = to?.Date
+            };
+
+            vm.PermissionStatus = await _graphPermissions.GetSecurityPermissionStatusAsync();
+            if (vm.PermissionStatus.HasMissingRequiredScopes)
+            {
+                if (!Request.Query.ContainsKey("consentChecked"))
+                {
+                    return RedirectToAction("Consent", "Login", new { returnUrl = BuildConsentReturnUrl() });
+                }
+
+                vm.GraphError = BuildMissingPermissionsMessage(vm.PermissionStatus);
+                return View("PlanTrabajo", vm);
+            }
+
+            try
+            {
+                var client = await _graphDelegated.CreateClientAsync();
+
+                vm.Alertas = await FetchAlerts(client, from, to, top, vm.DataSources);
+                vm.Incidentes = await FetchIncidents(client, from, to, top, vm.DataSources);
+                vm.UsuariosRiesgo = await FetchRiskyUsers(client, top, vm.DataSources);
+                vm.DispositivosRiesgo = await FetchDeviceSecurityStates(client, top, vm.DataSources);
+                vm.SecureScores = await FetchSecureScores(client, top, vm.DataSources);
+                vm.SecureScoreControles = await FetchSecureScoreControls(client, top, vm.DataSources);
+                vm.SimulacionesAtaque = await FetchAttackSimulations(client, top, vm.DataSources);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "No fue posible inicializar Microsoft Graph para el plan de trabajo de seguridad.");
+                vm.GraphError = "No fue posible conectar con Microsoft Graph. Inicia sesión nuevamente o valida el consentimiento de permisos.";
+                vm.DataSources.Add(new SecurityDataSourceStatus
+                {
+                    Name = "Microsoft Graph",
+                    IsAvailable = false,
+                    Count = 0,
+                    Message = vm.GraphError
+                });
+            }
+
+            vm.SecureScoreMensual = BuildSecureScoreMonthly(vm.SecureScores);
+
+            if (string.IsNullOrWhiteSpace(vm.GraphError) && vm.DataSources.Any(s => s.IsAvailable))
+            {
+                try
+                {
+                    vm.PlanTrabajoAi = await _securityAiPlan.GenerateAsync(vm, HttpContext.RequestAborted);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "No se pudo generar el plan de trabajo de seguridad con Azure OpenAI.");
+                    vm.AiPlanError = "No se pudo generar el plan de trabajo con AI. Valida la configuración de Azure OpenAI y vuelve a intentarlo.";
+                }
+            }
+
+            return View("PlanTrabajo", vm);
+        }
+
+        private static List<SecureScoreMonthly> BuildSecureScoreMonthly(IEnumerable<SecureScore> secureScores)
+        {
+            return secureScores
                 .Where(s => s.CreatedDateTime.HasValue)
                 .GroupBy(s => new { Year = s.CreatedDateTime!.Value.Year, Month = s.CreatedDateTime!.Value.Month })
                 .OrderBy(g => g.Key.Year).ThenBy(g => g.Key.Month)
@@ -201,8 +281,6 @@ namespace DigitalTechClientPortal.Controllers
                     };
                 })
                 .ToList();
-
-            return View("PanelSeguridad", vm);
         }
 
         private static IEnumerable<SecurityAlert> FilterAlerts(
@@ -293,7 +371,7 @@ namespace DigitalTechClientPortal.Controllers
             var list = new List<SecurityAlert>();
             var available = true;
             string? message = null;
-            var url = $"https://graph.microsoft.com/v1.0/security/alerts?$top={top}";
+            var url = $"https://graph.microsoft.com/v1.0/security/alerts_v2?$top={top}";
             var filters = new List<string>();
 
             if (from.HasValue)
@@ -339,9 +417,23 @@ namespace DigitalTechClientPortal.Controllers
                             Category = TranslateCategory(a.GetPropertyOrDefault("category")),
                             Status = TranslateStatus(a.GetPropertyOrDefault("status")),
                             CreatedDateTime = a.GetDateTimeOrNull("createdDateTime"),
-                            LastUpdatedDateTime = a.GetDateTimeOrNull("lastUpdatedDateTime"),
-                            Provider = a.GetPropertyOrDefault("vendorInformation", "provider"),
-                            Description = a.GetPropertyOrDefault("description")
+                            LastUpdatedDateTime = a.GetDateTimeOrNull("lastUpdateDateTime") ?? a.GetDateTimeOrNull("lastUpdatedDateTime"),
+                            FirstActivityDateTime = a.GetDateTimeOrNull("firstActivityDateTime"),
+                            LastActivityDateTime = a.GetDateTimeOrNull("lastActivityDateTime"),
+                            Provider = FirstNonEmpty(
+                                a.GetPropertyOrDefault("productName"),
+                                a.GetPropertyOrDefault("serviceSource"),
+                                a.GetPropertyOrDefault("vendorInformation", "provider")),
+                            ProductName = a.GetPropertyOrDefault("productName"),
+                            ServiceSource = a.GetPropertyOrDefault("serviceSource"),
+                            DetectionSource = a.GetPropertyOrDefault("detectionSource"),
+                            IncidentId = a.GetPropertyOrDefault("incidentId"),
+                            AlertWebUrl = a.GetPropertyOrDefault("alertWebUrl"),
+                            IncidentWebUrl = a.GetPropertyOrDefault("incidentWebUrl"),
+                            RecommendedActions = a.GetPropertyOrDefault("recommendedActions"),
+                            MitreTechniques = a.GetArrayAsString("mitreTechniques"),
+                            Description = a.GetPropertyOrDefault("description"),
+                            Evidence = ExtractAlertEvidence(a)
                         });
                     }
                 }
@@ -364,7 +456,7 @@ namespace DigitalTechClientPortal.Controllers
             var list = new List<SecurityIncident>();
             var available = true;
             string? message = null;
-            var url = $"https://graph.microsoft.com/v1.0/security/incidents?$top={top}";
+            var url = $"https://graph.microsoft.com/v1.0/security/incidents?$top={top}&$expand=alerts";
             var filters = new List<string>();
 
             if (from.HasValue)
@@ -378,7 +470,7 @@ namespace DigitalTechClientPortal.Controllers
             {
                 var toUtc = DateTime.SpecifyKind(to.Value.Date.AddDays(1).AddSeconds(-1), DateTimeKind.Utc);
                 var toStr = toUtc.ToString("yyyy-MM-dd'T'HH':'mm':'ss'Z'");
-                filters.Add($"lastUpdatedDateTime le {toStr}");
+                filters.Add($"lastUpdateDateTime le {toStr}");
             }
 
             if (filters.Count > 0) url += $"&$filter={string.Join(" and ", filters)}";
@@ -405,12 +497,18 @@ namespace DigitalTechClientPortal.Controllers
                         list.Add(new SecurityIncident
                         {
                             Id = i.GetPropertyOrDefault("id"),
-                            Title = TranslateTitle(i.GetPropertyOrDefault("name")),
+                            Title = TranslateTitle(FirstNonEmpty(i.GetPropertyOrDefault("displayName"), i.GetPropertyOrDefault("name"))),
                             Severity = TranslateSeverity(i.GetPropertyOrDefault("severity")),
                             Status = TranslateStatus(i.GetPropertyOrDefault("status")),
                             CreatedDateTime = i.GetDateTimeOrNull("createdDateTime"),
-                            LastUpdatedDateTime = i.GetDateTimeOrNull("lastUpdatedDateTime"),
-                            AlertCount = i.TryGetArrayCount("alerts", out var cnt) ? cnt : (int?)null
+                            LastUpdatedDateTime = i.GetDateTimeOrNull("lastUpdateDateTime") ?? i.GetDateTimeOrNull("lastUpdatedDateTime"),
+                            AlertCount = i.TryGetArrayCount("alerts", out var cnt) ? cnt : (int?)null,
+                            AssignedTo = i.GetPropertyOrDefault("assignedTo"),
+                            Classification = TranslateClassification(i.GetPropertyOrDefault("classification")),
+                            Determination = TranslateDetermination(i.GetPropertyOrDefault("determination")),
+                            Description = i.GetPropertyOrDefault("description"),
+                            Summary = i.GetPropertyOrDefault("summary"),
+                            IncidentWebUrl = i.GetPropertyOrDefault("incidentWebUrl")
                         });
                     }
                 }
@@ -713,13 +811,72 @@ namespace DigitalTechClientPortal.Controllers
             return null;
         }
 
+        private static List<SecurityAlertEvidence> ExtractAlertEvidence(JsonElement alert)
+        {
+            var evidence = new List<SecurityAlertEvidence>();
+            if (!alert.TryGetProperty("evidence", out var arr) || arr.ValueKind != JsonValueKind.Array)
+            {
+                return evidence;
+            }
+
+            foreach (var item in arr.EnumerateArray().Take(12))
+            {
+                var type = item.GetPropertyOrDefault("@odata.type")
+                    .Replace("#microsoft.graph.security.", "", StringComparison.OrdinalIgnoreCase)
+                    .Replace("Evidence", "", StringComparison.OrdinalIgnoreCase);
+
+                evidence.Add(new SecurityAlertEvidence
+                {
+                    Type = Capitalize(type),
+                    UserPrincipalName = FirstNonEmpty(
+                        item.GetPropertyOrDefault("userPrincipalName"),
+                        item.GetPropertyOrDefault("userAccount", "userPrincipalName"),
+                        item.GetPropertyOrDefault("accountName"),
+                        item.GetPropertyOrDefault("mailboxPrimaryAddress")),
+                    UserDisplayName = FirstNonEmpty(
+                        item.GetPropertyOrDefault("userDisplayName"),
+                        item.GetPropertyOrDefault("displayName"),
+                        item.GetPropertyOrDefault("accountName")),
+                    DeviceName = FirstNonEmpty(
+                        item.GetPropertyOrDefault("deviceDnsName"),
+                        item.GetPropertyOrDefault("hostName"),
+                        item.GetPropertyOrDefault("deviceName")),
+                    IpAddress = FirstNonEmpty(
+                        item.GetPropertyOrDefault("ipAddress"),
+                        item.GetArrayAsString("ipInterfaces")),
+                    Url = FirstNonEmpty(
+                        item.GetPropertyOrDefault("url"),
+                        item.GetPropertyOrDefault("domainName")),
+                    FileName = item.GetPropertyOrDefault("fileDetails", "fileName"),
+                    FilePath = item.GetPropertyOrDefault("fileDetails", "filePath"),
+                    ProcessCommandLine = item.GetPropertyOrDefault("processCommandLine"),
+                    Mailbox = FirstNonEmpty(
+                        item.GetPropertyOrDefault("recipientEmailAddress"),
+                        item.GetPropertyOrDefault("senderEmailAddress"),
+                        item.GetPropertyOrDefault("mailboxPrimaryAddress")),
+                    Roles = item.GetArrayAsString("roles"),
+                    Verdict = TranslateStatus(item.GetPropertyOrDefault("verdict"))
+                });
+            }
+
+            return evidence;
+        }
+
+        private static string FirstNonEmpty(params string?[] values)
+        {
+            return values.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v))?.Trim() ?? "";
+        }
+
         // ------------------ Traducciones ------------------
 
         private static string TranslateSeverity(string sev) => sev?.ToLowerInvariant() switch
         {
+            "critical" => "Crítica",
             "high" => "Alta",
             "medium" => "Media",
             "low" => "Baja",
+            "informational" => "Informativa",
+            "unknown" => "Desconocida",
             _ => Capitalize(sev)
         };
 
@@ -728,6 +885,7 @@ namespace DigitalTechClientPortal.Controllers
             var s = status?.ToLowerInvariant();
             return s switch
             {
+                "active" => "Activo",
                 "new" => "Nueva",
                 "inprogress" => "En progreso",
                 "resolved" => "Resuelta",
@@ -736,6 +894,40 @@ namespace DigitalTechClientPortal.Controllers
                 "completed" => "Completada",
                 "launched" => "Lanzada",
                 _ => Capitalize(status)
+            };
+        }
+
+        private static string TranslateClassification(string classification)
+        {
+            var c = classification?.ToLowerInvariant();
+            return c switch
+            {
+                "unknown" => "Sin clasificar",
+                "falsepositive" => "Falso positivo",
+                "truepositive" => "Verdadero positivo",
+                "informationalexpectedactivity" => "Actividad esperada",
+                _ => Capitalize(classification)
+            };
+        }
+
+        private static string TranslateDetermination(string determination)
+        {
+            var d = determination?.ToLowerInvariant();
+            return d switch
+            {
+                "unknown" => "Sin determinación",
+                "apt" => "Amenaza persistente avanzada",
+                "malware" => "Malware",
+                "unwantedsoftware" => "Software no deseado",
+                "multistagedattack" => "Ataque de varias etapas",
+                "compromisedaccount" => "Cuenta comprometida",
+                "phishing" => "Phishing",
+                "malicioususeractivity" => "Actividad maliciosa de usuario",
+                "notmalicious" => "No malicioso",
+                "notenoughdatatovalidate" => "Sin datos suficientes",
+                "confirmedactivity" => "Actividad confirmada",
+                "lineofbusinessapplication" => "Aplicación de negocio confirmada",
+                _ => Capitalize(determination)
             };
         }
 

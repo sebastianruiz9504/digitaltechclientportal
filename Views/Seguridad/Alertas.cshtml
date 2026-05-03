@@ -54,7 +54,7 @@
 
     // KPIs
     int kpiTotal = total;
-    int kpiCriticas = alertas.Count(a => (a.Severity ?? "").Equals("critical", StringComparison.OrdinalIgnoreCase) || (a.Severity ?? "").Equals("crítico", StringComparison.OrdinalIgnoreCase));
+    int kpiCriticas = alertas.Count(a => (a.Severity ?? "").Equals("critical", StringComparison.OrdinalIgnoreCase) || (a.Severity ?? "").Equals("crítica", StringComparison.OrdinalIgnoreCase) || (a.Severity ?? "").Equals("crítico", StringComparison.OrdinalIgnoreCase));
     int kpiAltas = alertas.Count(a => (a.Severity ?? "").Equals("high", StringComparison.OrdinalIgnoreCase) || (a.Severity ?? "").Equals("alta", StringComparison.OrdinalIgnoreCase));
     int kpiMedias = alertas.Count(a => (a.Severity ?? "").Equals("medium", StringComparison.OrdinalIgnoreCase) || (a.Severity ?? "").Equals("media", StringComparison.OrdinalIgnoreCase));
     int kpiBajas  = alertas.Count(a => (a.Severity ?? "").Equals("low", StringComparison.OrdinalIgnoreCase) || (a.Severity ?? "").Equals("baja", StringComparison.OrdinalIgnoreCase));
@@ -62,7 +62,7 @@
     // Clases visuales
     Func<string?, string> SevClass = sev => (sev ?? "").ToLowerInvariant() switch
     {
-        "critical" or "crítico" => "badge text-bg-danger",
+        "critical" or "crítica" or "crítico" => "badge text-bg-danger",
         "high" or "alta"        => "badge text-bg-warning",
         "medium" or "media"     => "badge text-bg-warning",
         "low" or "baja"         => "badge text-bg-success",
@@ -124,7 +124,7 @@
           <label class="form-label">Severidad</label>
           <select name="severity" class="form-select">
             <option value="">Todas</option>
-            <option value="Critical" selected="@(sevQ == "Critical")">Crítica</option>
+            <option value="Crítica" selected="@(sevQ == "Crítica")">Crítica</option>
             <option value="Alta" selected="@(sevQ == "Alta")">Alta</option>
             <option value="Media" selected="@(sevQ == "Media")">Media</option>
             <option value="Baja" selected="@(sevQ == "Baja")">Baja</option>
