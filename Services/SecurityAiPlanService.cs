@@ -7,6 +7,9 @@ namespace DigitalTechClientPortal.Services
 {
     public sealed class SecurityAiPlanService
     {
+        private const int PlanMaxTokens = 9000;
+        private const int FallbackMaxTokens = 7000;
+
         private static readonly JsonSerializerOptions JsonOptions = new()
         {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -45,7 +48,7 @@ namespace DigitalTechClientPortal.Services
                 Genera un plan de trabajo de seguridad basado exclusivamente en este JSON del tenant.
 
                 Contrato de salida:
-                - executiveSummary: resumen ejecutivo de 4 a 6 frases.
+                - executiveSummary: resumen ejecutivo de 3 a 4 frases.
                 - tenantRiskLevel: Bajo, Medio, Alto o Critico.
                 - tenantRiskRationale: razonamiento corto.
                 - generatedAtLocal: fecha/hora legible.
@@ -55,9 +58,11 @@ namespace DigitalTechClientPortal.Services
                 - assumptions: supuestos hechos por falta de información.
 
                 Reglas:
-                - Máximo 6 amenazas.
-                - Máximo 8 acciones.
-                - Cada acción debe tener entre 3 y 6 pasos.
+                - Máximo 4 amenazas.
+                - Máximo 5 acciones.
+                - Cada acción debe tener entre 3 y 4 pasos.
+                - Escribe frases cortas. Ningún campo de texto debe superar 350 caracteres.
+                - En steps, clickPath, instruction y validation deben ser concretos y breves.
                 - No uses lenguaje alarmista.
                 - No incluyas recomendaciones genéricas si no se conectan con los datos.
                 - Si no hay alertas/incidentes, enfócate en Secure Score, controles y revisión preventiva.
@@ -72,10 +77,15 @@ namespace DigitalTechClientPortal.Services
                     systemPrompt,
                     userPrompt,
                     BuildResponseFormat(),
-                    maxTokens: 3600,
+                    maxTokens: PlanMaxTokens,
                     temperature: 0);
 
                 return ParsePlan(response);
+            }
+            catch (Exception ex) when (IsTokenLimitError(ex))
+            {
+                _logger.LogWarning(ex, "Azure OpenAI cortó el plan de seguridad por límite de tokens.");
+                throw new InvalidOperationException($"Structured outputs: {DescribeException(ex)}", ex);
             }
             catch (Exception ex)
             {
@@ -83,7 +93,7 @@ namespace DigitalTechClientPortal.Services
                 try
                 {
                     var fallbackPrompt = userPrompt + "\n\nDevuelve solamente un objeto JSON. No uses Markdown ni texto antes o después del JSON.";
-                    var fallback = await _openAi.ChatCompletionsAsync(systemPrompt, fallbackPrompt, maxTokens: 3600, temperature: 0);
+                    var fallback = await _openAi.ChatCompletionsAsync(systemPrompt, fallbackPrompt, maxTokens: FallbackMaxTokens, temperature: 0);
                     return ParsePlan(fallback);
                 }
                 catch (Exception fallbackEx)
@@ -134,12 +144,12 @@ namespace DigitalTechClientPortal.Services
                 alerts = vm.Alertas
                     .OrderByDescending(a => SeverityRank(a.Severity))
                     .ThenByDescending(a => a.CreatedDateTime ?? a.LastUpdatedDateTime ?? DateTimeOffset.MinValue)
-                    .Take(12)
+                    .Take(8)
                     .Select(a => new
                     {
                         a.Id,
                         a.IncidentId,
-                        Title = Truncate(a.Title, 180),
+                        Title = Truncate(a.Title, 140),
                         a.Severity,
                         a.Status,
                         a.Category,
@@ -151,9 +161,9 @@ namespace DigitalTechClientPortal.Services
                         a.ServiceSource,
                         a.DetectionSource,
                         a.MitreTechniques,
-                        Description = Truncate(a.Description, 420),
-                        RecommendedActions = Truncate(a.RecommendedActions, 520),
-                        Evidence = a.Evidence.Take(4).Select(e => new
+                        Description = Truncate(a.Description, 260),
+                        RecommendedActions = Truncate(a.RecommendedActions, 320),
+                        Evidence = a.Evidence.Take(3).Select(e => new
                         {
                             e.Type,
                             e.UserPrincipalName,
@@ -172,11 +182,11 @@ namespace DigitalTechClientPortal.Services
                 incidents = vm.Incidentes
                     .OrderByDescending(i => SeverityRank(i.Severity))
                     .ThenByDescending(i => i.CreatedDateTime ?? i.LastUpdatedDateTime ?? DateTimeOffset.MinValue)
-                    .Take(8)
+                    .Take(5)
                     .Select(i => new
                     {
                         i.Id,
-                        Title = Truncate(i.Title, 180),
+                        Title = Truncate(i.Title, 140),
                         i.Severity,
                         i.Status,
                         Created = i.CreatedDateTime,
@@ -185,13 +195,13 @@ namespace DigitalTechClientPortal.Services
                         i.AssignedTo,
                         i.Classification,
                         i.Determination,
-                        Description = Truncate(i.Description, 420),
-                        Summary = Truncate(i.Summary, 420)
+                        Description = Truncate(i.Description, 260),
+                        Summary = Truncate(i.Summary, 260)
                     }),
                 riskyUsers = vm.UsuariosRiesgo
                     .OrderByDescending(u => SeverityRank(u.RiskLevel))
                     .ThenByDescending(u => u.LastUpdatedDateTime ?? DateTimeOffset.MinValue)
-                    .Take(12)
+                    .Take(8)
                     .Select(u => new
                     {
                         u.UserDisplayName,
@@ -203,7 +213,7 @@ namespace DigitalTechClientPortal.Services
                     }),
                 riskyDevices = vm.DispositivosRiesgo
                     .OrderByDescending(d => d.LastSeenDateTime ?? DateTimeOffset.MinValue)
-                    .Take(12)
+                    .Take(8)
                     .Select(d => new
                     {
                         d.DeviceName,
@@ -227,10 +237,10 @@ namespace DigitalTechClientPortal.Services
                 },
                 secureScoreControls = vm.SecureScoreControles
                     .OrderByDescending(c => c.MaxScore ?? 0)
-                    .Take(10)
+                    .Take(6)
                     .Select(c => new
                     {
-                        Title = Truncate(c.Title, 180),
+                        Title = Truncate(c.Title, 140),
                         c.ControlCategory,
                         c.ActionType,
                         c.ImplementationCost,
@@ -239,7 +249,7 @@ namespace DigitalTechClientPortal.Services
                     }),
                 attackSimulations = vm.SimulacionesAtaque
                     .OrderByDescending(s => s.LaunchDateTime ?? s.CompletionDateTime ?? DateTimeOffset.MinValue)
-                    .Take(5)
+                    .Take(3)
                     .Select(s => new
                     {
                         s.DisplayName,
@@ -437,6 +447,26 @@ namespace DigitalTechClientPortal.Services
                 JsonException jsonEx => $"JSON inválido: {jsonEx.Message}",
                 _ => ex.Message
             };
+        }
+
+        private static bool IsTokenLimitError(Exception ex)
+        {
+            for (var current = ex; current != null; current = current.InnerException)
+            {
+                if (current is OpenAiCallException && current.Message.Contains("límite de tokens", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+
+                if (current.Message.Contains("cortó la respuesta", StringComparison.OrdinalIgnoreCase)
+                    || current.Message.Contains("limite de tokens", StringComparison.OrdinalIgnoreCase)
+                    || current.Message.Contains("límite de tokens", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 }
