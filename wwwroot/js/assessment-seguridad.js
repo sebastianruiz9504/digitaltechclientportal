@@ -253,7 +253,7 @@ btnFinish.addEventListener("click", async () => {
       respuestas: buildCompactAnswers(state)
     };
 
-    // Guardar en backend → Dataverse
+    // Guardar en backend Dataverse
     await fetch(DV_ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

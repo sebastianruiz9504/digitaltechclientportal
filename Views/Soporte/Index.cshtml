@@ -17,6 +17,49 @@
         "Completado" => "bg-green-100 text-green-800",
         _ => "bg-slate-100 text-slate-700"
     };
+
+    Func<string, string> BadgeTipo = tipo =>
+    {
+        if (string.IsNullOrWhiteSpace(tipo))
+        {
+            return "bg-slate-100 text-slate-700 ring-1 ring-slate-200";
+        }
+
+        var normalized = tipo.Trim().ToLowerInvariant();
+        if (normalized.Contains("incidente") || normalized.Contains("error") || normalized.Contains("falla"))
+        {
+            return "bg-red-100 text-red-800 ring-1 ring-red-200";
+        }
+
+        if (normalized.Contains("requer") || normalized.Contains("solicitud"))
+        {
+            return "bg-sky-100 text-sky-800 ring-1 ring-sky-200";
+        }
+
+        if (normalized.Contains("cambio"))
+        {
+            return "bg-violet-100 text-violet-800 ring-1 ring-violet-200";
+        }
+
+        if (normalized.Contains("prevent") || normalized.Contains("mantenimiento"))
+        {
+            return "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200";
+        }
+
+        var seed = tipo.Where(char.IsLetterOrDigit).Aggregate(0, (total, ch) => total + char.ToUpperInvariant(ch));
+        return (seed % 5) switch
+        {
+            0 => "bg-cyan-100 text-cyan-800 ring-1 ring-cyan-200",
+            1 => "bg-amber-100 text-amber-800 ring-1 ring-amber-200",
+            2 => "bg-indigo-100 text-indigo-800 ring-1 ring-indigo-200",
+            3 => "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
+            _ => "bg-teal-100 text-teal-800 ring-1 ring-teal-200"
+        };
+    };
+
+    string Dash(string? value) => string.IsNullOrWhiteSpace(value) ? "—" : value;
+    string FormatDate(DateTime date) => date == DateTime.MinValue ? "—" : date.ToString("dd/MM/yyyy");
+    string FormatDateNullable(DateTime? date) => date.HasValue ? date.Value.ToString("dd/MM/yyyy") : "—";
 }
   <div class="w-full px-4 sm:px-6 lg:px-8 py-8">
     <!-- Encabezado -->
@@ -47,11 +90,12 @@
             }
             else
             {
-                <div class="overflow-y-auto max-h-[400px]">
+                <div class="overflow-auto max-h-[400px]">
                     <table class="min-w-full border-collapse text-sm text-slate-700">
                         <thead class="bg-slate-50 text-slate-600 text-xs uppercase tracking-wide sticky top-0">
                             <tr>
                                 <th class="px-4 py-3 text-left font-medium">Título</th>
+                                <th class="px-4 py-3 text-left font-medium">Tipo</th>
                                 <th class="px-4 py-3 text-left font-medium">Descripción</th>
                                 <th class="px-4 py-3 text-left font-medium">Fecha creación</th>
                                 <th class="px-4 py-3 text-left font-medium">Estado</th>
@@ -61,20 +105,118 @@
                         <tbody class="divide-y divide-slate-200">
                             @foreach (var t in Model.CloudTickets)
                             {
-                                <tr class="hover:bg-slate-50 transition-colors">
+                                var tipoClass = BadgeTipo(t.Tipo);
+                                var estadoClass = BadgeCloud(t.Estado);
+                                var adjuntoUrl = t.TieneAdjunto && t.Id != Guid.Empty
+                                    ? Url.Action("DescargarAdjuntoTicket", "Soporte", new { id = t.Id })
+                                    : string.Empty;
+
+                                <tr class="cloud-ticket-row cursor-pointer hover:bg-slate-50 focus:bg-slate-50 focus:outline-none transition-colors"
+                                    tabindex="0"
+                                    role="button"
+                                    title="Ver detalle"
+                                    data-title="@t.Titulo"
+                                    data-description="@t.Descripcion"
+                                    data-created="@FormatDate(t.FechaCreacion)"
+                                    data-state="@t.Estado"
+                                    data-state-class="@estadoClass"
+                                    data-closed="@FormatDateNullable(t.FechaCierre)"
+                                    data-type="@Dash(t.Tipo)"
+                                    data-type-class="@tipoClass"
+                                    data-category="@Dash(t.Categoria)"
+                                    data-hours="@Dash(t.HorasTomadas)"
+                                    data-method="@Dash(t.Metodo)"
+                                    data-solution="@Dash(t.Solucion)"
+                                    data-adjunto-url="@adjuntoUrl">
                                     <td class="px-4 py-3 font-medium text-slate-900">@t.Titulo</td>
-                                    <td class="px-4 py-3">@t.Descripcion</td>
-                                    <td class="px-4 py-3">@t.FechaCreacion.ToString("dd/MM/yyyy")</td>
                                     <td class="px-4 py-3">
-                                        <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium @BadgeCloud(t.Estado)">
+                                        <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium @tipoClass">
+                                            @Dash(t.Tipo)
+                                        </span>
+                                    </td>
+                                    <td class="px-4 py-3">@t.Descripcion</td>
+                                    <td class="px-4 py-3">@FormatDate(t.FechaCreacion)</td>
+                                    <td class="px-4 py-3">
+                                        <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium @estadoClass">
                                             @t.Estado
                                         </span>
                                     </td>
-                                    <td class="px-4 py-3">@((t.FechaCierre.HasValue ? t.FechaCierre.Value.ToString("dd/MM/yyyy") : "—"))</td>
+                                    <td class="px-4 py-3">@FormatDateNullable(t.FechaCierre)</td>
                                 </tr>
                             }
                         </tbody>
                     </table>
+                </div>
+
+                <div id="cloudTicketModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 px-4 py-6" aria-hidden="true">
+                    <div class="absolute inset-0" data-cloud-modal-close></div>
+                    <div class="relative w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="cloudTicketModalTitle">
+                        <div class="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-4">
+                            <div class="min-w-0">
+                                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Ticket Cloud</p>
+                                <h3 id="cloudTicketModalTitle" class="mt-1 text-xl font-semibold text-slate-900 break-words"></h3>
+                            </div>
+                            <button type="button" class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition" data-cloud-modal-close aria-label="Cerrar">
+                                <i class="ti ti-x text-xl"></i>
+                            </button>
+                        </div>
+
+                        <div class="max-h-[calc(90vh-73px)] overflow-y-auto px-6 py-5">
+                            <dl class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                                <div>
+                                    <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Tipo</dt>
+                                    <dd class="mt-1">
+                                        <span id="cloudTicketModalTipo" class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium"></span>
+                                    </dd>
+                                </div>
+                                <div>
+                                    <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Estado</dt>
+                                    <dd class="mt-1">
+                                        <span id="cloudTicketModalEstado" class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium"></span>
+                                    </dd>
+                                </div>
+                                <div>
+                                    <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Método</dt>
+                                    <dd id="cloudTicketModalMetodo" class="mt-1 text-sm font-medium text-slate-900"></dd>
+                                </div>
+                                <div>
+                                    <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Fecha creación</dt>
+                                    <dd id="cloudTicketModalFechaCreacion" class="mt-1 text-sm font-medium text-slate-900"></dd>
+                                </div>
+                                <div>
+                                    <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Fecha cierre</dt>
+                                    <dd id="cloudTicketModalFechaCierre" class="mt-1 text-sm font-medium text-slate-900"></dd>
+                                </div>
+                                <div>
+                                    <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Horas tomadas</dt>
+                                    <dd id="cloudTicketModalHoras" class="mt-1 text-sm font-medium text-slate-900"></dd>
+                                </div>
+                                <div>
+                                    <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Categoría</dt>
+                                    <dd id="cloudTicketModalCategoria" class="mt-1 text-sm font-medium text-slate-900"></dd>
+                                </div>
+                                <div>
+                                    <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Adjunto</dt>
+                                    <dd class="mt-1">
+                                        <a id="cloudTicketModalAdjunto" class="hidden inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition" href="#" aria-label="Descargar adjunto" title="Descargar adjunto">
+                                            <i class="ti ti-file-download text-lg"></i>
+                                        </a>
+                                        <span id="cloudTicketModalNoAdjunto" class="text-sm text-slate-400">—</span>
+                                    </dd>
+                                </div>
+                            </dl>
+
+                            <div class="mt-5">
+                                <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Descripción</p>
+                                <p id="cloudTicketModalDescripcion" class="mt-1 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm leading-6 text-slate-700 whitespace-pre-wrap"></p>
+                            </div>
+
+                            <div class="mt-4">
+                                <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Solución</p>
+                                <p id="cloudTicketModalSolucion" class="mt-1 min-h-32 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700 whitespace-pre-wrap"></p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             }
         </div>
@@ -137,3 +279,97 @@
         </div>
     </div>
 </section>
+
+@section Scripts {
+    <script>
+        (() => {
+            const modal = document.getElementById('cloudTicketModal');
+            if (!modal) return;
+
+            const closeButton = modal.querySelector('[data-cloud-modal-close][aria-label]');
+            const rows = Array.from(document.querySelectorAll('.cloud-ticket-row'));
+            const fields = {
+                title: document.getElementById('cloudTicketModalTitle'),
+                type: document.getElementById('cloudTicketModalTipo'),
+                state: document.getElementById('cloudTicketModalEstado'),
+                method: document.getElementById('cloudTicketModalMetodo'),
+                created: document.getElementById('cloudTicketModalFechaCreacion'),
+                closed: document.getElementById('cloudTicketModalFechaCierre'),
+                hours: document.getElementById('cloudTicketModalHoras'),
+                category: document.getElementById('cloudTicketModalCategoria'),
+                description: document.getElementById('cloudTicketModalDescripcion'),
+                solution: document.getElementById('cloudTicketModalSolucion'),
+                adjunto: document.getElementById('cloudTicketModalAdjunto'),
+                noAdjunto: document.getElementById('cloudTicketModalNoAdjunto')
+            };
+
+            const setText = (element, value) => {
+                if (!element) return;
+                const text = value && value.trim() ? value : '—';
+                element.textContent = text;
+            };
+
+            const setBadge = (element, value, className) => {
+                if (!element) return;
+                element.className = `inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${className || 'bg-slate-100 text-slate-700 ring-1 ring-slate-200'}`;
+                setText(element, value);
+            };
+
+            const openModal = (row) => {
+                const data = row.dataset;
+                setText(fields.title, data.title);
+                setBadge(fields.type, data.type, data.typeClass);
+                setBadge(fields.state, data.state, data.stateClass);
+                setText(fields.method, data.method);
+                setText(fields.created, data.created);
+                setText(fields.closed, data.closed);
+                setText(fields.hours, data.hours);
+                setText(fields.category, data.category);
+                setText(fields.description, data.description);
+                setText(fields.solution, data.solution);
+
+                if (data.adjuntoUrl) {
+                    fields.adjunto.href = data.adjuntoUrl;
+                    fields.adjunto.classList.remove('hidden');
+                    fields.noAdjunto.classList.add('hidden');
+                } else {
+                    fields.adjunto.removeAttribute('href');
+                    fields.adjunto.classList.add('hidden');
+                    fields.noAdjunto.classList.remove('hidden');
+                }
+
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+                modal.setAttribute('aria-hidden', 'false');
+                document.body.classList.add('overflow-hidden');
+                closeButton?.focus();
+            };
+
+            const closeModal = () => {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+                modal.setAttribute('aria-hidden', 'true');
+                document.body.classList.remove('overflow-hidden');
+            };
+
+            rows.forEach((row) => {
+                row.addEventListener('click', () => openModal(row));
+                row.addEventListener('keydown', (event) => {
+                    if (event.key !== 'Enter' && event.key !== ' ') return;
+                    event.preventDefault();
+                    openModal(row);
+                });
+            });
+
+            modal.querySelectorAll('[data-cloud-modal-close]').forEach((button) => {
+                button.addEventListener('click', closeModal);
+            });
+
+            document.addEventListener('keydown', (event) => {
+                if (event.key === 'Escape' && !modal.classList.contains('hidden')) {
+                    closeModal();
+                }
+            });
+        })();
+    </script>
+}

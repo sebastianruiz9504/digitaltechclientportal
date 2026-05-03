@@ -36,13 +36,13 @@ namespace DigitalTechClientPortal.Services
 
             var (ticketDateFilter, mantenimientoDateFilter, _, _) = BuildDateFilters(rango);
 
-            // 1) Tickets Cloud: conteo + suma horas (base)
+            // 1) Tickets Cloud: conteo + suma horas tomadas (base)
             var ticketsCount = 0;
             decimal horasSumTickets = 0m;
             try
             {
                 var ticketsQuery = new StringBuilder("cr07a_tickets");
-                ticketsQuery.Append("?$select=cr07a_fechacreacion,cr07a_horas");
+                ticketsQuery.Append("?$select=cr07a_fechacreacion,cr07a_horastomadas");
                 ticketsQuery.Append($"&$filter=_cr07a_cliente_value eq {clienteId}");
                 if (!string.IsNullOrEmpty(ticketDateFilter))
                     ticketsQuery.Append($" and {ticketDateFilter}");
@@ -56,13 +56,10 @@ namespace DigitalTechClientPortal.Services
 
                 foreach (var e in values.EnumerateArray())
                 {
-                    if (e.TryGetProperty("cr07a_horas", out var horasProp))
+                    if (e.TryGetProperty("cr07a_horastomadas", out var horasProp) &&
+                        TryReadDecimal(horasProp, out var horasTomadas))
                     {
-                        if (horasProp.ValueKind == JsonValueKind.Number && horasProp.TryGetDecimal(out var d))
-                            horasSumTickets += d;
-                        else if (horasProp.ValueKind == JsonValueKind.String &&
-                                 decimal.TryParse(horasProp.GetString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var ds))
-                            horasSumTickets += ds;
+                        horasSumTickets += horasTomadas;
                     }
                 }
             }
@@ -125,6 +122,43 @@ namespace DigitalTechClientPortal.Services
                 HorasEntregadas = horasEntregadas,
                 Reportes = reportesCount
             };
+        }
+
+        private static bool TryReadDecimal(JsonElement value, out decimal result)
+        {
+            result = 0m;
+
+            if (value.ValueKind == JsonValueKind.Number)
+            {
+                return value.TryGetDecimal(out result);
+            }
+
+            if (value.ValueKind != JsonValueKind.String)
+            {
+                return false;
+            }
+
+            var raw = value.GetString()?.Trim();
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return false;
+            }
+
+            if (raw.Contains(',') && !raw.Contains('.'))
+            {
+                return decimal.TryParse(raw.Replace(',', '.'), NumberStyles.Number, CultureInfo.InvariantCulture, out result);
+            }
+
+            if (raw.Contains(',') && raw.Contains('.'))
+            {
+                var normalized = raw.LastIndexOf(',') > raw.LastIndexOf('.')
+                    ? raw.Replace(".", string.Empty).Replace(',', '.')
+                    : raw.Replace(",", string.Empty);
+
+                return decimal.TryParse(normalized, NumberStyles.Number, CultureInfo.InvariantCulture, out result);
+            }
+
+            return decimal.TryParse(raw, NumberStyles.Number, CultureInfo.InvariantCulture, out result);
         }
 
         private static (string ticketDateFilter, string mantenimientoDateFilter, string capacitacionDateFilter, string reporteDateFilter)

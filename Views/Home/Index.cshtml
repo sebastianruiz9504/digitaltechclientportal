@@ -1,4 +1,4 @@
-﻿@model List<DigitalTechClientPortal.Models.ProductVm>
+@model List<DigitalTechClientPortal.Models.ProductVm>
 
 @{
     Layout = "~/Views/Shared/_Layout.cshtml";
@@ -6,6 +6,7 @@
 
     var resumen = ViewBag.Summary as DigitalTechClientPortal.Models.ResumenDto ?? new DigitalTechClientPortal.Models.ResumenDto();
     var selectedRange = (DigitalTechClientPortal.Models.RangoResumen)(ViewBag.SelectedRange ?? DigitalTechClientPortal.Models.RangoResumen.Mes);
+    var copiers = ViewBag.Copiers as List<DigitalTechClientPortal.Models.ProductVm>;
 
     string RangeToString(DigitalTechClientPortal.Models.RangoResumen r) => r switch
     {
@@ -14,437 +15,283 @@
         DigitalTechClientPortal.Models.RangoResumen.Total => "total",
         _ => "mes"
     };
+
+    var currentRange = RangeToString(selectedRange);
+    string baseUrl = Url.Action("Index", "Home") ?? "/Home/Index";
 }
 
 @section Head {
-    <!-- Swiper CSS solo para esta vista -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@9/swiper-bundle.min.css" />
-    <style>
-        .glass-card {
-            position: relative;
-            overflow: hidden;
-            border-radius: 1.25rem;
-            border: 1px solid rgba(255, 255, 255, 0.14);
-            background: linear-gradient(135deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.08));
-            backdrop-filter: blur(10px);
-        }
-
-        .card {
-            position: relative;
-            overflow: hidden;
-            border-radius: 1rem;
-            border: 1px solid #e5e7eb;
-            background: #ffffff;
-        }
-
-        .card-overlay {
-            position: absolute;
-            inset: 0;
-            opacity: 0.12;
-        }
-
-        .card-content { position: relative; z-index: 1; }
-        
-        .tag {
-            display: inline-block;
-            padding: .375rem .75rem;
-            font-size: .75rem;
-            border-radius: .375rem;
-        }
-
-        .tag-blue { background: #e2e8f0; color: #0f172a; }
-        .tag-blue:hover { background: #cbd5e1; }
-
-        .range-tab {
-            padding: .375rem .75rem;
-            border: 1px solid #e2e8f0;
-            border-radius: 9999px;
-            font-size: .75rem;
-            color: #0f172a;
-            background: #fff;
-            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
-            transition: all .2s ease;
-        }
-
-        .range-tab.active {
-            background: linear-gradient(135deg, #111827, #475569);
-            color: #fff;
-            border-color: transparent;
-        }
-
-        .metric { display: flex; flex-direction: column; gap: .2rem; }
-        .metric .label { color: #94a3b8; font-size: .8rem; letter-spacing: 0.01em; }
-        .metric .value { color: #0f172a; font-weight: 700; font-size: 1.35rem; }
-
-        .icon-circle {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 9999px;
-            width: 2.5rem;
-            height: 2.5rem;
-            background: linear-gradient(135deg, #111827, #4b5563);
-            color: #fff;
-            box-shadow: 0 10px 25px rgba(15, 23, 42, 0.24);
-        }
-
-        .highlight-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: .35rem;
-            padding: .35rem .75rem;
-            border-radius: 9999px;
-            background: rgba(255, 255, 255, 0.75);
-            color: #1e293b;
-            font-weight: 600;
-            border: 1px solid rgba(148, 163, 184, 0.24);
-        }
-
-        .panel-surface {
-            background: radial-gradient(circle at 18% 20%, rgba(255, 255, 255, 0.9), transparent 34%),
-                        radial-gradient(circle at 82% 10%, rgba(186, 230, 253, 0.45), transparent 30%),
-                        linear-gradient(135deg, #f8fafc 0%, #eef2f7 55%, #e5ebf3 100%);
-            border-radius: 1.5rem;
-            border: 1px solid rgba(148, 163, 184, 0.24);
-            box-shadow: 0 18px 44px rgba(148, 163, 184, 0.22);
-        }
-
-        #promoSwiper { background: transparent; }
-        .swiper-pagination-bullet { background: #94a3b8; opacity: 0.6; }
-        .swiper-pagination-bullet-active { background: #0f172a; opacity: 1; }
-        .swiper-slide img { border-radius: 1rem; box-shadow: 0 20px 60px rgba(15, 23, 42, 0.08); }
-    </style>
 }
 
 @section Main {
-<div class="min-h-screen bg-gradient-to-b from-slate-100 via-white to-slate-200 w-full px-4 sm:px-6 lg:px-8 py-8">
-  <!-- Encabezado hero -->
-  <section class="panel-surface text-slate-900 p-8 md:p-10 mb-8 relative overflow-hidden">
-    <div class="absolute inset-0 opacity-80" style="background: radial-gradient(circle at 20% 20%, rgba(255,255,255,.8), transparent 34%), radial-gradient(circle at 80% 10%, rgba(186,230,253,.32), transparent 26%);"></div>
-    <div class="relative flex flex-col lg:flex-row lg:items-center gap-8">
-      <div class="space-y-4 lg:w-7/12">
-        <h1 class="text-4xl md:text-5xl font-bold leading-tight">Tu operación en un panel unificado</h1>
-        <p class="text-slate-600 text-lg max-w-2xl">Visualiza métricas críticas, gestiona servicios y mantén tus productos organizados con una interfaz moderna inspirada en plataformas tecnológicas.</p>
-        <div class="flex flex-wrap gap-3">
-          <a href="@Url.Action("Index","Soporte")" class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white border border-slate-200 text-slate-900 hover:bg-slate-50 transition shadow-sm">
-            <span class="icon-circle w-9 h-9 text-base shadow-none">↗</span>
-            Ir a soporte
-          </a>
-          <a href="https://wa.me/573153405758" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white text-slate-900 font-semibold shadow-lg hover:shadow-xl transition">
-            <span class="icon-circle w-9 h-9 text-base shadow-none bg-gradient-to-br from-slate-800 to-slate-900">✉️</span>
-            Hablar con un asesor
-          </a>
-        </div>
-      </div>
-<!-- Resumen y métricas -->
-<div class="glass-card p-6 lg:w-5/12 text-slate-900">
-        <div class="flex items-center justify-between mb-5">
-          <div>
-            <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Resumen</p>
-            <p class="text-lg font-semibold text-slate-800">KPI de servicio</p>
-          </div>
-          <div class="flex gap-2">
-            @{
-                var currentRange = RangeToString(selectedRange);
-                string baseUrl = Url.Action("Index", "Home") ?? "/Home/Index";
-            }
-            <a class="range-tab @(currentRange=="mes" ? "active" : "")" href="@($"{baseUrl}?range=mes")">Mes</a>
-            <a class="range-tab @(currentRange=="anio" ? "active" : "")" href="@($"{baseUrl}?range=anio")">Año</a>
-            <a class="range-tab @(currentRange=="total" ? "active" : "")" href="@($"{baseUrl}?range=total")">Total</a>
-          </div>
-        </div>
-
- 
-        @if (TempData["SummaryError"] != null)
-        {
-          <div class="text-sm text-slate-600 mb-3">@TempData["SummaryError"]</div>
-        }
-  <div class="grid grid-cols-2 gap-3">
-          <a href="@Url.Action("Index","Soporte")" class="card bg-gradient-to-br from-slate-100 via-white to-slate-200 border-transparent shadow-lg p-4 hover:-translate-y-1 transition" aria-label="Ir a Soporte: detalle de horas entregadas">
-            <div class="flex items-start justify-between">
-              <div class="space-y-1">
-                <p class="text-xs uppercase tracking-wide text-slate-500">Horas entregadas</p>
-                <p class="text-3xl font-extrabold text-slate-900">@resumen.HorasEntregadas</p>
-                <p class="text-[13px] text-slate-500">Capacitaciones, tickets, implementaciones y consultorías.</p>
-              </div>
-              <span class="icon-circle">⏱</span>
-            </div>
-          </a>
-
-          <div class="space-y-3">
-            <a href="@Url.Action("Index","Soporte")" class="card border-slate-200 p-3 shadow-sm hover:-translate-y-1 transition" aria-label="Ir a Soporte: Tickets Cloud">
-              <div class="flex items-center justify-between">
-                <div class="metric">
-                  <span class="label">Tickets Cloud</span>
-                  <span class="value">@resumen.TicketsCloud</span>
-                </div>
-                <span class="icon-circle bg-gradient-to-br from-slate-700 to-slate-900">☁️</span>
-              </div>
-            </a>
-            <a href="@Url.Action("Index","Soporte")" class="card border-slate-200 p-3 shadow-sm hover:-translate-y-1 transition" aria-label="Ir a Soporte: Tickets Copiers">
-              <div class="flex items-center justify-between">
-                <div class="metric">
-                  <span class="label">Tickets Copiers</span>
-                  <span class="value">@resumen.TicketsCopiers</span>
-                </div>
-                <span class="icon-circle bg-gradient-to-br from-zinc-600 to-zinc-900">🖨️</span>
-              </div>
-            </a>
-          </div>
-
-          <a href="@Url.Action("Index","Capacitaciones")" class="card border-slate-200 p-3 shadow-sm hover:-translate-y-1 transition" aria-label="Ir a Capacitaciones">
-            <div class="flex items-center justify-between">
-              <div class="metric">
-                <span class="label">Capacitaciones</span>
-                <span class="value">@resumen.Capacitaciones</span>
-              </div>
-              <span class="icon-circle bg-gradient-to-br from-slate-600 to-slate-800">🎓</span>
-            </div>
-          </a>
-
-          <a href="@Url.Action("Index","Reportes")" class="card border-slate-200 p-3 shadow-sm hover:-translate-y-1 transition" aria-label="Ir a Reportes Cloud">
-            <div class="flex items-center justify-between">
-              <div class="metric">
-                <span class="label">Reportes Cloud</span>
-                <span class="value">@resumen.Reportes</span>
-              </div>
-              <span class="icon-circle bg-gradient-to-br from-neutral-700 to-neutral-900">📊</span>
-            </div>
-          </a>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  
-    <!-- Verticales de Negocio -->
-  <section class="w-full mb-8">
-    <div class="flex items-center justify-between mb-4">
-      <div>
-        <p class="text-xs uppercase tracking-[0.3em] text-slate-500">Productos y licencias</p>
-        <h2 class="text-2xl font-semibold text-slate-900">Organiza tus verticales</h2>
-      </div>
-    <a href="https://wa.me/573153405758" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-slate-700 to-slate-900 text-white shadow-lg hover:shadow-xl transition">
-        Solicitar más productos ↗
-      </a>
-    </div>
-
-     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      @{
-        var copiers = ViewBag.Copiers as List<DigitalTechClientPortal.Models.ProductVm>;
-      }
-      <section class="card border-transparent bg-gradient-to-br from-white via-slate-50 to-slate-100 shadow-xl p-6">
-        <div class="flex items-center justify-between mb-5">
-          <div class="flex items-center gap-3">
-            <img
-              src="https://logo.clearbit.com/kyocera.com"
-              alt="Kyocera"
-              class="h-8 w-auto max-w-[140px] object-contain"
-              referrerpolicy="no-referrer"
-              onerror="
-                this.onerror=null;
-                this.src=`data:image/svg+xml;utf8,
-                <svg xmlns='http://www.w3.org/2000/svg' width='140' height='32'>
-                  <rect width='140' height='32' fill='%23e60012'/>
-                  <text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle'
-                        font-family='Helvetica, Arial' font-size='14' fill='white'>KYOCERA</text>
-                </svg>`;
-              "
-            />
-            <div>
-              <p class="text-xs uppercase tracking-wide text-slate-500">Impresión inteligente</p>
-              <h3 class="text-xl font-semibold text-slate-900">Copiers</h3>
-            </div>
-          </div>
-          <span class="icon-circle bg-gradient-to-br from-zinc-700 to-zinc-900">🖨️</span>
-        </div>
-
-        <div class="text-sm text-slate-700 space-y-1.5 mb-5 max-h-48 overflow-y-auto pr-1">
-          @if (TempData["CopiersError"] != null)
-          {
-            <div class="text-slate-600">@TempData["CopiersError"]</div>
-          }
-          else if (copiers == null || copiers.Count == 0)
-          {
-            <div class="text-slate-600">No hay productos para mostrar.</div>
-          }
-          else
-          {
-            <ul class="space-y-2">
-              @foreach (var p in copiers)
-              {
-                <li class="flex items-center justify-between border-b border-slate-100 pb-2 last:border-0 last:pb-0">
-                  <div class="flex items-center gap-2 text-slate-900">
-                    <span class="icon-circle w-8 h-8 bg-gradient-to-br from-zinc-700 to-zinc-900 text-xs">✦</span>
-                    <span class="font-medium">@p.ProductName</span>
-                  </div>
-                  <span class="tag tag-blue text-[11px]">@p.Quantity</span>
-                </li>
-              }
-            </ul>
-          }
-        </div>
-
-        <a href="https://wa.me/573153405758" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 text-sm font-semibold text-slate-700 hover:text-slate-900">
-          Solicitar más unidades ↗
-        </a>
-      </section>
-
-      <section class="card border-transparent bg-gradient-to-br from-white via-slate-50 to-slate-100 shadow-xl p-6">
-        <div class="flex items-center justify-between mb-5">
-          <div class="flex items-center gap-3">
-            <img
-              src="https://logo.clearbit.com/microsoft.com"
-              alt="Microsoft"
-              class="h-8 w-auto max-w-[140px] object-contain"
-              referrerpolicy="no-referrer"
-              onerror="
-                this.onerror=null;
-                this.src=`data:image/svg+xml;utf8,
-                <svg xmlns='http://www.w3.org/2000/svg' width='140' height='32'>
-                  <rect x='0' y='0' width='32' height='32' fill='%23f25022'/>
-                  <rect x='36' y='0' width='32' height='32' fill='%2373cf14'/>
-                  <rect x='0' y='36' width='32' height='32' fill='%2300a4ef'/>
-                  <rect x='36' y='36' width='32' height='32' fill='%23ffb900'/>
-                  <text x='90' y='21' font-family='Helvetica, Arial' font-size='14' fill='%23000'>Microsoft</text>
-                </svg>`;
-              "
-            />
-            <div>
-              <p class="text-xs uppercase tracking-wide text-slate-500">Nube y productividad</p>
-              <h3 class="text-xl font-semibold text-slate-900">Cloud</h3>
-            </div>
-          </div>
-          <span class="icon-circle bg-gradient-to-br from-slate-700 to-slate-900">☁️</span>
-        </div>
-
-        <div class="text-sm text-slate-700 space-y-1.5 mb-5 max-h-48 overflow-y-auto pr-1">
-          @if (TempData["HomeError"] != null)
-          {
-            <div class="text-slate-600">@TempData["HomeError"]</div>
-          }
-          else if (Model == null || Model.Count == 0)
-          {
-            <div class="text-slate-600">No hay productos para mostrar.</div>
-          }
-          else
-          {
-            <ul class="space-y-2">
-              @foreach (var p in Model)
-              {
-                <li class="flex items-center justify-between border-b border-slate-100 pb-2 last:border-0 last:pb-0">
-                  <div class="flex items-center gap-2 text-slate-900">
-                    <span class="icon-circle w-8 h-8 bg-gradient-to-br from-slate-700 to-slate-900 text-xs">✦</span>
-                    <span class="font-medium">@p.ProductName</span>
-                  </div>
-                  <span class="tag tag-blue text-[11px]">@p.Quantity</span>
-                </li>
-              }
-            </ul>
-          }
-        </div>
-
-        <a href="https://wa.me/573153405758" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 text-sm font-semibold text-slate-700 hover:text-slate-900">
-          Ampliar licenciamiento ↗
-
-        </a>
-            </section>
-
-    </div>
-  </section>
-
-     <!-- Noticias / Promociones -->
-  <section class="card border border-slate-200 bg-white shadow-xl">
-    <div class="p-6 w-full overflow-hidden">
-      <div class="mb-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+<div class="home-page">
+    <section class="home-hero">
         <div>
-          <p class="text-xs uppercase tracking-[0.3em] text-slate-500">Actualizaciones</p>
-          <h2 class="text-xl font-semibold text-slate-900">Noticias y promociones</h2>
-        </div>
-        <div class="flex items-center gap-2 self-end md:self-auto">
-          <div class="swiper-pagination !static"></div>
-          <button class="promo-prev rounded-full border px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 shadow-sm" aria-label="Anterior">◀</button>
-          <button class="promo-next rounded-full border px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 shadow-sm" aria-label="Siguiente">▶</button>
+            <span class="home-eyebrow">
+                <i class="ti ti-layout-dashboard"></i>
+                Portal operativo
+            </span>
+            <h1 class="home-title">Digital Tech Client Portal</h1>
+            <p class="home-lead">
+                Consulta tus servicios, tickets, consumos, reportes y productos desde una experiencia más limpia,
+                rápida de leer y enfocada en las tareas del día a día.
+            </p>
 
-        </div>
-      </div>
-
-        <div id="promoSwiper" class="swiper rounded-2xl overflow-hidden w-full max-w-full">
-        <div class="swiper-wrapper">
-          <!-- Slide 1 -->
-          <div class="swiper-slide">
-            <div class="relative w-full pt-[42.857%] bg-white">
-              <img
-                class="absolute inset-0 w-full h-full object-contain"
-                src="https://41741943.fs1.hubspotusercontent-na1.net/hubfs/41741943/3%201.png"
-                alt="Promoción Kyocera 2025"
-                loading="lazy"
-                decoding="async"
-                onerror="this.src='https://placehold.co/1200x515/eeeeee/999999?text=Imagen+no+disponible';"
-              />
+            <div class="home-actions">
+                <a href="@Url.Action("Index","Soporte")" class="home-button">
+                    <i class="ti ti-headset"></i>
+                    Soporte
+                </a>
+                <a href="https://wa.me/573153405758" target="_blank" rel="noopener noreferrer" class="home-button-secondary">
+                    <i class="ti ti-brand-whatsapp"></i>
+                    Hablar con un asesor
+                </a>
             </div>
-          </div>
-      
-
-        <!-- Slide 2 -->
-          <div class="swiper-slide">
-            <div class="relative w-full pt-[42.857%] bg-white">
-              <img
-                class="absolute inset-0 w-full h-full object-contain"
-                src="https://41741943.fs1.hubspotusercontent-na1.net/hubfs/41741943/2%201.png"
-                alt="Licenciamiento Microsoft 365"
-                loading="lazy"
-                decoding="async"
-                onerror="this.src='https://placehold.co/1200x515/eeeeee/999999?text=Imagen+no+disponible';"
-              />
-            </div>
-          </div>
-
-          <!-- Slide 3 -->
-          <div class="swiper-slide">
-            <div class="relative w-full pt-[42.857%] bg-white">
-              <img
-                class="absolute inset-0 w-full h-full object-contain"
-                src="https://41741943.fs1.hubspotusercontent-na1.net/hubfs/41741943/1-Oct-15-2025-04-07-41-8388-PM.png"
-                alt="Azure Backup 50% Off"
-                loading="lazy"
-                decoding="async"
-                onerror="this.src='https://placehold.co/1200x515/eeeeee/999999?text=Imagen+no+disponible';"
-              />
-            </div>
-          </div>
         </div>
-      </div>
-    </div>
-  </section>
+
+        <aside class="home-kpi-panel" aria-label="Resumen de servicio">
+            <div class="home-kpi-header">
+                <div>
+                    <p class="home-kpi-subtitle">Resumen</p>
+                    <h2 class="home-kpi-title">KPI de servicio</h2>
+                </div>
+                <div class="home-range-tabs" aria-label="Rango de resumen">
+                    <a class="home-range-tab @(currentRange == "mes" ? "active" : "")" href="@($"{baseUrl}?range=mes")">Mes</a>
+                    <a class="home-range-tab @(currentRange == "anio" ? "active" : "")" href="@($"{baseUrl}?range=anio")">Año</a>
+                    <a class="home-range-tab @(currentRange == "total" ? "active" : "")" href="@($"{baseUrl}?range=total")">Total</a>
+                </div>
+            </div>
+
+            @if (TempData["SummaryError"] != null)
+            {
+                <div class="home-error mt-3">@TempData["SummaryError"]</div>
+            }
+
+            <div class="home-kpi-grid">
+                <a href="@Url.Action("Index","Soporte")" class="home-metric" aria-label="Ir a soporte por horas entregadas">
+                    <div>
+                        <p class="home-metric-label">Horas entregadas</p>
+                        <p class="home-metric-value">@resumen.HorasEntregadas</p>
+                        <p class="home-metric-copy">Capacitaciones, tickets, implementaciones y consultorías.</p>
+                    </div>
+                </a>
+
+                <div class="home-mini-stack">
+                    <a href="@Url.Action("Index","Soporte")" class="home-mini-metric" aria-label="Ir a soporte por tickets cloud">
+                        <div>
+                            <p class="home-metric-label">Tickets Cloud</p>
+                            <p class="home-metric-value">@resumen.TicketsCloud</p>
+                        </div>
+                    </a>
+                    <a href="@Url.Action("Index","Soporte")" class="home-mini-metric" aria-label="Ir a soporte por tickets copiers">
+                        <div>
+                            <p class="home-metric-label">Tickets Copiers</p>
+                            <p class="home-metric-value">@resumen.TicketsCopiers</p>
+                        </div>
+                    </a>
+                </div>
+
+                <a href="@Url.Action("Index","Capacitaciones")" class="home-mini-metric" aria-label="Ir a capacitaciones">
+                    <div>
+                        <p class="home-metric-label">Capacitaciones</p>
+                        <p class="home-metric-value">@resumen.Capacitaciones</p>
+                    </div>
+                </a>
+
+                <a href="@Url.Action("Index","Reportes")" class="home-mini-metric" aria-label="Ir a reportes">
+                    <div>
+                        <p class="home-metric-label">Reportes Cloud</p>
+                        <p class="home-metric-value">@resumen.Reportes</p>
+                    </div>
+                </a>
+            </div>
+        </aside>
+    </section>
+
+    <section class="home-section">
+        <div class="home-section-header">
+            <div>
+                <p class="home-section-kicker">Productos y licencias</p>
+                <h2 class="home-section-title">Verticales activas</h2>
+            </div>
+            <a href="https://wa.me/573153405758" target="_blank" rel="noopener noreferrer" class="home-section-action">
+                <i class="ti ti-plus"></i>
+                Solicitar productos
+            </a>
+        </div>
+
+        <div class="home-product-grid">
+            <article class="home-product-card">
+                <div class="home-card-header">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <div class="home-card-logo">
+                            <img
+                                src="https://logo.clearbit.com/kyocera.com"
+                                alt="Kyocera"
+                                referrerpolicy="no-referrer"
+                                onerror="this.style.display='none'; this.parentElement.innerHTML='<i class=&quot;ti ti-printer text-xl text-slate-700&quot;></i>';" />
+                        </div>
+                        <div class="min-w-0">
+                            <p class="home-section-kicker">Impresión inteligente</p>
+                            <h3 class="home-card-title">Copiers</h3>
+                        </div>
+                    </div>
+                    <span class="home-icon amber"><i class="ti ti-printer"></i></span>
+                </div>
+
+                @if (TempData["CopiersError"] != null)
+                {
+                    <div class="home-error mt-3">@TempData["CopiersError"]</div>
+                }
+                else if (copiers == null || copiers.Count == 0)
+                {
+                    <div class="home-empty mt-3">No hay productos para mostrar.</div>
+                }
+                else
+                {
+                    <ul class="home-list thin-scroll">
+                        @foreach (var p in copiers)
+                        {
+                            <li class="home-list-item">
+                                <span class="home-list-name">@p.ProductName</span>
+                                <span class="home-chip">@p.Quantity</span>
+                            </li>
+                        }
+                    </ul>
+                }
+
+                <a href="https://wa.me/573153405758" target="_blank" rel="noopener noreferrer" class="home-card-link">
+                    <i class="ti ti-arrow-up-right"></i>
+                    Solicitar más unidades
+                </a>
+            </article>
+
+            <article class="home-product-card">
+                <div class="home-card-header">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <div class="home-card-logo">
+                            <img
+                                src="https://logo.clearbit.com/microsoft.com"
+                                alt="Microsoft"
+                                referrerpolicy="no-referrer"
+                                onerror="this.style.display='none'; this.parentElement.innerHTML='<i class=&quot;ti ti-brand-windows text-xl text-slate-700&quot;></i>';" />
+                        </div>
+                        <div class="min-w-0">
+                            <p class="home-section-kicker">Nube y productividad</p>
+                            <h3 class="home-card-title">Cloud</h3>
+                        </div>
+                    </div>
+                    <span class="home-icon cyan"><i class="ti ti-cloud"></i></span>
+                </div>
+
+                @if (TempData["HomeError"] != null)
+                {
+                    <div class="home-error mt-3">@TempData["HomeError"]</div>
+                }
+                else if (Model == null || Model.Count == 0)
+                {
+                    <div class="home-empty mt-3">No hay productos para mostrar.</div>
+                }
+                else
+                {
+                    <ul class="home-list thin-scroll">
+                        @foreach (var p in Model)
+                        {
+                            <li class="home-list-item">
+                                <span class="home-list-name">@p.ProductName</span>
+                                <span class="home-chip">@p.Quantity</span>
+                            </li>
+                        }
+                    </ul>
+                }
+
+                <a href="https://wa.me/573153405758" target="_blank" rel="noopener noreferrer" class="home-card-link">
+                    <i class="ti ti-arrow-up-right"></i>
+                    Ampliar licenciamiento
+                </a>
+            </article>
+        </div>
+    </section>
+
+    <section class="home-section">
+        <div class="home-section-header">
+            <div>
+                <p class="home-section-kicker">Actualizaciones</p>
+                <h2 class="home-section-title">Noticias y promociones</h2>
+            </div>
+        </div>
+
+        <div class="home-news-card">
+            <div class="home-card-header">
+                <div class="home-news-pagination swiper-pagination !static"></div>
+                <div class="home-news-controls">
+                    <button class="home-swiper-button promo-prev" type="button" aria-label="Anterior">
+                        <i class="ti ti-chevron-left"></i>
+                    </button>
+                    <button class="home-swiper-button promo-next" type="button" aria-label="Siguiente">
+                        <i class="ti ti-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div id="promoSwiper" class="swiper">
+                <div class="swiper-wrapper">
+                    <div class="swiper-slide">
+                        <div class="home-promo-frame">
+                            <img
+                                src="https://41741943.fs1.hubspotusercontent-na1.net/hubfs/41741943/3%201.png"
+                                alt="Promoción Kyocera 2025"
+                                loading="lazy"
+                                decoding="async"
+                                onerror="this.src='https://placehold.co/1200x515/ffffff/65758b?text=Imagen+no+disponible';" />
+                        </div>
+                    </div>
+
+                    <div class="swiper-slide">
+                        <div class="home-promo-frame">
+                            <img
+                                src="https://41741943.fs1.hubspotusercontent-na1.net/hubfs/41741943/2%201.png"
+                                alt="Licenciamiento Microsoft 365"
+                                loading="lazy"
+                                decoding="async"
+                                onerror="this.src='https://placehold.co/1200x515/ffffff/65758b?text=Imagen+no+disponible';" />
+                        </div>
+                    </div>
+
+                    <div class="swiper-slide">
+                        <div class="home-promo-frame">
+                            <img
+                                src="https://41741943.fs1.hubspotusercontent-na1.net/hubfs/41741943/1-Oct-15-2025-04-07-41-8388-PM.png"
+                                alt="Azure Backup 50% Off"
+                                loading="lazy"
+                                decoding="async"
+                                onerror="this.src='https://placehold.co/1200x515/ffffff/65758b?text=Imagen+no+disponible';" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
 </div>
 
-<!-- Swiper JS -->
 <script defer src="https://cdn.jsdelivr.net/npm/swiper@9/swiper-bundle.min.js"></script>
 <script>
-  document.addEventListener('DOMContentLoaded', () => {
-    const swiper = new Swiper('#promoSwiper', {
-      slidesPerView: 1,
-      spaceBetween: 0,
-      loop: true,
-      observer: true,
-      observeParents: true,
-      autoplay: { delay: 4000, disableOnInteraction: false },
-      pagination: { el: '.swiper-pagination', clickable: true },
-      navigation: { nextEl: '.promo-next', prevEl: '.promo-prev' },
-      lazy: true,
-      on: {
-        imagesReady() { swiper.update(); },
-        resize() { swiper.update(); }
-      }
+    document.addEventListener('DOMContentLoaded', () => {
+        const swiper = new Swiper('#promoSwiper', {
+            slidesPerView: 1,
+            spaceBetween: 0,
+            loop: true,
+            observer: true,
+            observeParents: true,
+            autoplay: { delay: 4200, disableOnInteraction: false },
+            pagination: { el: '.home-news-pagination', clickable: true },
+            navigation: { nextEl: '.promo-next', prevEl: '.promo-prev' },
+            on: {
+                imagesReady() { swiper.update(); },
+                resize() { swiper.update(); }
+            }
+        });
     });
-
-    document.querySelectorAll('#promoSwiper img').forEach(img => {
-      img.addEventListener('error', () => {
-        img.src = 'https://placehold.co/1200x515/eeeeee/999999?text=Imagen+no+disponible';
-        img.alt = 'Imagen no disponible';
-      });
-    });
-  });
 </script>
 }

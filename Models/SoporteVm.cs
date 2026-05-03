@@ -11,11 +11,18 @@ namespace DigitalTechClientPortal.Models
 
     public class CloudTicketVm
     {
+        public Guid Id { get; set; }
         public string Titulo { get; set; } = string.Empty;
         public string Descripcion { get; set; } = string.Empty;
         public DateTime FechaCreacion { get; set; }
         public string Estado { get; set; } = "Desconocido";
         public DateTime? FechaCierre { get; set; }
+        public string Tipo { get; set; } = string.Empty;
+        public string Categoria { get; set; } = string.Empty;
+        public string HorasTomadas { get; set; } = string.Empty;
+        public string Metodo { get; set; } = string.Empty;
+        public string Solucion { get; set; } = string.Empty;
+        public bool TieneAdjunto { get; set; }
     }
 
     public class CopierVm
