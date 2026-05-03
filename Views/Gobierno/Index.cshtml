@@ -96,7 +96,13 @@
       <a class="btn @PeriodClass("D90")" href='@Url.Action("Index","Gobierno", new { period = "D90" })'>90 días</a>
       <a class="btn @PeriodClass("D180")" href='@Url.Action("Index","Gobierno", new { period = "D180" })'>180 días</a>
       <a class="btn btn-outline-secondary" href="javascript:location.reload()"><i class="ti ti-refresh"></i> Actualizar</a>
-      <a class="btn btn-primary" href='@Url.Action("PlanOptimizacion","Gobierno", new { period = Model.Period })'><i class="ti ti-sparkles"></i> Plan AI</a>
+      <a class="btn btn-primary" href='@Url.Action("PlanOptimizacion","Gobierno", new { period = Model.Period })'
+         data-ai-loading="true"
+         data-ai-loading-title="Generando plan de Gobierno M365 con AI"
+         data-ai-loading-copy="Estamos leyendo uso, licencias, actividad, almacenamiento, políticas y salud de servicios para preparar el plan."
+         data-ai-loading-disclaimer="Puede tardar cerca de 30 segundos. Mantén esta ventana abierta mientras se genera el plan.">
+        <i class="ti ti-sparkles"></i> Plan AI
+      </a>
     </div>
   </section>
 

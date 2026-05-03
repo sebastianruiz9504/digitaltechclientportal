@@ -433,7 +433,13 @@
       <div class="security-actions">
         <a class="btn btn-outline-secondary" href="javascript:location.reload()"><i class="ti ti-refresh"></i> Actualizar</a>
         <a class="btn btn-primary" href='@Url.Action("SeguridadContinuidad","Assessment")'><i class="ti ti-clipboard-check"></i> Assessment</a>
-        <a class="btn btn-outline-primary" href='@Url.Action("PlanTrabajo","Seguridad", new { from = Model.From?.ToString("yyyy-MM-dd"), to = Model.To?.ToString("yyyy-MM-dd"), top = 80 })'><i class="ti ti-sparkles"></i> Plan de trabajo</a>
+        <a class="btn btn-outline-primary" href='@Url.Action("PlanTrabajo","Seguridad", new { from = Model.From?.ToString("yyyy-MM-dd"), to = Model.To?.ToString("yyyy-MM-dd"), top = 80 })'
+           data-ai-loading="true"
+           data-ai-loading-title="Generando plan de seguridad con AI"
+           data-ai-loading-copy="Estamos leyendo alertas, incidentes, usuarios, dispositivos y Secure Score para construir acciones recomendadas."
+           data-ai-loading-disclaimer="Puede tardar cerca de 30 segundos. Mantén esta ventana abierta mientras se genera el plan.">
+          <i class="ti ti-sparkles"></i> Plan de trabajo
+        </a>
         <a class="btn btn-outline-primary" href='@Url.Action("Index","Gobierno")'><i class="ti ti-chart-pie"></i> Uso y optimización</a>
         <a class="btn btn-outline-primary" href='@Url.Action("Alertas","Seguridad")'><i class="ti ti-list-search"></i> Ver alertas</a>
       </div>

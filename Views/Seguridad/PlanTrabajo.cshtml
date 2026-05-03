@@ -238,7 +238,7 @@
   }
 </style>
 
-<div class="container-fluid py-4 workplan-page">
+<div id="securityAiPlanExport" class="container-fluid py-4 workplan-page" data-ai-plan-export>
   <section class="workplan-panel workplan-hero">
     <div>
       <p class="workplan-eyebrow">Azure OpenAI + Microsoft Graph</p>
@@ -252,13 +252,26 @@
         <span><i class="ti ti-clock"></i> @(plan?.GeneratedAtLocal ?? DateTimeOffset.Now.ToString("yyyy-MM-dd HH:mm", es))</span>
       </div>
     </div>
-    <div class="workplan-actions">
+    <div class="workplan-actions" data-pdf-exclude>
       <a class="btn btn-outline-secondary" href='@Url.Action("Panel","Seguridad", new { from = Model.From?.ToString("yyyy-MM-dd"), to = Model.To?.ToString("yyyy-MM-dd") })'>
         <i class="ti ti-arrow-left"></i> Volver al panel
       </a>
-      <a class="btn btn-primary" href='@Url.Action("PlanTrabajo","Seguridad", new { from = Model.From?.ToString("yyyy-MM-dd"), to = Model.To?.ToString("yyyy-MM-dd"), top = 80 })'>
+      <a class="btn btn-primary" href='@Url.Action("PlanTrabajo","Seguridad", new { from = Model.From?.ToString("yyyy-MM-dd"), to = Model.To?.ToString("yyyy-MM-dd"), top = 80 })'
+         data-ai-loading="true"
+         data-ai-loading-title="Regenerando plan de seguridad con AI"
+         data-ai-loading-copy="Estamos consultando de nuevo las señales de seguridad y preparando acciones paso a paso."
+         data-ai-loading-disclaimer="Puede tardar cerca de 30 segundos. Mantén esta ventana abierta mientras se genera el plan.">
         <i class="ti ti-sparkles"></i> Regenerar
       </a>
+      @if (plan != null)
+      {
+        <button type="button"
+                class="btn btn-outline-primary"
+                data-ai-plan-pdf="#securityAiPlanExport"
+                data-pdf-filename="plan-seguridad-@DateTimeOffset.Now.ToString("yyyyMMdd-HHmm")">
+          <i class="ti ti-file-type-pdf"></i> Descargar PDF
+        </button>
+      }
     </div>
   </section>
 
@@ -406,5 +419,73 @@
         <div class="workplan-empty">No hay acciones generadas por AI para esta carga.</div>
       }
     </section>
+
+    <section class="workplan-panel workplan-section">
+      <h3 class="workplan-section-title">Hallazgos usados para generar este plan</h3>
+      <div class="workplan-meta mb-3">
+        <span><i class="ti ti-alert-triangle"></i> @Model.Alertas.Count alertas</span>
+        <span><i class="ti ti-siren"></i> @Model.Incidentes.Count incidentes</span>
+        <span><i class="ti ti-users"></i> @Model.UsuariosRiesgo.Count usuarios en riesgo</span>
+        <span><i class="ti ti-device-desktop"></i> @Model.DispositivosRiesgo.Count dispositivos</span>
+        <span><i class="ti ti-shield-check"></i> @Model.SecureScoreControles.Count controles recomendados</span>
+      </div>
+
+      <div class="workplan-grid">
+        <div>
+          <h4 class="workplan-section-title">Fuentes consultadas</h4>
+          <ul class="workplan-list">
+            @foreach (var source in Model.DataSources)
+            {
+              <li class="workplan-threat">
+                <div class="workplan-threat-top">
+                  <p class="workplan-item-title">@source.Name</p>
+                  <span class="workplan-pill @(source.IsAvailable ? "success" : "warning")">@(source.IsAvailable ? "Disponible" : "Pendiente")</span>
+                </div>
+                <p class="workplan-text">@source.Count registro(s). @source.Message</p>
+              </li>
+            }
+          </ul>
+        </div>
+
+        <div>
+          <h4 class="workplan-section-title">Señales principales</h4>
+          <ul class="workplan-list">
+            @foreach (var alerta in Model.Alertas.Take(6))
+            {
+              <li class="workplan-threat">
+                <div class="workplan-threat-top">
+                  <p class="workplan-item-title">@alerta.Title</p>
+                  <span class="workplan-pill @RiskClass(alerta.Severity)">@alerta.Severity</span>
+                </div>
+                <p class="workplan-text">@alerta.Category · @alerta.Status · @(alerta.Provider ?? "Microsoft Graph")</p>
+                <p class="workplan-text">@((alerta.CreatedDateTime ?? alerta.LastUpdatedDateTime)?.ToLocalTime().ToString("dd MMM yyyy HH:mm", es) ?? "Sin fecha")</p>
+              </li>
+            }
+
+            @foreach (var incidente in Model.Incidentes.Take(4))
+            {
+              <li class="workplan-threat">
+                <div class="workplan-threat-top">
+                  <p class="workplan-item-title">@incidente.Title</p>
+                  <span class="workplan-pill @RiskClass(incidente.Severity)">@incidente.Severity</span>
+                </div>
+                <p class="workplan-text">@incidente.Status · @incidente.AlertCount alerta(s) asociada(s)</p>
+                <p class="workplan-text">@((incidente.CreatedDateTime ?? incidente.LastUpdatedDateTime)?.ToLocalTime().ToString("dd MMM yyyy HH:mm", es) ?? "Sin fecha")</p>
+              </li>
+            }
+
+            @if (!Model.Alertas.Any() && !Model.Incidentes.Any())
+            {
+              <li class="workplan-empty">No se encontraron alertas o incidentes puntuales en este rango.</li>
+            }
+          </ul>
+        </div>
+      </div>
+    </section>
   }
 </div>
+
+@section Scripts {
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+}

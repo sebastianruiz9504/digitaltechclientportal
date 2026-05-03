@@ -46,7 +46,7 @@
   @@media (max-width: 640px) { .opt-kpis { grid-template-columns: 1fr; } }
 </style>
 
-<div class="container-fluid py-4 opt-page">
+<div id="m365OptimizationPlanExport" class="container-fluid py-4 opt-page" data-ai-plan-export>
   <section class="opt-panel opt-head">
     <div>
       <p class="opt-eyebrow">Plan AI de optimización</p>
@@ -55,9 +55,24 @@
         Plan generado a partir de reportes Microsoft 365 del período @Model.Period. No estima costos: se enfoca en adopción, limpieza, almacenamiento, gobierno y operación.
       </p>
     </div>
-    <div class="opt-actions">
+    <div class="opt-actions" data-pdf-exclude>
       <a class="btn btn-outline-secondary" href='@Url.Action("Index","Gobierno", new { period = Model.Period })'><i class="ti ti-arrow-left"></i> Volver</a>
-      <a class="btn btn-outline-primary" href='@Url.Action("PlanOptimizacion","Gobierno", new { period = Model.Period })'><i class="ti ti-refresh"></i> Regenerar</a>
+      <a class="btn btn-outline-primary" href='@Url.Action("PlanOptimizacion","Gobierno", new { period = Model.Period })'
+         data-ai-loading="true"
+         data-ai-loading-title="Regenerando plan de Gobierno M365 con AI"
+         data-ai-loading-copy="Estamos consultando reportes de uso, licencias, almacenamiento, políticas y salud de servicios."
+         data-ai-loading-disclaimer="Puede tardar cerca de 30 segundos. Mantén esta ventana abierta mientras se genera el plan.">
+        <i class="ti ti-refresh"></i> Regenerar
+      </a>
+      @if (plan != null)
+      {
+        <button type="button"
+                class="btn btn-outline-primary"
+                data-ai-plan-pdf="#m365OptimizationPlanExport"
+                data-pdf-filename="plan-gobierno-m365-@Model.Period-@DateTimeOffset.Now.ToString("yyyyMMdd-HHmm")">
+          <i class="ti ti-file-type-pdf"></i> Descargar PDF
+        </button>
+      }
     </div>
   </section>
 
@@ -171,6 +186,10 @@
 
   <section class="opt-panel opt-section">
     <h2 class="opt-section-title">Hallazgos calculados por el portal</h2>
+    <div class="opt-note mb-3">
+      Snapshot usado para este plan: @Model.DataSources.Count fuente(s), @Model.TotalPurchasedLicenses licencia(s) comprada(s), @Model.LicensedEnabledUsers usuario(s) habilitado(s) con licencia,
+      @Model.IntunePolicyCount política(s) de Intune y @Model.ManagedDevices.Count dispositivo(s) administrado(s).
+    </div>
     <div class="opt-list">
       @foreach (var item in Model.Opportunities.Take(10))
       {
@@ -183,3 +202,8 @@
     </div>
   </section>
 </div>
+
+@section Scripts {
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+}
