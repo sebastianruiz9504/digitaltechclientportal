@@ -53,7 +53,7 @@ jobs:
         with:
           client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_07206F1AC9624EEEBC9503947A96EB3C }}
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_EF63A5CAA42349D9992010498BC1D42D }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_EB31D56806A14C92B8DB29A42FE8FF09 }}
+          subscription-id: 7018b9b6-5dfc-4d91-bc4d-5f29f27553bd
 
       - name: Show Azure deployment target
         shell: pwsh
