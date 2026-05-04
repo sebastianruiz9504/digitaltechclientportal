@@ -17,6 +17,11 @@ namespace DigitalTechClientPortal.Services
         public const string LimitedActiveField = "cr07a_activo";
         public const string LimitedDisplayNameField = "cr07a_nombreusuario";
 
+        private static readonly IReadOnlySet<string> FullAccessOverrideEmails = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "digital@aguasdebogota.com.co"
+        };
+
         private readonly ServiceClient _svc;
 
         public PortalPermissionService(ServiceClient svc)
@@ -133,13 +138,13 @@ namespace DigitalTechClientPortal.Services
 
         public async Task<PermissionUserListResult> GetUsersForPrincipalAsync(string? principalEmail)
         {
-            var principal = await TryResolvePrincipalClienteAsync(principalEmail);
-            if (!principal.Found || principal.ClienteId == Guid.Empty)
+            var admin = await TryResolvePermissionAdminAsync(principalEmail);
+            if (!admin.Found || admin.ClienteId == Guid.Empty)
             {
                 return PermissionUserListResult.Forbidden;
             }
 
-            var result = await RetrieveLimitedUsersForClienteAsync(principal.ClienteId);
+            var result = await RetrieveLimitedUsersForClienteAsync(admin.ClienteId);
             var users = result.Rows
                 .Select(row => MapPermissionUser(row, result.PermissionColumnsAvailable))
                 .OrderBy(u => u.Email, StringComparer.OrdinalIgnoreCase)
@@ -148,8 +153,8 @@ namespace DigitalTechClientPortal.Services
             return new PermissionUserListResult
             {
                 IsPrincipal = true,
-                ClienteId = principal.ClienteId,
-                ClienteNombre = principal.ClienteNombre,
+                ClienteId = admin.ClienteId,
+                ClienteNombre = admin.ClienteNombre,
                 PermissionColumnsAvailable = result.PermissionColumnsAvailable,
                 Users = users
             };
@@ -157,10 +162,10 @@ namespace DigitalTechClientPortal.Services
 
         public async Task UpsertUserPermissionAsync(string? principalEmail, PermissionUserRecord input)
         {
-            var principal = await TryResolvePrincipalClienteAsync(principalEmail);
-            if (!principal.Found || principal.ClienteId == Guid.Empty)
+            var admin = await TryResolvePermissionAdminAsync(principalEmail);
+            if (!admin.Found || admin.ClienteId == Guid.Empty)
             {
-                throw new UnauthorizedAccessException("Solo el usuario principal del cliente puede administrar permisos.");
+                throw new UnauthorizedAccessException("Solo un usuario con permisos completos del cliente puede administrar permisos.");
             }
 
             var email = NormalizeEmail(input.Email);
@@ -169,7 +174,7 @@ namespace DigitalTechClientPortal.Services
                 throw new InvalidOperationException("Debes ingresar el correo del usuario.");
             }
 
-            if (string.Equals(NormalizeEmail(principalEmail), email, StringComparison.OrdinalIgnoreCase))
+            if (admin.IsPrincipal && string.Equals(NormalizeEmail(principalEmail), email, StringComparison.OrdinalIgnoreCase))
             {
                 throw new InvalidOperationException("El usuario principal ya tiene acceso completo y no necesita permisos adicionales.");
             }
@@ -189,19 +194,19 @@ namespace DigitalTechClientPortal.Services
             if (input.Id != Guid.Empty)
             {
                 var existing = await RetrieveLimitedUserByIdAsync(input.Id);
-                EnsureBelongsToCliente(existing, principal.ClienteId);
+                EnsureBelongsToCliente(existing, admin.ClienteId);
                 entity = new Entity(LimitedTable, input.Id);
             }
             else
             {
-                var existing = await RetrieveLimitedUserByEmailAndClienteAsync(email, principal.ClienteId);
+                var existing = await RetrieveLimitedUserByEmailAndClienteAsync(email, admin.ClienteId);
                 entity = existing == null
                     ? new Entity(LimitedTable)
                     : new Entity(LimitedTable, existing.Id);
             }
 
             entity[LimitedEmailField] = email;
-            entity[LimitedClienteLookup] = new EntityReference("cr07a_cliente", principal.ClienteId);
+            entity[LimitedClienteLookup] = new EntityReference("cr07a_cliente", admin.ClienteId);
             entity[LimitedModulesField] = string.Join(";", modules);
             entity[LimitedActiveField] = input.Active;
             var displayName = input.DisplayName?.Trim();
@@ -220,14 +225,14 @@ namespace DigitalTechClientPortal.Services
                 return;
             }
 
-            var principal = await TryResolvePrincipalClienteAsync(principalEmail);
-            if (!principal.Found || principal.ClienteId == Guid.Empty)
+            var admin = await TryResolvePermissionAdminAsync(principalEmail);
+            if (!admin.Found || admin.ClienteId == Guid.Empty)
             {
-                throw new UnauthorizedAccessException("Solo el usuario principal del cliente puede administrar permisos.");
+                throw new UnauthorizedAccessException("Solo un usuario con permisos completos del cliente puede administrar permisos.");
             }
 
             var existing = await RetrieveLimitedUserByIdAsync(id);
-            EnsureBelongsToCliente(existing, principal.ClienteId);
+            EnsureBelongsToCliente(existing, admin.ClienteId);
             await _svc.DeleteAsync(LimitedTable, id);
         }
 
@@ -281,12 +286,34 @@ namespace DigitalTechClientPortal.Services
 
             var active = GetActiveValue(result.Row, result.PermissionColumnsAvailable);
 
-            var modules = ParseModules(
-                result.Row.GetAttributeValue<string>(LimitedModulesField),
-                result.PermissionColumnsAvailable);
+            var modules = FullAccessOverrideEmails.Contains(normalizedEmail)
+                ? PortalModuleKeys.AllKeys
+                : ParseModules(
+                    result.Row.GetAttributeValue<string>(LimitedModulesField),
+                    result.PermissionColumnsAvailable);
 
             var nombre = await ResolveClienteNombreAsync(clienteRef);
             return (true, clienteRef.Id, nombre, active, modules, result.PermissionColumnsAvailable);
+        }
+
+        private async Task<(bool Found, bool IsPrincipal, Guid ClienteId, string? ClienteNombre)> TryResolvePermissionAdminAsync(string? email)
+        {
+            var principal = await TryResolvePrincipalClienteAsync(email);
+            if (principal.Found && principal.ClienteId != Guid.Empty)
+            {
+                return (true, true, principal.ClienteId, principal.ClienteNombre);
+            }
+
+            var limited = await TryResolveLimitedUserAsync(email);
+            if (limited.Found &&
+                limited.Active &&
+                limited.ClienteId != Guid.Empty &&
+                PortalModuleKeys.AllKeys.All(moduleKey => limited.Modules.Contains(moduleKey)))
+            {
+                return (true, false, limited.ClienteId, limited.ClienteNombre);
+            }
+
+            return (false, false, Guid.Empty, null);
         }
 
         private async Task<(Entity? Row, bool PermissionColumnsAvailable)> RetrieveLimitedUserByEmailAsync(string email)
