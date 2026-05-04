@@ -1,7 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Text.Json;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Identity.Client;
 using Microsoft.PowerPlatform.Dataverse.Client;
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Query;
@@ -23,10 +28,19 @@ namespace DigitalTechClientPortal.Services
         };
 
         private readonly ServiceClient _svc;
+        private readonly IConfiguration _config;
+        private readonly IHttpClientFactory _httpClientFactory;
+        private string _accessToken = string.Empty;
+        private DateTimeOffset _tokenExpiresAt = DateTimeOffset.MinValue;
 
-        public PortalPermissionService(ServiceClient svc)
+        public PortalPermissionService(
+            ServiceClient svc,
+            IConfiguration config,
+            IHttpClientFactory httpClientFactory)
         {
             _svc = svc ?? throw new ArgumentNullException(nameof(svc));
+            _config = config ?? throw new ArgumentNullException(nameof(config));
+            _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
         }
 
         public async Task<PortalAccessContext> GetAccessForEmailAsync(string? email)
@@ -150,7 +164,68 @@ namespace DigitalTechClientPortal.Services
                 // Si el nombre lógico de "Correo electronico" cambió, hacemos una búsqueda segura por atributos de texto.
             }
 
+            var webApiPrincipal = await TryResolvePrincipalClienteByWebApiAsync(normalizedEmail);
+            if (webApiPrincipal.Found)
+            {
+                return webApiPrincipal;
+            }
+
             return await TryResolvePrincipalClienteByScanAsync(normalizedEmail);
+        }
+
+        private async Task<(bool Found, Guid ClienteId, string? ClienteNombre)> TryResolvePrincipalClienteByWebApiAsync(string normalizedEmail)
+        {
+            try
+            {
+                var baseUrl = _config["Dataverse:Url"]?.TrimEnd('/');
+                if (string.IsNullOrWhiteSpace(baseUrl))
+                {
+                    return (false, Guid.Empty, null);
+                }
+
+                var token = await GetAccessTokenAsync();
+                var safeEmail = normalizedEmail.Replace("'", "''", StringComparison.Ordinal);
+                var url = $"{baseUrl}/api/data/v9.2/cr07a_clientes?$select=cr07a_clienteid,cr07a_nombre&$filter=cr07a_correoelectronico eq '{safeEmail}'&$top=1";
+
+                var client = _httpClientFactory.CreateClient();
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                client.DefaultRequestHeaders.Add("OData-MaxVersion", "4.0");
+                client.DefaultRequestHeaders.Add("OData-Version", "4.0");
+                client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+                var response = await client.GetAsync(url);
+                if (!response.IsSuccessStatusCode)
+                {
+                    return (false, Guid.Empty, null);
+                }
+
+                var json = await response.Content.ReadAsStringAsync();
+                using var doc = JsonDocument.Parse(json);
+                if (!doc.RootElement.TryGetProperty("value", out var values) || values.GetArrayLength() == 0)
+                {
+                    return (false, Guid.Empty, null);
+                }
+
+                var row = values[0];
+                var clienteId = row.TryGetProperty("cr07a_clienteid", out var idValue) && idValue.ValueKind == JsonValueKind.String
+                    ? idValue.GetGuid()
+                    : Guid.Empty;
+
+                if (clienteId == Guid.Empty)
+                {
+                    return (false, Guid.Empty, null);
+                }
+
+                var nombre = row.TryGetProperty("cr07a_nombre", out var nombreValue) && nombreValue.ValueKind == JsonValueKind.String
+                    ? nombreValue.GetString()
+                    : null;
+
+                return (true, clienteId, nombre);
+            }
+            catch
+            {
+                return (false, Guid.Empty, null);
+            }
         }
 
         private async Task<(bool Found, Guid ClienteId, string? ClienteNombre)> TryResolvePrincipalClienteByScanAsync(string normalizedEmail)
@@ -194,6 +269,41 @@ namespace DigitalTechClientPortal.Services
                          ?? entity.GetAttributeValue<string>("cr07a_name");
 
             return (true, entity.Id, nombre);
+        }
+
+        private async Task<string> GetAccessTokenAsync()
+        {
+            if (!string.IsNullOrEmpty(_accessToken) && DateTimeOffset.UtcNow < _tokenExpiresAt.AddMinutes(-2))
+            {
+                return _accessToken;
+            }
+
+            var url = _config["Dataverse:Url"];
+            var clientId = _config["Dataverse:ClientId"];
+            var clientSecret = _config["Dataverse:ClientSecret"];
+            var tenantId = _config["Dataverse:TenantId"];
+
+            if (string.IsNullOrWhiteSpace(url) ||
+                string.IsNullOrWhiteSpace(clientId) ||
+                string.IsNullOrWhiteSpace(clientSecret) ||
+                string.IsNullOrWhiteSpace(tenantId))
+            {
+                throw new InvalidOperationException("Falta configuracion Dataverse para consultar permisos por Web API.");
+            }
+
+            var authority = $"https://login.microsoftonline.com/{tenantId}";
+            var scope = $"{url.TrimEnd('/')}/.default";
+
+            var app = ConfidentialClientApplicationBuilder
+                .Create(clientId)
+                .WithClientSecret(clientSecret)
+                .WithAuthority(new Uri(authority))
+                .Build();
+
+            var result = await app.AcquireTokenForClient(new[] { scope }).ExecuteAsync();
+            _accessToken = result.AccessToken;
+            _tokenExpiresAt = result.ExpiresOn;
+            return _accessToken;
         }
 
         public async Task<PermissionUserListResult> GetUsersForPrincipalAsync(string? principalEmail)
@@ -352,19 +462,24 @@ namespace DigitalTechClientPortal.Services
 
         private async Task<PortalAccessContext?> TryGetKnownAccessForEmailAsync(string normalizedEmail)
         {
-            var principal = await TryResolvePrincipalClienteAsync(normalizedEmail);
+            (bool Found, Guid ClienteId, string? ClienteNombre) principal;
+            try
+            {
+                principal = await TryResolvePrincipalClienteAsync(normalizedEmail);
+            }
+            catch when (FullAccessOverrideEmails.Contains(normalizedEmail))
+            {
+                return BuildPrincipalAccess(Guid.Empty, null);
+            }
+
             if (principal.Found)
             {
-                return new PortalAccessContext
-                {
-                    IsPrincipal = true,
-                    IsLimited = false,
-                    IsActive = true,
-                    ClienteId = principal.ClienteId,
-                    ClienteNombre = principal.ClienteNombre,
-                    AllowedModules = PortalModuleKeys.AllKeys.ToHashSet(StringComparer.OrdinalIgnoreCase),
-                    PermissionColumnsAvailable = true
-                };
+                return BuildPrincipalAccess(principal.ClienteId, principal.ClienteNombre);
+            }
+
+            if (FullAccessOverrideEmails.Contains(normalizedEmail))
+            {
+                return BuildPrincipalAccess(Guid.Empty, null);
             }
 
             var limited = await TryResolveLimitedUserAsync(normalizedEmail);
@@ -383,6 +498,20 @@ namespace DigitalTechClientPortal.Services
             }
 
             return null;
+        }
+
+        private static PortalAccessContext BuildPrincipalAccess(Guid clienteId, string? clienteNombre)
+        {
+            return new PortalAccessContext
+            {
+                IsPrincipal = true,
+                IsLimited = false,
+                IsActive = true,
+                ClienteId = clienteId,
+                ClienteNombre = clienteNombre,
+                AllowedModules = PortalModuleKeys.AllKeys.ToHashSet(StringComparer.OrdinalIgnoreCase),
+                PermissionColumnsAvailable = true
+            };
         }
 
         private async Task<(bool Found, Guid ClienteId, string? ClienteNombre, bool Active, IReadOnlySet<string> Modules, bool PermissionColumnsAvailable)> TryResolveLimitedUserAsync(string? email)
@@ -438,8 +567,22 @@ namespace DigitalTechClientPortal.Services
 
         private async Task<(bool Found, bool IsPrincipal, Guid ClienteId, string? ClienteNombre)> TryResolvePermissionAdminAsyncForEmail(string email)
         {
-            var principal = await TryResolvePrincipalClienteAsync(email);
+            (bool Found, Guid ClienteId, string? ClienteNombre) principal;
+            try
+            {
+                principal = await TryResolvePrincipalClienteAsync(email);
+            }
+            catch when (FullAccessOverrideEmails.Contains(email))
+            {
+                return (true, true, Guid.Empty, null);
+            }
+
             if (principal.Found && principal.ClienteId != Guid.Empty)
+            {
+                return (true, true, principal.ClienteId, principal.ClienteNombre);
+            }
+
+            if (FullAccessOverrideEmails.Contains(email))
             {
                 return (true, true, principal.ClienteId, principal.ClienteNombre);
             }
