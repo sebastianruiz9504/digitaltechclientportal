@@ -65,7 +65,7 @@ namespace DigitalTechClientPortal.Services
             // 1) Cliente normal (lee cualquier campo de nombre que tengas)
             var q = new QueryExpression("cr07a_cliente")
             {
-                ColumnSet = new ColumnSet("cr07a_clienteid", "cr07a_nombre", "cr07a_name"),
+                ColumnSet = new ColumnSet("cr07a_clienteid", "cr07a_nombre"),
                 Criteria =
                 {
                     Conditions =
@@ -79,7 +79,7 @@ namespace DigitalTechClientPortal.Services
             var e = result.Entities.FirstOrDefault();
             if (e != null)
             {
-                var nombre = e.GetAttributeValue<string>("cr07a_nombre") ?? e.GetAttributeValue<string>("cr07a_name");
+                var nombre = e.GetAttributeValue<string>("cr07a_nombre");
                 return string.IsNullOrWhiteSpace(nombre) ? null : nombre;
             }
 

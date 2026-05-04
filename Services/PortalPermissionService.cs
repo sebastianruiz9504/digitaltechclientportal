@@ -147,7 +147,7 @@ namespace DigitalTechClientPortal.Services
             {
                 var q = new QueryExpression("cr07a_cliente")
                 {
-                    ColumnSet = new ColumnSet("cr07a_clienteid", "cr07a_nombre", "cr07a_name"),
+                    ColumnSet = new ColumnSet("cr07a_clienteid", "cr07a_nombre"),
                     TopCount = 1,
                     Criteria =
                     {
@@ -225,8 +225,7 @@ namespace DigitalTechClientPortal.Services
 
         private static (bool Found, Guid ClienteId, string? ClienteNombre) MapClienteEntity(Entity entity)
         {
-            var nombre = entity.GetAttributeValue<string>("cr07a_nombre")
-                         ?? entity.GetAttributeValue<string>("cr07a_name");
+            var nombre = entity.GetAttributeValue<string>("cr07a_nombre");
 
             return (true, entity.Id, nombre);
         }
@@ -731,7 +730,7 @@ namespace DigitalTechClientPortal.Services
         private static QueryExpression CreateLimitedUserBaseQuery(bool includePermissionColumns)
         {
             var columns = includePermissionColumns
-                ? new ColumnSet(LimitedEmailField, LimitedClienteLookup, LimitedModulesField, LimitedActiveField)
+                ? new ColumnSet(LimitedEmailField, LimitedClienteLookup, LimitedModulesField, LimitedActiveField, LimitedDisplayNameField)
                 : new ColumnSet(LimitedEmailField, LimitedClienteLookup);
 
             return new QueryExpression(LimitedTable)
@@ -763,9 +762,8 @@ namespace DigitalTechClientPortal.Services
 
             try
             {
-                var cliente = await _svc.RetrieveAsync("cr07a_cliente", clienteRef.Id, new ColumnSet("cr07a_name", "cr07a_nombre"));
-                return cliente.GetAttributeValue<string>("cr07a_nombre")
-                       ?? cliente.GetAttributeValue<string>("cr07a_name");
+                var cliente = await _svc.RetrieveAsync("cr07a_cliente", clienteRef.Id, new ColumnSet("cr07a_nombre"));
+                return cliente.GetAttributeValue<string>("cr07a_nombre");
             }
             catch
             {
@@ -841,7 +839,8 @@ namespace DigitalTechClientPortal.Services
             {
                 var message = current.Message ?? string.Empty;
                 if ((message.Contains(LimitedModulesField, StringComparison.OrdinalIgnoreCase) ||
-                     message.Contains(LimitedActiveField, StringComparison.OrdinalIgnoreCase)) &&
+                     message.Contains(LimitedActiveField, StringComparison.OrdinalIgnoreCase) ||
+                     message.Contains(LimitedDisplayNameField, StringComparison.OrdinalIgnoreCase)) &&
                     (message.Contains("Could not find", StringComparison.OrdinalIgnoreCase) ||
                      message.Contains("does not exist", StringComparison.OrdinalIgnoreCase) ||
                      message.Contains("not found", StringComparison.OrdinalIgnoreCase)))
