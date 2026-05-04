@@ -163,6 +163,10 @@ namespace DigitalTechClientPortal.Services
             {
                 // Si el nombre lógico de "Correo electronico" cambió, hacemos una búsqueda segura por atributos de texto.
             }
+            catch
+            {
+                // Permisos puede seguir resolviendo por Web API aunque el ServiceClient falle en esta consulta.
+            }
 
             var webApiPrincipal = await TryResolvePrincipalClienteByWebApiAsync(normalizedEmail);
             if (webApiPrincipal.Found)
@@ -170,7 +174,20 @@ namespace DigitalTechClientPortal.Services
                 return webApiPrincipal;
             }
 
-            return await TryResolvePrincipalClienteByScanAsync(normalizedEmail);
+            var webApiScanPrincipal = await TryResolvePrincipalClienteByWebApiScanAsync(normalizedEmail);
+            if (webApiScanPrincipal.Found)
+            {
+                return webApiScanPrincipal;
+            }
+
+            try
+            {
+                return await TryResolvePrincipalClienteByScanAsync(normalizedEmail);
+            }
+            catch
+            {
+                return (false, Guid.Empty, null);
+            }
         }
 
         private async Task<(bool Found, Guid ClienteId, string? ClienteNombre)> TryResolvePrincipalClienteByWebApiAsync(string normalizedEmail)
@@ -228,6 +245,61 @@ namespace DigitalTechClientPortal.Services
             }
         }
 
+        private async Task<(bool Found, Guid ClienteId, string? ClienteNombre)> TryResolvePrincipalClienteByWebApiScanAsync(string normalizedEmail)
+        {
+            try
+            {
+                var baseUrl = _config["Dataverse:Url"]?.TrimEnd('/');
+                if (string.IsNullOrWhiteSpace(baseUrl))
+                {
+                    return (false, Guid.Empty, null);
+                }
+
+                var token = await GetAccessTokenAsync();
+                var nextUrl = $"{baseUrl}/api/data/v9.2/cr07a_clientes?$select=cr07a_clienteid,cr07a_nombre,cr07a_name,cr07a_correoelectronico&$top=5000";
+
+                while (!string.IsNullOrWhiteSpace(nextUrl))
+                {
+                    var client = _httpClientFactory.CreateClient();
+                    client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                    client.DefaultRequestHeaders.Add("OData-MaxVersion", "4.0");
+                    client.DefaultRequestHeaders.Add("OData-Version", "4.0");
+                    client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+                    var response = await client.GetAsync(nextUrl);
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        return (false, Guid.Empty, null);
+                    }
+
+                    var json = await response.Content.ReadAsStringAsync();
+                    using var doc = JsonDocument.Parse(json);
+                    if (!doc.RootElement.TryGetProperty("value", out var values))
+                    {
+                        return (false, Guid.Empty, null);
+                    }
+
+                    foreach (var row in values.EnumerateArray())
+                    {
+                        if (JsonRowContainsEmail(row, normalizedEmail))
+                        {
+                            return MapClienteJsonRow(row);
+                        }
+                    }
+
+                    nextUrl = doc.RootElement.TryGetProperty("@odata.nextLink", out var nextLink) && nextLink.ValueKind == JsonValueKind.String
+                        ? nextLink.GetString()
+                        : null;
+                }
+            }
+            catch
+            {
+                return (false, Guid.Empty, null);
+            }
+
+            return (false, Guid.Empty, null);
+        }
+
         private async Task<(bool Found, Guid ClienteId, string? ClienteNombre)> TryResolvePrincipalClienteByScanAsync(string normalizedEmail)
         {
             var q = new QueryExpression("cr07a_cliente")
@@ -269,6 +341,45 @@ namespace DigitalTechClientPortal.Services
                          ?? entity.GetAttributeValue<string>("cr07a_name");
 
             return (true, entity.Id, nombre);
+        }
+
+        private static (bool Found, Guid ClienteId, string? ClienteNombre) MapClienteJsonRow(JsonElement row)
+        {
+            var clienteId = row.TryGetProperty("cr07a_clienteid", out var idValue) && idValue.ValueKind == JsonValueKind.String
+                ? idValue.GetGuid()
+                : Guid.Empty;
+
+            if (clienteId == Guid.Empty)
+            {
+                return (false, Guid.Empty, null);
+            }
+
+            var nombre = row.TryGetProperty("cr07a_nombre", out var nombreValue) && nombreValue.ValueKind == JsonValueKind.String
+                ? nombreValue.GetString()
+                : null;
+
+            if (string.IsNullOrWhiteSpace(nombre) &&
+                row.TryGetProperty("cr07a_name", out var nameValue) &&
+                nameValue.ValueKind == JsonValueKind.String)
+            {
+                nombre = nameValue.GetString();
+            }
+
+            return (true, clienteId, nombre);
+        }
+
+        private static bool JsonRowContainsEmail(JsonElement row, string normalizedEmail)
+        {
+            foreach (var property in row.EnumerateObject())
+            {
+                if (property.Value.ValueKind == JsonValueKind.String &&
+                    TextContainsEmail(property.Value.GetString() ?? string.Empty, normalizedEmail))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private async Task<string> GetAccessTokenAsync()
