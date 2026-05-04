@@ -137,6 +137,12 @@ namespace DigitalTechClientPortal.Services
                 return (false, Guid.Empty, null);
             }
 
+            var webApiPrincipal = await TryResolvePrincipalClienteByWebApiAsync(normalizedEmail);
+            if (webApiPrincipal.Found)
+            {
+                return webApiPrincipal;
+            }
+
             try
             {
                 var q = new QueryExpression("cr07a_cliente")
@@ -154,35 +160,7 @@ namespace DigitalTechClientPortal.Services
 
                 var result = await _svc.RetrieveMultipleAsync(q);
                 var entity = result.Entities.FirstOrDefault();
-                if (entity != null)
-                {
-                    return MapClienteEntity(entity);
-                }
-            }
-            catch (Exception ex) when (IsMissingClienteEmailColumnException(ex))
-            {
-                // Si el nombre lógico de "Correo electronico" cambió, hacemos una búsqueda segura por atributos de texto.
-            }
-            catch
-            {
-                // Permisos puede seguir resolviendo por Web API aunque el ServiceClient falle en esta consulta.
-            }
-
-            var webApiPrincipal = await TryResolvePrincipalClienteByWebApiAsync(normalizedEmail);
-            if (webApiPrincipal.Found)
-            {
-                return webApiPrincipal;
-            }
-
-            var webApiScanPrincipal = await TryResolvePrincipalClienteByWebApiScanAsync(normalizedEmail);
-            if (webApiScanPrincipal.Found)
-            {
-                return webApiScanPrincipal;
-            }
-
-            try
-            {
-                return await TryResolvePrincipalClienteByScanAsync(normalizedEmail);
+                return entity == null ? (false, Guid.Empty, null) : MapClienteEntity(entity);
             }
             catch
             {
@@ -245,141 +223,12 @@ namespace DigitalTechClientPortal.Services
             }
         }
 
-        private async Task<(bool Found, Guid ClienteId, string? ClienteNombre)> TryResolvePrincipalClienteByWebApiScanAsync(string normalizedEmail)
-        {
-            try
-            {
-                var baseUrl = _config["Dataverse:Url"]?.TrimEnd('/');
-                if (string.IsNullOrWhiteSpace(baseUrl))
-                {
-                    return (false, Guid.Empty, null);
-                }
-
-                var token = await GetAccessTokenAsync();
-                var nextUrl = $"{baseUrl}/api/data/v9.2/cr07a_clientes?$top=5000";
-
-                while (!string.IsNullOrWhiteSpace(nextUrl))
-                {
-                    var client = _httpClientFactory.CreateClient();
-                    client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-                    client.DefaultRequestHeaders.Add("OData-MaxVersion", "4.0");
-                    client.DefaultRequestHeaders.Add("OData-Version", "4.0");
-                    client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-
-                    var response = await client.GetAsync(nextUrl);
-                    if (!response.IsSuccessStatusCode)
-                    {
-                        return (false, Guid.Empty, null);
-                    }
-
-                    var json = await response.Content.ReadAsStringAsync();
-                    using var doc = JsonDocument.Parse(json);
-                    if (!doc.RootElement.TryGetProperty("value", out var values))
-                    {
-                        return (false, Guid.Empty, null);
-                    }
-
-                    foreach (var row in values.EnumerateArray())
-                    {
-                        if (JsonRowContainsEmail(row, normalizedEmail))
-                        {
-                            return MapClienteJsonRow(row);
-                        }
-                    }
-
-                    nextUrl = doc.RootElement.TryGetProperty("@odata.nextLink", out var nextLink) && nextLink.ValueKind == JsonValueKind.String
-                        ? nextLink.GetString()
-                        : null;
-                }
-            }
-            catch
-            {
-                return (false, Guid.Empty, null);
-            }
-
-            return (false, Guid.Empty, null);
-        }
-
-        private async Task<(bool Found, Guid ClienteId, string? ClienteNombre)> TryResolvePrincipalClienteByScanAsync(string normalizedEmail)
-        {
-            var q = new QueryExpression("cr07a_cliente")
-            {
-                ColumnSet = new ColumnSet(true),
-                PageInfo = new PagingInfo
-                {
-                    Count = 5000,
-                    PageNumber = 1
-                }
-            };
-
-            while (true)
-            {
-                var result = await _svc.RetrieveMultipleAsync(q);
-                foreach (var entity in result.Entities)
-                {
-                    if (EntityContainsEmail(entity, normalizedEmail))
-                    {
-                        return MapClienteEntity(entity);
-                    }
-                }
-
-                if (!result.MoreRecords)
-                {
-                    break;
-                }
-
-                q.PageInfo.PageNumber++;
-                q.PageInfo.PagingCookie = result.PagingCookie;
-            }
-
-            return (false, Guid.Empty, null);
-        }
-
         private static (bool Found, Guid ClienteId, string? ClienteNombre) MapClienteEntity(Entity entity)
         {
             var nombre = entity.GetAttributeValue<string>("cr07a_nombre")
                          ?? entity.GetAttributeValue<string>("cr07a_name");
 
             return (true, entity.Id, nombre);
-        }
-
-        private static (bool Found, Guid ClienteId, string? ClienteNombre) MapClienteJsonRow(JsonElement row)
-        {
-            var clienteId = row.TryGetProperty("cr07a_clienteid", out var idValue) && idValue.ValueKind == JsonValueKind.String
-                ? idValue.GetGuid()
-                : Guid.Empty;
-
-            if (clienteId == Guid.Empty)
-            {
-                return (false, Guid.Empty, null);
-            }
-
-            var nombre = row.TryGetProperty("cr07a_nombre", out var nombreValue) && nombreValue.ValueKind == JsonValueKind.String
-                ? nombreValue.GetString()
-                : null;
-
-            if (string.IsNullOrWhiteSpace(nombre) &&
-                row.TryGetProperty("cr07a_name", out var nameValue) &&
-                nameValue.ValueKind == JsonValueKind.String)
-            {
-                nombre = nameValue.GetString();
-            }
-
-            return (true, clienteId, nombre);
-        }
-
-        private static bool JsonRowContainsEmail(JsonElement row, string normalizedEmail)
-        {
-            foreach (var property in row.EnumerateObject())
-            {
-                if (property.Value.ValueKind == JsonValueKind.String &&
-                    TextContainsEmail(property.Value.GetString() ?? string.Empty, normalizedEmail))
-                {
-                    return true;
-                }
-            }
-
-            return false;
         }
 
         private async Task<string> GetAccessTokenAsync()
@@ -441,6 +290,29 @@ namespace DigitalTechClientPortal.Services
                 IsPrincipal = true,
                 ClienteId = admin.ClienteId,
                 ClienteNombre = admin.ClienteNombre,
+                PermissionColumnsAvailable = result.PermissionColumnsAvailable,
+                Users = users
+            };
+        }
+
+        public async Task<PermissionUserListResult> GetUsersForClienteAsync(Guid clienteId, string? clienteNombre)
+        {
+            if (clienteId == Guid.Empty)
+            {
+                return PermissionUserListResult.Forbidden;
+            }
+
+            var result = await RetrieveLimitedUsersForClienteAsync(clienteId);
+            var users = result.Rows
+                .Select(row => MapPermissionUser(row, result.PermissionColumnsAvailable))
+                .OrderBy(u => u.Email, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            return new PermissionUserListResult
+            {
+                IsPrincipal = true,
+                ClienteId = clienteId,
+                ClienteNombre = clienteNombre,
                 PermissionColumnsAvailable = result.PermissionColumnsAvailable,
                 Users = users
             };
@@ -510,6 +382,64 @@ namespace DigitalTechClientPortal.Services
             await SavePermissionEntityWithFallbacksAsync(entity);
         }
 
+        public async Task UpsertUserPermissionForClienteAsync(Guid clienteId, IEnumerable<string?> principalEmails, PermissionUserRecord input)
+        {
+            var normalizedPrincipalEmails = NormalizeEmails(principalEmails);
+            if (clienteId == Guid.Empty)
+            {
+                throw new UnauthorizedAccessException("No se pudo resolver el cliente para administrar permisos.");
+            }
+
+            var email = NormalizeEmail(input.Email);
+            if (string.IsNullOrWhiteSpace(email))
+            {
+                throw new InvalidOperationException("Debes ingresar el correo del usuario.");
+            }
+
+            if (normalizedPrincipalEmails.Contains(email, StringComparer.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("El usuario principal ya tiene acceso completo y no necesita permisos adicionales.");
+            }
+
+            var modules = input.Modules
+                .Where(PortalModuleKeys.IsValid)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (modules.Count == 0)
+            {
+                throw new InvalidOperationException("Selecciona al menos una pagina para este usuario.");
+            }
+
+            Entity entity;
+            if (input.Id != Guid.Empty)
+            {
+                var existing = await RetrieveLimitedUserByIdAsync(input.Id);
+                EnsureBelongsToCliente(existing, clienteId);
+                entity = new Entity(LimitedTable, input.Id);
+            }
+            else
+            {
+                var existing = await RetrieveLimitedUserByEmailAndClienteAsync(email, clienteId);
+                entity = existing == null
+                    ? new Entity(LimitedTable)
+                    : new Entity(LimitedTable, existing.Id);
+            }
+
+            entity[LimitedEmailField] = email;
+            entity[LimitedClienteLookup] = new EntityReference("cr07a_cliente", clienteId);
+            entity[LimitedModulesField] = string.Join(";", modules);
+            entity[LimitedActiveField] = input.Active;
+            var displayName = input.DisplayName?.Trim();
+            if (!string.IsNullOrWhiteSpace(displayName))
+            {
+                entity[LimitedDisplayNameField] = displayName;
+            }
+
+            await SavePermissionEntityWithFallbacksAsync(entity);
+        }
+
         public async Task DeleteUserPermissionAsync(string? principalEmail, Guid id)
         {
             await DeleteUserPermissionAsync(new[] { principalEmail }, id);
@@ -530,6 +460,23 @@ namespace DigitalTechClientPortal.Services
 
             var existing = await RetrieveLimitedUserByIdAsync(id);
             EnsureBelongsToCliente(existing, admin.ClienteId);
+            await _svc.DeleteAsync(LimitedTable, id);
+        }
+
+        public async Task DeleteUserPermissionForClienteAsync(Guid clienteId, Guid id)
+        {
+            if (id == Guid.Empty)
+            {
+                return;
+            }
+
+            if (clienteId == Guid.Empty)
+            {
+                throw new UnauthorizedAccessException("No se pudo resolver el cliente para administrar permisos.");
+            }
+
+            var existing = await RetrieveLimitedUserByIdAsync(id);
+            EnsureBelongsToCliente(existing, clienteId);
             await _svc.DeleteAsync(LimitedTable, id);
         }
 
@@ -807,48 +754,6 @@ namespace DigitalTechClientPortal.Services
             };
         }
 
-        private static bool EntityContainsEmail(Entity entity, string normalizedEmail)
-        {
-            foreach (var attribute in entity.Attributes)
-            {
-                if (attribute.Value is string value && TextContainsEmail(value, normalizedEmail))
-                {
-                    return true;
-                }
-
-                if (attribute.Value is AliasedValue { Value: string aliasedValue } &&
-                    TextContainsEmail(aliasedValue, normalizedEmail))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        private static bool TextContainsEmail(string value, string normalizedEmail)
-        {
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                return false;
-            }
-
-            var normalizedValue = value.Trim().ToLowerInvariant();
-            if (string.Equals(normalizedValue, normalizedEmail, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-
-            if (!normalizedValue.Contains(normalizedEmail, StringComparison.OrdinalIgnoreCase))
-            {
-                return false;
-            }
-
-            return normalizedValue
-                .Split(new[] { ';', ',', '|', '\n', '\r', ' ', '<', '>', '"' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Any(part => string.Equals(part.Trim().ToLowerInvariant(), normalizedEmail, StringComparison.OrdinalIgnoreCase));
-        }
-
         private async Task<string?> ResolveClienteNombreAsync(EntityReference clienteRef)
         {
             if (!string.IsNullOrWhiteSpace(clienteRef.Name))
@@ -937,26 +842,6 @@ namespace DigitalTechClientPortal.Services
                 var message = current.Message ?? string.Empty;
                 if ((message.Contains(LimitedModulesField, StringComparison.OrdinalIgnoreCase) ||
                      message.Contains(LimitedActiveField, StringComparison.OrdinalIgnoreCase)) &&
-                    (message.Contains("Could not find", StringComparison.OrdinalIgnoreCase) ||
-                     message.Contains("does not exist", StringComparison.OrdinalIgnoreCase) ||
-                     message.Contains("not found", StringComparison.OrdinalIgnoreCase)))
-                {
-                    return true;
-                }
-
-                current = current.InnerException;
-            }
-
-            return false;
-        }
-
-        private static bool IsMissingClienteEmailColumnException(Exception ex)
-        {
-            var current = ex;
-            while (current != null)
-            {
-                var message = current.Message ?? string.Empty;
-                if (message.Contains("cr07a_correoelectronico", StringComparison.OrdinalIgnoreCase) &&
                     (message.Contains("Could not find", StringComparison.OrdinalIgnoreCase) ||
                      message.Contains("does not exist", StringComparison.OrdinalIgnoreCase) ||
                      message.Contains("not found", StringComparison.OrdinalIgnoreCase)))

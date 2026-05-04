@@ -18,7 +18,7 @@
     var candidateEmails = UserEmailResolver.GetCandidateEmails(User);
     var email = candidateEmails.FirstOrDefault();
 
-    dynamic? cliente = null;
+    DataverseClienteService.ClienteInfo? cliente = null;
     foreach (var candidateEmail in candidateEmails)
     {
         try
@@ -47,7 +47,7 @@
     var isAuthenticated = User.Identity?.IsAuthenticated == true;
     var displayName = User.Identity?.Name ?? email ?? string.Empty;
     var isLimited = access.IsLimited;
-    var hasPermissionClient = access.ClienteId != Guid.Empty;
+    var hasPermissionClient = access.ClienteId != Guid.Empty || (cliente?.Id ?? Guid.Empty) != Guid.Empty;
     var canManagePermissions = hasPermissionClient && (access.IsPrincipal
         || (access.IsLimited
             && access.IsActive

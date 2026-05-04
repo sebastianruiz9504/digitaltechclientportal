@@ -15,31 +15,27 @@ namespace DigitalTechClientPortal.Controllers
     public sealed class PermisosController : Controller
     {
         private readonly PortalPermissionService _permissions;
+        private readonly DataverseClienteService _clienteService;
 
-        public PermisosController(PortalPermissionService permissions)
+        public PermisosController(
+            PortalPermissionService permissions,
+            DataverseClienteService clienteService)
         {
             _permissions = permissions ?? throw new ArgumentNullException(nameof(permissions));
+            _clienteService = clienteService ?? throw new ArgumentNullException(nameof(clienteService));
         }
 
         [HttpGet("")]
         [HttpGet("Index")]
         public async Task<IActionResult> Index()
         {
-            PermissionUserListResult data;
-            try
-            {
-                data = await _permissions.GetUsersForPrincipalAsync(GetCurrentEmails());
-            }
-            catch
+            var permiso = await ResolvePermissionContextAsync();
+            if (!permiso.CanManage)
             {
                 return RedirectToAction(nameof(Denegado));
             }
 
-            if (!data.IsPrincipal)
-            {
-                return RedirectToAction(nameof(Denegado));
-            }
-
+            var data = await _permissions.GetUsersForClienteAsync(permiso.ClienteId, permiso.ClienteNombre);
             var vm = new PermisosIndexVm
             {
                 ClienteId = data.ClienteId,
@@ -82,7 +78,15 @@ namespace DigitalTechClientPortal.Controllers
         {
             try
             {
-                await _permissions.UpsertUserPermissionAsync(
+                var permiso = await ResolvePermissionContextAsync();
+                if (!permiso.CanManage)
+                {
+                    TempData["PermisosError"] = "No se pudo resolver el cliente para administrar permisos.";
+                    return RedirectToAction(nameof(Index));
+                }
+
+                await _permissions.UpsertUserPermissionForClienteAsync(
+                    permiso.ClienteId,
                     GetCurrentEmails(),
                     new PermissionUserRecord
                     {
@@ -109,7 +113,14 @@ namespace DigitalTechClientPortal.Controllers
         {
             try
             {
-                await _permissions.DeleteUserPermissionAsync(GetCurrentEmails(), id);
+                var permiso = await ResolvePermissionContextAsync();
+                if (!permiso.CanManage)
+                {
+                    TempData["PermisosError"] = "No se pudo resolver el cliente para administrar permisos.";
+                    return RedirectToAction(nameof(Index));
+                }
+
+                await _permissions.DeleteUserPermissionForClienteAsync(permiso.ClienteId, id);
                 TempData["PermisosOk"] = "Usuario eliminado.";
             }
             catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException)
@@ -128,6 +139,57 @@ namespace DigitalTechClientPortal.Controllers
         private IReadOnlyList<string> GetCurrentEmails()
         {
             return UserEmailResolver.GetCandidateEmails(User);
+        }
+
+        private async Task<(bool CanManage, Guid ClienteId, string? ClienteNombre)> ResolvePermissionContextAsync()
+        {
+            var emails = GetCurrentEmails();
+            if (emails.Count == 0)
+            {
+                return (false, Guid.Empty, null);
+            }
+
+            PortalAccessContext access;
+            try
+            {
+                access = await _permissions.GetAccessForEmailsAsync(emails);
+            }
+            catch
+            {
+                return (false, Guid.Empty, null);
+            }
+
+            var canManage = access.IsPrincipal ||
+                (access.IsLimited &&
+                 access.IsActive &&
+                 PortalModuleKeys.AllKeys.All(moduleKey => access.AllowedModules.Contains(moduleKey)));
+
+            if (!canManage)
+            {
+                return (false, Guid.Empty, null);
+            }
+
+            if (access.ClienteId != Guid.Empty)
+            {
+                return (true, access.ClienteId, access.ClienteNombre);
+            }
+
+            foreach (var email in emails)
+            {
+                try
+                {
+                    var cliente = await _clienteService.GetClienteByEmailAsync(email);
+                    if (cliente != null && cliente.Id != Guid.Empty)
+                    {
+                        return (true, cliente.Id, cliente.Nombre);
+                    }
+                }
+                catch
+                {
+                }
+            }
+
+            return (false, Guid.Empty, null);
         }
     }
 }
