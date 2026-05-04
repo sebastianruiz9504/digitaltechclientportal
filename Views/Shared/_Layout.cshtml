@@ -1,4 +1,4 @@
-@using System.Security.Claims
+@using DigitalTechClientPortal.Security
 @using DigitalTechClientPortal.Services
 @inject DigitalTechClientPortal.Services.DataverseClienteService ClienteService
 @inject DigitalTechClientPortal.Services.PortalPermissionService PermissionService
@@ -15,23 +15,28 @@
     Func<string, string, string> navClasses = (ctrl, act) =>
         "app-nav-link " + (isActive(ctrl, act) ? "is-active" : "");
 
-    var email =
-        User.FindFirst(ClaimTypes.Email)?.Value
-        ?? User.FindFirst("preferred_username")?.Value
-        ?? User.FindFirst("email")?.Value
-        ?? User.FindFirst("emails")?.Value
-        ?? User.FindFirst("upn")?.Value;
+    var candidateEmails = UserEmailResolver.GetCandidateEmails(User);
+    var email = candidateEmails.FirstOrDefault();
 
     dynamic? cliente = null;
-    if (!string.IsNullOrWhiteSpace(email))
+    foreach (var candidateEmail in candidateEmails)
     {
-        try { cliente = await ClienteService.GetClienteByEmailAsync(email); } catch { }
+        try
+        {
+            cliente = await ClienteService.GetClienteByEmailAsync(candidateEmail);
+            if (cliente != null)
+            {
+                email = candidateEmail;
+                break;
+            }
+        }
+        catch { }
     }
 
     var access = PortalAccessContext.Empty;
     try
     {
-        access = await PermissionService.GetAccessForEmailAsync(email);
+        access = await PermissionService.GetAccessForEmailsAsync(candidateEmails);
     }
     catch
     {
@@ -55,7 +60,7 @@
         "germanruiz@digitaltechcolombia.com",
         "sruiz@digitaltechcolombia.com"
     };
-    var canSeeContadores = !string.IsNullOrWhiteSpace(email) && usuariosContadores.Contains(email);
+    var canSeeContadores = candidateEmails.Any(candidateEmail => usuariosContadores.Contains(candidateEmail));
 }
 
 <!DOCTYPE html>

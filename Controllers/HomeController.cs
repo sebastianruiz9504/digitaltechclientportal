@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using DigitalTechClientPortal.Models;
+using DigitalTechClientPortal.Security;
 using DigitalTechClientPortal.Services;
 
 namespace DigitalTechClientPortal.Controllers
@@ -31,24 +33,28 @@ namespace DigitalTechClientPortal.Controllers
         [HttpGet]
         public async Task<IActionResult> Index(string? range = null)
         {
-            var email =
-                User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value
-                ?? User.FindFirst("preferred_username")?.Value
-                ?? User.FindFirst("email")?.Value
-                ?? User.FindFirst("emails")?.Value
-                ?? User.FindFirst("upn")?.Value;
+            var candidateEmails = UserEmailResolver.GetCandidateEmails(User);
+            var email = candidateEmails.FirstOrDefault();
 
             string? clienteNombre = null;
+            DataverseClienteService.ClienteInfo? clienteInfo = null;
             try
             {
-                clienteNombre = await _clienteService.GetClienteNombreByEmailAsync(email);
+                foreach (var candidateEmail in candidateEmails)
+                {
+                    clienteInfo = await _clienteService.GetClienteByEmailAsync(candidateEmail);
+                    if (clienteInfo != null)
+                    {
+                        email = candidateEmail;
+                        clienteNombre = clienteInfo.Nombre;
+                        break;
+                    }
+                }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error obteniendo cliente desde Dataverse");
             }
-
-            var clienteInfo = await _clienteService.GetClienteByEmailAsync(email);
 
             ViewBag.CompanyName = clienteNombre ?? "(Cliente desconocido)";
             ViewBag.WorkspaceName = email ?? "(Email no disponible)";

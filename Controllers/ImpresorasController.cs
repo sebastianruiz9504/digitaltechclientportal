@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Security.Claims;
 using System.Text.Json;
 using System.Threading.Tasks;
 using System.Threading;
@@ -39,11 +38,7 @@ namespace DigitalTechClientPortal.Controllers
         {
             var vm = new ImpresorasVm();
 
-            var email = User.FindFirst(ClaimTypes.Email)?.Value
-                        ?? User.FindFirst("preferred_username")?.Value
-                        ?? User.FindFirst("email")?.Value
-                        ?? User.FindFirst("emails")?.Value
-                        ?? User.FindFirst("upn")?.Value;
+            var email = UserEmailResolver.GetCurrentEmail(User);
 
             var esUsuarioSinFiltro = !string.IsNullOrWhiteSpace(email) && UsuariosSinFiltro.Contains(email);
             vm.PuedeFiltrarPorCliente = esUsuarioSinFiltro;

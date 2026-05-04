@@ -167,10 +167,7 @@ namespace DigitalTechClientPortal.Controllers
         [HttpGet("Equipos")]
         public async Task<IActionResult> Equipos([FromQuery] string? upn = null, [FromQuery] Guid? ubicacionId = null)
         {
-            var correo = User.FindFirst("preferred_username")?.Value
-                ?? User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value
-                ?? User.FindFirst("email")?.Value
-                ?? User.Identity?.Name;
+            var correo = UserEmailResolver.GetCurrentEmail(User);
 
             if (string.IsNullOrWhiteSpace(correo))
             {
@@ -235,10 +232,7 @@ namespace DigitalTechClientPortal.Controllers
                 return RedirectToAction("Equipos");
             }
 
-            var correo = User.FindFirst("preferred_username")?.Value
-                ?? User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value
-                ?? User.FindFirst("email")?.Value
-                ?? User.Identity?.Name;
+            var correo = UserEmailResolver.GetCurrentEmail(User);
 
             var clienteId = await _clientesService.GetClienteIdByEmailAsync(correo ?? string.Empty);
             if (clienteId == Guid.Empty)
@@ -526,10 +520,7 @@ namespace DigitalTechClientPortal.Controllers
                 return RedirectToAction("Equipos");
             }
 
-            var correo = User.FindFirst("preferred_username")?.Value
-                ?? User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value
-                ?? User.FindFirst("email")?.Value
-                ?? User.Identity?.Name;
+            var correo = UserEmailResolver.GetCurrentEmail(User);
 
             var clienteId = await _clientesService.GetClienteIdByEmailAsync(correo ?? string.Empty);
             if (clienteId == Guid.Empty)
@@ -810,10 +801,7 @@ namespace DigitalTechClientPortal.Controllers
         [HttpGet("ReportesData")]
         public async Task<IActionResult> ReportesData()
         {
-            var correo = User.FindFirst("preferred_username")?.Value
-                ?? User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value
-                ?? User.FindFirst("email")?.Value
-                ?? User.Identity?.Name;
+            var correo = UserEmailResolver.GetCurrentEmail(User);
 
             if (string.IsNullOrWhiteSpace(correo))
             {
@@ -915,10 +903,7 @@ namespace DigitalTechClientPortal.Controllers
         [HttpGet("ExportEquiposCsv")]
         public async Task<IActionResult> ExportEquiposCsv()
         {
-            var correo = User.FindFirst("preferred_username")?.Value
-                ?? User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value
-                ?? User.FindFirst("email")?.Value
-                ?? User.Identity?.Name;
+            var correo = UserEmailResolver.GetCurrentEmail(User);
 
             if (string.IsNullOrWhiteSpace(correo))
             {

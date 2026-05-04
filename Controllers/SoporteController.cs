@@ -34,12 +34,7 @@ namespace DigitalTechClientPortal.Controllers
                 Copiers = new System.Collections.Generic.List<CopierVm>()
             };
 
-            // 1️⃣ Obtener email y cliente del usuario logueado
-            var email = User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value
-                        ?? User.FindFirst("preferred_username")?.Value
-                        ?? User.FindFirst("email")?.Value
-                        ?? User.FindFirst("emails")?.Value
-                        ?? User.FindFirst("upn")?.Value;
+            var email = UserEmailResolver.GetCurrentEmail(User);
 
             var clienteInfo = await _clienteService.GetClienteByEmailAsync(email ?? string.Empty);
             if (clienteInfo == null || clienteInfo.Id == Guid.Empty)

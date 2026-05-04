@@ -1,9 +1,14 @@
+@using System.Collections.Generic
 @{
     Layout = null;
     var modulo = ViewBag.Modulo as string;
     var email = ViewBag.Email as string;
+    var candidateEmails = ViewBag.CandidateEmails as IReadOnlyList<string> ?? Array.Empty<string>();
+    var detectedEmails = candidateEmails.Count > 0
+        ? string.Join(", ", candidateEmails)
+        : (email ?? "(correo no detectado)");
     var subject = Uri.EscapeDataString("Solicitud de acceso al portal Digital Tech");
-    var body = Uri.EscapeDataString($"Hola soporte Digital Tech,\r\n\r\nSolicito validar permisos para mi usuario {(email ?? "(correo no detectado)")}" +
+    var body = Uri.EscapeDataString($"Hola soporte Digital Tech,\r\n\r\nSolicito validar permisos para mi usuario {detectedEmails}" +
         (string.IsNullOrWhiteSpace(modulo) ? "." : $" en el modulo {modulo}."));
 }
 
@@ -33,6 +38,9 @@
             </p>
             <p class="login-copy">
                 Solicita al area de soporte que habilite el modulo para tu cuenta.
+            </p>
+            <p class="login-copy">
+                Usuario detectado: @detectedEmails
             </p>
 
             <a class="login-button" href="mailto:soporte@digitaltechcolombia.com?subject=@subject&body=@body">

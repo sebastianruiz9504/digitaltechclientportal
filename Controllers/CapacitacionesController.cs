@@ -26,13 +26,11 @@ namespace DigitalTechClientPortal.Controllers
         [HttpGet]
         public async Task<IActionResult> Index()
         {
-            var email = User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value
-                        ?? User.FindFirst("preferred_username")?.Value
-                        ?? User.FindFirst("email")?.Value
-                        ?? User.FindFirst("emails")?.Value
-                        ?? User.FindFirst("upn")?.Value;
+            var email = UserEmailResolver.GetCurrentEmail(User);
 
-            var clienteInfo = await _clienteService.GetClienteByEmailAsync(email);
+            var clienteInfo = string.IsNullOrWhiteSpace(email)
+                ? null
+                : await _clienteService.GetClienteByEmailAsync(email);
 
             var capacitaciones = new List<CapacitacionDto>();
 

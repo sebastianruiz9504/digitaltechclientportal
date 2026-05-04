@@ -1,8 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
-using System.Security.Claims;
 using System.Threading.Tasks;
 using DigitalTechClientPortal.Models;
+using DigitalTechClientPortal.Security;
 using DigitalTechClientPortal.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -24,7 +25,7 @@ namespace DigitalTechClientPortal.Controllers
         [HttpGet("Index")]
         public async Task<IActionResult> Index()
         {
-            var data = await _permissions.GetUsersForPrincipalAsync(GetCurrentEmail());
+            var data = await _permissions.GetUsersForPrincipalAsync(GetCurrentEmails());
             if (!data.IsPrincipal)
             {
                 return Forbid();
@@ -62,6 +63,7 @@ namespace DigitalTechClientPortal.Controllers
 
             ViewBag.Modulo = module?.Label;
             ViewBag.Email = GetCurrentEmail();
+            ViewBag.CandidateEmails = GetCurrentEmails();
             return View();
         }
 
@@ -72,7 +74,7 @@ namespace DigitalTechClientPortal.Controllers
             try
             {
                 await _permissions.UpsertUserPermissionAsync(
-                    GetCurrentEmail(),
+                    GetCurrentEmails(),
                     new PermissionUserRecord
                     {
                         Id = model.Id.GetValueOrDefault(),
@@ -98,7 +100,7 @@ namespace DigitalTechClientPortal.Controllers
         {
             try
             {
-                await _permissions.DeleteUserPermissionAsync(GetCurrentEmail(), id);
+                await _permissions.DeleteUserPermissionAsync(GetCurrentEmails(), id);
                 TempData["PermisosOk"] = "Usuario eliminado.";
             }
             catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException)
@@ -111,12 +113,12 @@ namespace DigitalTechClientPortal.Controllers
 
         private string? GetCurrentEmail()
         {
-            return User.FindFirst(ClaimTypes.Email)?.Value
-                   ?? User.FindFirst("preferred_username")?.Value
-                   ?? User.FindFirst("email")?.Value
-                   ?? User.FindFirst("emails")?.Value
-                   ?? User.FindFirst("upn")?.Value
-                   ?? User.Identity?.Name;
+            return UserEmailResolver.GetCurrentEmail(User);
+        }
+
+        private IReadOnlyList<string> GetCurrentEmails()
+        {
+            return UserEmailResolver.GetCandidateEmails(User);
         }
     }
 }

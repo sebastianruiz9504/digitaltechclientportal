@@ -3,6 +3,7 @@ using System;
 using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
+using DigitalTechClientPortal.Security;
 
 namespace DigitalTechClientPortal.Services
 {
@@ -30,12 +31,8 @@ namespace DigitalTechClientPortal.Services
             if (identity.HasClaim(c => c.Type == "dt_permission_checked"))
                 return principal;
 
-            var email = principal.FindFirst("preferred_username")?.Value
-                        ?? principal.FindFirst(ClaimTypes.Email)?.Value
-                        ?? principal.FindFirst("email")?.Value
-                        ?? principal.FindFirst("upn")?.Value;
-
-            if (string.IsNullOrWhiteSpace(email))
+            var emails = UserEmailResolver.GetCandidateEmails(principal);
+            if (emails.Count == 0)
                 return principal;
 
             identity.AddClaim(new Claim("dt_permission_checked", "1"));
@@ -43,7 +40,7 @@ namespace DigitalTechClientPortal.Services
             PortalAccessContext access;
             try
             {
-                access = await _permissions.GetAccessForEmailAsync(email);
+                access = await _permissions.GetAccessForEmailsAsync(emails);
             }
             catch (Exception ex)
             {

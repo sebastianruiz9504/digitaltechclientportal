@@ -25,15 +25,12 @@ namespace DigitalTechClientPortal.Web.Controllers
 
         public async Task<IActionResult> Index()
         {
-            // Obtener el email del usuario logueado desde los claims
-            var email = User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value
-                        ?? User.FindFirst("preferred_username")?.Value
-                        ?? User.FindFirst("email")?.Value
-                        ?? User.FindFirst("emails")?.Value
-                        ?? User.FindFirst("upn")?.Value;
+            var email = UserEmailResolver.GetCurrentEmail(User);
 
             // Obtener información del cliente desde Dataverse
-            var clienteInfo = await _clienteService.GetClienteByEmailAsync(email);
+            var clienteInfo = string.IsNullOrWhiteSpace(email)
+                ? null
+                : await _clienteService.GetClienteByEmailAsync(email);
 
             var facturas = new List<FacturaDto>();
 

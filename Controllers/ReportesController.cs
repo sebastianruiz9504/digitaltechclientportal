@@ -2,7 +2,6 @@ using Microsoft.AspNetCore.Mvc;
 using DigitalTechClientPortal.Services;
 using DigitalTechClientPortal.Security;
 using System;
-using System.Security.Claims;
 using System.Threading.Tasks;
 
 namespace DigitalTechClientPortal.Controllers
@@ -19,12 +18,7 @@ namespace DigitalTechClientPortal.Controllers
 
         public async Task<IActionResult> Index()
         {
-            var email =
-                User.FindFirst(ClaimTypes.Email)?.Value
-                ?? User.FindFirst("preferred_username")?.Value
-                ?? User.FindFirst("email")?.Value
-                ?? User.FindFirst("emails")?.Value
-                ?? User.FindFirst("upn")?.Value;
+            var email = UserEmailResolver.GetCurrentEmail(User);
 
             var reportes = await _reportesService.GetReportesByUserEmailAsync(email ?? string.Empty);
             return View(reportes);

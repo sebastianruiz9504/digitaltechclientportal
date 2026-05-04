@@ -1,6 +1,7 @@
 using Microsoft.PowerPlatform.Dataverse.Client;
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Query;
+using DigitalTechClientPortal.Security;
 using DigitalTechClientPortal.Web.Models;
 using System;
 using System.Linq;
@@ -118,10 +119,7 @@ namespace DigitalTechClientPortal.Web.Services
             var user = _http.HttpContext?.User;
             if (user == null) return null;
 
-            return user.FindFirst("preferred_username")?.Value
-                ?? user.FindFirst("emails")?.Value
-                ?? user.FindFirst(System.Security.Claims.ClaimTypes.Upn)?.Value
-                ?? user.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value;
+            return UserEmailResolver.GetCurrentEmail(user);
         }
 
         private static string? BuildWhatsAppLink(string? rawPhone, string message)

@@ -37,34 +37,26 @@ namespace DigitalTechClientPortal.Services
                 return PortalAccessContext.Empty;
             }
 
-            var principal = await TryResolvePrincipalClienteAsync(normalizedEmail);
-            if (principal.Found)
+            var access = await TryGetKnownAccessForEmailAsync(normalizedEmail);
+            if (access != null)
+                return access;
+
+            return PortalAccessContext.Unrestricted;
+        }
+
+        public async Task<PortalAccessContext> GetAccessForEmailsAsync(IEnumerable<string?> emails)
+        {
+            var normalizedEmails = NormalizeEmails(emails);
+            if (normalizedEmails.Count == 0)
             {
-                return new PortalAccessContext
-                {
-                    IsPrincipal = true,
-                    IsLimited = false,
-                    IsActive = true,
-                    ClienteId = principal.ClienteId,
-                    ClienteNombre = principal.ClienteNombre,
-                    AllowedModules = PortalModuleKeys.AllKeys.ToHashSet(StringComparer.OrdinalIgnoreCase),
-                    PermissionColumnsAvailable = true
-                };
+                return PortalAccessContext.Empty;
             }
 
-            var limited = await TryResolveLimitedUserAsync(normalizedEmail);
-            if (limited.Found)
+            foreach (var email in normalizedEmails)
             {
-                return new PortalAccessContext
-                {
-                    IsPrincipal = false,
-                    IsLimited = true,
-                    IsActive = limited.Active,
-                    ClienteId = limited.ClienteId,
-                    ClienteNombre = limited.ClienteNombre,
-                    AllowedModules = limited.Modules,
-                    PermissionColumnsAvailable = limited.PermissionColumnsAvailable
-                };
+                var access = await TryGetKnownAccessForEmailAsync(email);
+                if (access != null)
+                    return access;
             }
 
             return PortalAccessContext.Unrestricted;
@@ -78,6 +70,27 @@ namespace DigitalTechClientPortal.Services
             }
 
             var access = await GetAccessForEmailAsync(email);
+            if (access.IsPrincipal)
+            {
+                return true;
+            }
+
+            if (!access.IsLimited)
+            {
+                return true;
+            }
+
+            return access.IsActive && access.AllowedModules.Contains(moduleKey);
+        }
+
+        public async Task<bool> CanAccessModuleAsync(IEnumerable<string?> emails, string moduleKey)
+        {
+            if (!PortalModuleKeys.IsValid(moduleKey))
+            {
+                return false;
+            }
+
+            var access = await GetAccessForEmailsAsync(emails);
             if (access.IsPrincipal)
             {
                 return true;
@@ -110,26 +123,73 @@ namespace DigitalTechClientPortal.Services
                 return (false, Guid.Empty, null);
             }
 
+            try
+            {
+                var q = new QueryExpression("cr07a_cliente")
+                {
+                    ColumnSet = new ColumnSet("cr07a_clienteid", "cr07a_nombre", "cr07a_name"),
+                    TopCount = 1,
+                    Criteria =
+                    {
+                        Conditions =
+                        {
+                            new ConditionExpression("cr07a_correoelectronico", ConditionOperator.Equal, normalizedEmail)
+                        }
+                    }
+                };
+
+                var result = await _svc.RetrieveMultipleAsync(q);
+                var entity = result.Entities.FirstOrDefault();
+                if (entity != null)
+                {
+                    return MapClienteEntity(entity);
+                }
+            }
+            catch (Exception ex) when (IsMissingClienteEmailColumnException(ex))
+            {
+                // Si el nombre lógico de "Correo electronico" cambió, hacemos una búsqueda segura por atributos de texto.
+            }
+
+            return await TryResolvePrincipalClienteByScanAsync(normalizedEmail);
+        }
+
+        private async Task<(bool Found, Guid ClienteId, string? ClienteNombre)> TryResolvePrincipalClienteByScanAsync(string normalizedEmail)
+        {
             var q = new QueryExpression("cr07a_cliente")
             {
-                ColumnSet = new ColumnSet("cr07a_clienteid", "cr07a_nombre", "cr07a_name"),
-                TopCount = 1,
-                Criteria =
+                ColumnSet = new ColumnSet(true),
+                PageInfo = new PagingInfo
                 {
-                    Conditions =
-                    {
-                        new ConditionExpression("cr07a_correoelectronico", ConditionOperator.Equal, normalizedEmail)
-                    }
+                    Count = 5000,
+                    PageNumber = 1
                 }
             };
 
-            var result = await _svc.RetrieveMultipleAsync(q);
-            var entity = result.Entities.FirstOrDefault();
-            if (entity == null)
+            while (true)
             {
-                return (false, Guid.Empty, null);
+                var result = await _svc.RetrieveMultipleAsync(q);
+                foreach (var entity in result.Entities)
+                {
+                    if (EntityContainsEmail(entity, normalizedEmail))
+                    {
+                        return MapClienteEntity(entity);
+                    }
+                }
+
+                if (!result.MoreRecords)
+                {
+                    break;
+                }
+
+                q.PageInfo.PageNumber++;
+                q.PageInfo.PagingCookie = result.PagingCookie;
             }
 
+            return (false, Guid.Empty, null);
+        }
+
+        private static (bool Found, Guid ClienteId, string? ClienteNombre) MapClienteEntity(Entity entity)
+        {
             var nombre = entity.GetAttributeValue<string>("cr07a_nombre")
                          ?? entity.GetAttributeValue<string>("cr07a_name");
 
@@ -138,7 +198,12 @@ namespace DigitalTechClientPortal.Services
 
         public async Task<PermissionUserListResult> GetUsersForPrincipalAsync(string? principalEmail)
         {
-            var admin = await TryResolvePermissionAdminAsync(principalEmail);
+            return await GetUsersForPrincipalAsync(new[] { principalEmail });
+        }
+
+        public async Task<PermissionUserListResult> GetUsersForPrincipalAsync(IEnumerable<string?> principalEmails)
+        {
+            var admin = await TryResolvePermissionAdminAsync(principalEmails);
             if (!admin.Found || admin.ClienteId == Guid.Empty)
             {
                 return PermissionUserListResult.Forbidden;
@@ -162,7 +227,13 @@ namespace DigitalTechClientPortal.Services
 
         public async Task UpsertUserPermissionAsync(string? principalEmail, PermissionUserRecord input)
         {
-            var admin = await TryResolvePermissionAdminAsync(principalEmail);
+            await UpsertUserPermissionAsync(new[] { principalEmail }, input);
+        }
+
+        public async Task UpsertUserPermissionAsync(IEnumerable<string?> principalEmails, PermissionUserRecord input)
+        {
+            var normalizedPrincipalEmails = NormalizeEmails(principalEmails);
+            var admin = await TryResolvePermissionAdminAsync(normalizedPrincipalEmails);
             if (!admin.Found || admin.ClienteId == Guid.Empty)
             {
                 throw new UnauthorizedAccessException("Solo un usuario con permisos completos del cliente puede administrar permisos.");
@@ -174,7 +245,7 @@ namespace DigitalTechClientPortal.Services
                 throw new InvalidOperationException("Debes ingresar el correo del usuario.");
             }
 
-            if (admin.IsPrincipal && string.Equals(NormalizeEmail(principalEmail), email, StringComparison.OrdinalIgnoreCase))
+            if (admin.IsPrincipal && normalizedPrincipalEmails.Contains(email, StringComparer.OrdinalIgnoreCase))
             {
                 throw new InvalidOperationException("El usuario principal ya tiene acceso completo y no necesita permisos adicionales.");
             }
@@ -220,12 +291,17 @@ namespace DigitalTechClientPortal.Services
 
         public async Task DeleteUserPermissionAsync(string? principalEmail, Guid id)
         {
+            await DeleteUserPermissionAsync(new[] { principalEmail }, id);
+        }
+
+        public async Task DeleteUserPermissionAsync(IEnumerable<string?> principalEmails, Guid id)
+        {
             if (id == Guid.Empty)
             {
                 return;
             }
 
-            var admin = await TryResolvePermissionAdminAsync(principalEmail);
+            var admin = await TryResolvePermissionAdminAsync(principalEmails);
             if (!admin.Found || admin.ClienteId == Guid.Empty)
             {
                 throw new UnauthorizedAccessException("Solo un usuario con permisos completos del cliente puede administrar permisos.");
@@ -239,6 +315,16 @@ namespace DigitalTechClientPortal.Services
         public static string NormalizeEmail(string? email)
         {
             return (email ?? string.Empty).Trim().ToLowerInvariant();
+        }
+
+        public static IReadOnlyList<string> NormalizeEmails(IEnumerable<string?> emails)
+        {
+            return emails
+                .Where(email => !string.IsNullOrWhiteSpace(email))
+                .Select(NormalizeEmail)
+                .Where(email => !string.IsNullOrWhiteSpace(email))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
         }
 
         public static IReadOnlySet<string> ParseModules(string? raw, bool permissionColumnsAvailable)
@@ -262,6 +348,41 @@ namespace DigitalTechClientPortal.Services
         public static string BuildMissingColumnsMessage()
         {
             return "Faltan columnas en Dataverse para administrar permisos. En la tabla cr07a_usuariosconaccesolimitado crea cr07a_modulospermitidos (texto). La columna cr07a_activo es opcional y debe ser Si/No si quieres desactivar usuarios.";
+        }
+
+        private async Task<PortalAccessContext?> TryGetKnownAccessForEmailAsync(string normalizedEmail)
+        {
+            var principal = await TryResolvePrincipalClienteAsync(normalizedEmail);
+            if (principal.Found)
+            {
+                return new PortalAccessContext
+                {
+                    IsPrincipal = true,
+                    IsLimited = false,
+                    IsActive = true,
+                    ClienteId = principal.ClienteId,
+                    ClienteNombre = principal.ClienteNombre,
+                    AllowedModules = PortalModuleKeys.AllKeys.ToHashSet(StringComparer.OrdinalIgnoreCase),
+                    PermissionColumnsAvailable = true
+                };
+            }
+
+            var limited = await TryResolveLimitedUserAsync(normalizedEmail);
+            if (limited.Found)
+            {
+                return new PortalAccessContext
+                {
+                    IsPrincipal = false,
+                    IsLimited = true,
+                    IsActive = limited.Active,
+                    ClienteId = limited.ClienteId,
+                    ClienteNombre = limited.ClienteNombre,
+                    AllowedModules = limited.Modules,
+                    PermissionColumnsAvailable = limited.PermissionColumnsAvailable
+                };
+            }
+
+            return null;
         }
 
         private async Task<(bool Found, Guid ClienteId, string? ClienteNombre, bool Active, IReadOnlySet<string> Modules, bool PermissionColumnsAvailable)> TryResolveLimitedUserAsync(string? email)
@@ -297,6 +418,25 @@ namespace DigitalTechClientPortal.Services
         }
 
         private async Task<(bool Found, bool IsPrincipal, Guid ClienteId, string? ClienteNombre)> TryResolvePermissionAdminAsync(string? email)
+        {
+            return await TryResolvePermissionAdminAsync(new[] { email });
+        }
+
+        private async Task<(bool Found, bool IsPrincipal, Guid ClienteId, string? ClienteNombre)> TryResolvePermissionAdminAsync(IEnumerable<string?> emails)
+        {
+            foreach (var email in NormalizeEmails(emails))
+            {
+                var admin = await TryResolvePermissionAdminAsyncForEmail(email);
+                if (admin.Found)
+                {
+                    return admin;
+                }
+            }
+
+            return (false, false, Guid.Empty, null);
+        }
+
+        private async Task<(bool Found, bool IsPrincipal, Guid ClienteId, string? ClienteNombre)> TryResolvePermissionAdminAsyncForEmail(string email)
         {
             var principal = await TryResolvePrincipalClienteAsync(email);
             if (principal.Found && principal.ClienteId != Guid.Empty)
@@ -413,6 +553,48 @@ namespace DigitalTechClientPortal.Services
             };
         }
 
+        private static bool EntityContainsEmail(Entity entity, string normalizedEmail)
+        {
+            foreach (var attribute in entity.Attributes)
+            {
+                if (attribute.Value is string value && TextContainsEmail(value, normalizedEmail))
+                {
+                    return true;
+                }
+
+                if (attribute.Value is AliasedValue { Value: string aliasedValue } &&
+                    TextContainsEmail(aliasedValue, normalizedEmail))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TextContainsEmail(string value, string normalizedEmail)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            var normalizedValue = value.Trim().ToLowerInvariant();
+            if (string.Equals(normalizedValue, normalizedEmail, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            if (!normalizedValue.Contains(normalizedEmail, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            return normalizedValue
+                .Split(new[] { ';', ',', '|', '\n', '\r', ' ', '<', '>', '"' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Any(part => string.Equals(part.Trim().ToLowerInvariant(), normalizedEmail, StringComparison.OrdinalIgnoreCase));
+        }
+
         private async Task<string?> ResolveClienteNombreAsync(EntityReference clienteRef)
         {
             if (!string.IsNullOrWhiteSpace(clienteRef.Name))
@@ -501,6 +683,26 @@ namespace DigitalTechClientPortal.Services
                 var message = current.Message ?? string.Empty;
                 if ((message.Contains(LimitedModulesField, StringComparison.OrdinalIgnoreCase) ||
                      message.Contains(LimitedActiveField, StringComparison.OrdinalIgnoreCase)) &&
+                    (message.Contains("Could not find", StringComparison.OrdinalIgnoreCase) ||
+                     message.Contains("does not exist", StringComparison.OrdinalIgnoreCase) ||
+                     message.Contains("not found", StringComparison.OrdinalIgnoreCase)))
+                {
+                    return true;
+                }
+
+                current = current.InnerException;
+            }
+
+            return false;
+        }
+
+        private static bool IsMissingClienteEmailColumnException(Exception ex)
+        {
+            var current = ex;
+            while (current != null)
+            {
+                var message = current.Message ?? string.Empty;
+                if (message.Contains("cr07a_correoelectronico", StringComparison.OrdinalIgnoreCase) &&
                     (message.Contains("Could not find", StringComparison.OrdinalIgnoreCase) ||
                      message.Contains("does not exist", StringComparison.OrdinalIgnoreCase) ||
                      message.Contains("not found", StringComparison.OrdinalIgnoreCase)))

@@ -2,11 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using System.Security.Claims;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using DigitalTechClientPortal.Models;
+using DigitalTechClientPortal.Security;
 using DigitalTechClientPortal.Services;
 using Microsoft.AspNetCore.Mvc;
 
@@ -85,11 +85,7 @@ namespace DigitalTechClientPortal.Controllers
 
         private string? GetCurrentEmail()
         {
-            return User.FindFirst(ClaimTypes.Email)?.Value
-                   ?? User.FindFirst("preferred_username")?.Value
-                   ?? User.FindFirst("email")?.Value
-                   ?? User.FindFirst("emails")?.Value
-                   ?? User.FindFirst("upn")?.Value;
+            return UserEmailResolver.GetCurrentEmail(User);
         }
 
         private async Task<List<ClienteFiltroVm>> GetClientesAsync()

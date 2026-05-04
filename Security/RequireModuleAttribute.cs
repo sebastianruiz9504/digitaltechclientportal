@@ -1,6 +1,5 @@
 using System;
 using System.Linq;
-using System.Security.Claims;
 using System.Threading.Tasks;
 using DigitalTechClientPortal.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -34,12 +33,12 @@ namespace DigitalTechClientPortal.Security
                 return;
             }
 
-            var email = GetCurrentEmail(user);
+            var emails = UserEmailResolver.GetCandidateEmails(user);
             var permissions = context.HttpContext.RequestServices.GetRequiredService<PortalPermissionService>();
             bool canAccess;
             try
             {
-                canAccess = await permissions.CanAccessModuleAsync(email, _moduleKey);
+                canAccess = await permissions.CanAccessModuleAsync(emails, _moduleKey);
             }
             catch
             {
@@ -53,16 +52,6 @@ namespace DigitalTechClientPortal.Security
                     "Permisos",
                     new { modulo = _moduleKey });
             }
-        }
-
-        private static string? GetCurrentEmail(ClaimsPrincipal user)
-        {
-            return user.FindFirst(ClaimTypes.Email)?.Value
-                   ?? user.FindFirst("preferred_username")?.Value
-                   ?? user.FindFirst("email")?.Value
-                   ?? user.FindFirst("emails")?.Value
-                   ?? user.FindFirst("upn")?.Value
-                   ?? user.Identity?.Name;
         }
     }
 }

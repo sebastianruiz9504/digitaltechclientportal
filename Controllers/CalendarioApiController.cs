@@ -1,7 +1,7 @@
 using System;
-using System.Security.Claims;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
+using DigitalTechClientPortal.Security;
 using DigitalTechClientPortal.Services;
 
 namespace DigitalTechClientPortal.Controllers
@@ -38,9 +38,7 @@ namespace DigitalTechClientPortal.Controllers
             if (request == null || request.HoraInicio == default || string.IsNullOrWhiteSpace(request.Tema))
                 return BadRequest("Datos inválidos");
 
-            var solicitante = User.FindFirst("preferred_username")?.Value
-                           ?? User.FindFirst(ClaimTypes.Email)?.Value
-                           ?? User.FindFirst(ClaimTypes.Upn)?.Value;
+            var solicitante = UserEmailResolver.GetCurrentEmail(User);
 
             if (string.IsNullOrWhiteSpace(solicitante))
                 return Unauthorized("No se pudo determinar el correo del usuario autenticado");
