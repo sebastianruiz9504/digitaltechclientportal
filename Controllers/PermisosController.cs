@@ -53,6 +53,18 @@ namespace DigitalTechClientPortal.Controllers
             return View(vm);
         }
 
+        [AllowAnonymous]
+        [HttpGet("Denegado")]
+        public IActionResult Denegado([FromQuery] string? modulo = null)
+        {
+            var module = PortalModuleKeys.All.FirstOrDefault(m =>
+                string.Equals(m.Key, modulo, StringComparison.OrdinalIgnoreCase));
+
+            ViewBag.Modulo = module?.Label;
+            ViewBag.Email = GetCurrentEmail();
+            return View();
+        }
+
         [HttpPost("Guardar")]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Guardar(PermisoEditVm model)

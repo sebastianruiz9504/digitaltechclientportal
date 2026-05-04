@@ -115,7 +115,7 @@ builder.Services
 
         options.LoginPath = "/Login/Index";
         options.LogoutPath = "/Login/signout";
-        options.AccessDeniedPath = "/Login/Index";
+        options.AccessDeniedPath = "/Permisos/Denegado";
 
         options.SlidingExpiration = true;
         options.ExpireTimeSpan = TimeSpan.FromHours(8);

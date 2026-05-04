@@ -36,10 +36,22 @@ namespace DigitalTechClientPortal.Security
 
             var email = GetCurrentEmail(user);
             var permissions = context.HttpContext.RequestServices.GetRequiredService<PortalPermissionService>();
-            var canAccess = await permissions.CanAccessModuleAsync(email, _moduleKey);
+            bool canAccess;
+            try
+            {
+                canAccess = await permissions.CanAccessModuleAsync(email, _moduleKey);
+            }
+            catch
+            {
+                canAccess = false;
+            }
+
             if (!canAccess)
             {
-                context.Result = new ForbidResult();
+                context.Result = new RedirectToActionResult(
+                    "Denegado",
+                    "Permisos",
+                    new { modulo = _moduleKey });
             }
         }
 

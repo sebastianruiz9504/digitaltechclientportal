@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authentication;
+using System;
 using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
@@ -37,8 +38,18 @@ namespace DigitalTechClientPortal.Services
             if (string.IsNullOrWhiteSpace(email))
                 return principal;
 
-            var access = await _permissions.GetAccessForEmailAsync(email);
             identity.AddClaim(new Claim("dt_permission_checked", "1"));
+
+            PortalAccessContext access;
+            try
+            {
+                access = await _permissions.GetAccessForEmailAsync(email);
+            }
+            catch (Exception ex)
+            {
+                identity.AddClaim(new Claim("dt_permissions_error", ex.GetType().Name));
+                return principal;
+            }
 
             if (access.IsPrincipal)
             {

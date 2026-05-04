@@ -210,19 +210,7 @@ namespace DigitalTechClientPortal.Services
                 entity[LimitedDisplayNameField] = displayName;
             }
 
-            try
-            {
-                await SavePermissionEntityAsync(entity);
-            }
-            catch (Exception ex) when (IsMissingDisplayNameColumnException(ex) && entity.Attributes.ContainsKey(LimitedDisplayNameField))
-            {
-                entity.Attributes.Remove(LimitedDisplayNameField);
-                await SavePermissionEntityAsync(entity);
-            }
-            catch (Exception ex) when (IsMissingPermissionColumnException(ex))
-            {
-                throw new InvalidOperationException(BuildMissingColumnsMessage(), ex);
-            }
+            await SavePermissionEntityWithFallbacksAsync(entity);
         }
 
         public async Task DeleteUserPermissionAsync(string? principalEmail, Guid id)
@@ -257,7 +245,7 @@ namespace DigitalTechClientPortal.Services
 
             if (string.IsNullOrWhiteSpace(raw))
             {
-                return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                return PortalModuleKeys.AllKeys.ToHashSet(StringComparer.OrdinalIgnoreCase);
             }
 
             return raw
@@ -268,7 +256,7 @@ namespace DigitalTechClientPortal.Services
 
         public static string BuildMissingColumnsMessage()
         {
-            return "Faltan columnas en Dataverse para administrar permisos. En la tabla cr07a_usuariosconaccesolimitado crea cr07a_modulospermitidos (texto) y cr07a_activo (Si/No).";
+            return "Faltan columnas en Dataverse para administrar permisos. En la tabla cr07a_usuariosconaccesolimitado crea cr07a_modulospermitidos (texto). La columna cr07a_activo es opcional y debe ser Si/No si quieres desactivar usuarios.";
         }
 
         private async Task<(bool Found, Guid ClienteId, string? ClienteNombre, bool Active, IReadOnlySet<string> Modules, bool PermissionColumnsAvailable)> TryResolveLimitedUserAsync(string? email)
@@ -291,9 +279,7 @@ namespace DigitalTechClientPortal.Services
                 return (false, Guid.Empty, null, false, new HashSet<string>(), result.PermissionColumnsAvailable);
             }
 
-            var active = !result.PermissionColumnsAvailable
-                         || !result.Row.Attributes.ContainsKey(LimitedActiveField)
-                         || result.Row.GetAttributeValue<bool>(LimitedActiveField);
+            var active = GetActiveValue(result.Row, result.PermissionColumnsAvailable);
 
             var modules = ParseModules(
                 result.Row.GetAttributeValue<string>(LimitedModulesField),
@@ -388,9 +374,7 @@ namespace DigitalTechClientPortal.Services
 
         private static PermissionUserRecord MapPermissionUser(Entity row, bool permissionColumnsAvailable)
         {
-            var active = !permissionColumnsAvailable
-                         || !row.Attributes.ContainsKey(LimitedActiveField)
-                         || row.GetAttributeValue<bool>(LimitedActiveField);
+            var active = GetActiveValue(row, permissionColumnsAvailable);
 
             return new PermissionUserRecord
             {
@@ -433,6 +417,28 @@ namespace DigitalTechClientPortal.Services
             }
         }
 
+        private async Task SavePermissionEntityWithFallbacksAsync(Entity entity)
+        {
+            try
+            {
+                await SavePermissionEntityAsync(entity);
+            }
+            catch (Exception ex) when (entity.Attributes.ContainsKey(LimitedDisplayNameField) && IsMissingDisplayNameColumnException(ex))
+            {
+                entity.Attributes.Remove(LimitedDisplayNameField);
+                await SavePermissionEntityWithFallbacksAsync(entity);
+            }
+            catch (Exception ex) when (entity.Attributes.ContainsKey(LimitedActiveField) && IsActiveColumnNotBooleanException(ex))
+            {
+                entity.Attributes.Remove(LimitedActiveField);
+                await SavePermissionEntityWithFallbacksAsync(entity);
+            }
+            catch (Exception ex) when (IsMissingPermissionColumnException(ex))
+            {
+                throw new InvalidOperationException(BuildMissingColumnsMessage(), ex);
+            }
+        }
+
         private static void EnsureBelongsToCliente(Entity entity, Guid clienteId)
         {
             var clienteRef = entity.GetAttributeValue<EntityReference>(LimitedClienteLookup);
@@ -440,6 +446,24 @@ namespace DigitalTechClientPortal.Services
             {
                 throw new UnauthorizedAccessException("No puedes modificar permisos de otro cliente.");
             }
+        }
+
+        private static bool GetActiveValue(Entity row, bool permissionColumnsAvailable)
+        {
+            if (!permissionColumnsAvailable || !row.Attributes.TryGetValue(LimitedActiveField, out var raw) || raw == null)
+            {
+                return true;
+            }
+
+            return raw switch
+            {
+                bool value => value,
+                OptionSetValue option => option.Value != 0,
+                int value => value != 0,
+                string value when bool.TryParse(value, out var parsed) => parsed,
+                string value when int.TryParse(value, out var parsed) => parsed != 0,
+                _ => true
+            };
         }
 
         private static bool IsMissingPermissionColumnException(Exception ex)
@@ -473,6 +497,27 @@ namespace DigitalTechClientPortal.Services
                     (message.Contains("Could not find", StringComparison.OrdinalIgnoreCase) ||
                      message.Contains("does not exist", StringComparison.OrdinalIgnoreCase) ||
                      message.Contains("not found", StringComparison.OrdinalIgnoreCase)))
+                {
+                    return true;
+                }
+
+                current = current.InnerException;
+            }
+
+            return false;
+        }
+
+        private static bool IsActiveColumnNotBooleanException(Exception ex)
+        {
+            var current = ex;
+            while (current != null)
+            {
+                var message = current.Message ?? string.Empty;
+                if (message.Contains(LimitedActiveField, StringComparison.OrdinalIgnoreCase) ||
+                    message.Contains("System.Boolean", StringComparison.OrdinalIgnoreCase) ||
+                    message.Contains("Boolean", StringComparison.OrdinalIgnoreCase) ||
+                    message.Contains("Incorrect attribute value type", StringComparison.OrdinalIgnoreCase) ||
+                    message.Contains("invalid attribute value type", StringComparison.OrdinalIgnoreCase))
                 {
                     return true;
                 }

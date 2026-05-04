@@ -28,7 +28,15 @@
         try { cliente = await ClienteService.GetClienteByEmailAsync(email); } catch { }
     }
 
-    var access = await PermissionService.GetAccessForEmailAsync(email);
+    var access = PortalAccessContext.Empty;
+    try
+    {
+        access = await PermissionService.GetAccessForEmailAsync(email);
+    }
+    catch
+    {
+        access = PortalAccessContext.Empty;
+    }
     var companyName = (string)(cliente?.Nombre ?? access.ClienteNombre ?? "Digital Tech");
     var workspaceName = email ?? string.Empty;
     var isAuthenticated = User.Identity?.IsAuthenticated == true;

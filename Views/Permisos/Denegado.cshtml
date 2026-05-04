@@ -1,0 +1,51 @@
+@{
+    Layout = null;
+    var modulo = ViewBag.Modulo as string;
+    var email = ViewBag.Email as string;
+    var subject = Uri.EscapeDataString("Solicitud de acceso al portal Digital Tech");
+    var body = Uri.EscapeDataString($"Hola soporte Digital Tech,\r\n\r\nSolicito validar permisos para mi usuario {(email ?? "(correo no detectado)")}" +
+        (string.IsNullOrWhiteSpace(modulo) ? "." : $" en el modulo {modulo}."));
+}
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Acceso pendiente · Digital Tech</title>
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@@tabler/icons-webfont@latest/tabler-icons.min.css">
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+</head>
+<body class="login-body">
+    <main class="login-shell">
+        <section class="login-card" aria-labelledby="access-title">
+            <img src="~/logosloganblack.png" alt="Digital Tech" class="login-logo" />
+
+            <div class="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-amber-50 text-amber-700">
+                <i class="ti ti-lock-access text-2xl"></i>
+            </div>
+
+            <h1 id="access-title" class="login-title">Acceso pendiente</h1>
+            <p class="login-copy">
+                Tu usuario esta autenticado, pero no tiene permiso para entrar
+                @(string.IsNullOrWhiteSpace(modulo) ? "a esta pagina" : $"a {modulo}").
+            </p>
+            <p class="login-copy">
+                Solicita al area de soporte que habilite el modulo para tu cuenta.
+            </p>
+
+            <a class="login-button" href="mailto:soporte@digitaltechcolombia.com?subject=@subject&body=@body">
+                <i class="ti ti-mail"></i>
+                Solicitar acceso
+            </a>
+
+            <a href="@Url.Action("Index","Home")" class="login-help">
+                Volver al inicio
+            </a>
+        </section>
+
+        <p class="login-footer">© @DateTime.UtcNow.Year Digital Tech</p>
+    </main>
+</body>
+</html>
