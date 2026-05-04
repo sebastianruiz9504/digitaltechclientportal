@@ -1,11 +1,13 @@
 using DigitalTechClientPortal.Models;
 using DigitalTechClientPortal.Services;
+using DigitalTechClientPortal.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace DigitalTechClientPortal.Controllers
 {
     [Authorize]
+    [RequireModule(PortalModuleKeys.Gobierno)]
     [Route("[controller]")]
     public sealed class GobiernoController : Controller
     {

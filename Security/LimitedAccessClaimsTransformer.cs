@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authentication;
+using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
 
@@ -11,11 +12,11 @@ namespace DigitalTechClientPortal.Services
     /// </summary>
     public sealed class LimitedAccessClaimsTransformer : IClaimsTransformation
     {
-        private readonly LimitedAccessService _limited;
+        private readonly PortalPermissionService _permissions;
 
-        public LimitedAccessClaimsTransformer(LimitedAccessService limited)
+        public LimitedAccessClaimsTransformer(PortalPermissionService permissions)
         {
-            _limited = limited;
+            _permissions = permissions;
         }
 
         public async Task<ClaimsPrincipal> TransformAsync(ClaimsPrincipal principal)
@@ -25,7 +26,7 @@ namespace DigitalTechClientPortal.Services
                 return principal;
 
             // No recalcular si ya existe
-            if (identity.HasClaim(c => c.Type == "dt_limited"))
+            if (identity.HasClaim(c => c.Type == "dt_permission_checked"))
                 return principal;
 
             var email = principal.FindFirst("preferred_username")?.Value
@@ -36,13 +37,25 @@ namespace DigitalTechClientPortal.Services
             if (string.IsNullOrWhiteSpace(email))
                 return principal;
 
-            var limited = await _limited.TryResolveClienteForLimitedAsync(email);
-            if (limited.Found)
+            var access = await _permissions.GetAccessForEmailAsync(email);
+            identity.AddClaim(new Claim("dt_permission_checked", "1"));
+
+            if (access.IsPrincipal)
+            {
+                identity.AddClaim(new Claim("dt_client_admin", "1"));
+                identity.AddClaim(new Claim("dt_client_id", access.ClienteId.ToString()));
+                if (!string.IsNullOrWhiteSpace(access.ClienteNombre))
+                    identity.AddClaim(new Claim("dt_client_name", access.ClienteNombre));
+            }
+
+            if (access.IsLimited)
             {
                 identity.AddClaim(new Claim("dt_limited", "1"));
-                identity.AddClaim(new Claim("dt_client_id", limited.ClienteId.ToString()));
-                if (!string.IsNullOrWhiteSpace(limited.ClienteNombre))
-                    identity.AddClaim(new Claim("dt_client_name", limited.ClienteNombre));
+                identity.AddClaim(new Claim("dt_limited_active", access.IsActive ? "1" : "0"));
+                identity.AddClaim(new Claim("dt_client_id", access.ClienteId.ToString()));
+                identity.AddClaim(new Claim("dt_allowed_modules", string.Join(";", access.AllowedModules.OrderBy(x => x))));
+                if (!string.IsNullOrWhiteSpace(access.ClienteNombre))
+                    identity.AddClaim(new Claim("dt_client_name", access.ClienteNombre));
             }
 
             return principal;

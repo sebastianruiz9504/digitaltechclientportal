@@ -1,5 +1,6 @@
 using DigitalTechClientPortal.Models;
 using DigitalTechClientPortal.Services;
+using DigitalTechClientPortal.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -30,6 +31,7 @@ namespace DigitalTechClientPortal.Controllers
     }
 
     [Authorize]
+    [RequireModule(PortalModuleKeys.Inventario)]
     [Route("[controller]")]
     public class InventarioController : Controller
     {

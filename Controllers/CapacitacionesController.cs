@@ -5,9 +5,11 @@ using Microsoft.AspNetCore.Mvc;
 using DigitalTechClientPortal.Models;
 using DigitalTechClientPortal.Services;
 using DigitalTechClientPortal.Domain.Dataverse;
+using DigitalTechClientPortal.Security;
 
 namespace DigitalTechClientPortal.Controllers
 {
+    [RequireModule(PortalModuleKeys.Capacitaciones)]
     public class CapacitacionesController : Controller
     {
         private readonly CapacitacionService _capacitacionService;

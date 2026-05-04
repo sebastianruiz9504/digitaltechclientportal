@@ -6,10 +6,12 @@ using System.Text.Json;
 using DigitalTechClientPortal.Models;
 using DigitalTechClientPortal.Services;
 using DigitalTechClientPortal.Domain.Dataverse;
+using DigitalTechClientPortal.Security;
 using Microsoft.AspNetCore.Mvc;
 
 namespace DigitalTechClientPortal.Controllers
 {
+    [RequireModule(PortalModuleKeys.Soporte)]
     public class SoporteController : Controller
     {
         private const string FormattedValueSuffix = "@OData.Community.Display.V1.FormattedValue";

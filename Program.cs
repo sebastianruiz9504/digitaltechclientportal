@@ -41,6 +41,7 @@ builder.Services
     .ValidateOnStart();
 
 builder.Services.AddScoped<ClientesService>();
+builder.Services.AddScoped<PortalPermissionService>();
 builder.Services.AddHttpClient<YouTubeService>();
 builder.Services.AddScoped<ReportesCloudService>();
 

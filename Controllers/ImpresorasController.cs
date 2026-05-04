@@ -7,10 +7,12 @@ using System.Threading.Tasks;
 using System.Threading;
 using DigitalTechClientPortal.Models;
 using DigitalTechClientPortal.Services;
+using DigitalTechClientPortal.Security;
 using Microsoft.AspNetCore.Mvc;
 
 namespace DigitalTechClientPortal.Controllers
 {
+    [RequireModule(PortalModuleKeys.Impresoras)]
     public class ImpresorasController : Controller
     {
         private static readonly HashSet<string> UsuariosSinFiltro = new(StringComparer.OrdinalIgnoreCase)

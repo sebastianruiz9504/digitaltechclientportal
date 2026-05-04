@@ -1,9 +1,11 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using DigitalTechClientPortal.Services;
+using DigitalTechClientPortal.Security;
 
 namespace DigitalTechClientPortal.Controllers
 {
+    [RequireModule(PortalModuleKeys.Academy)]
     public class AcademyController : Controller
     {
         private readonly YouTubeService _youTubeService;

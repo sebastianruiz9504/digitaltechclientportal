@@ -1,11 +1,13 @@
 using Microsoft.AspNetCore.Mvc;
 using DigitalTechClientPortal.Services;
+using DigitalTechClientPortal.Security;
 using System;
 using System.Security.Claims;
 using System.Threading.Tasks;
 
 namespace DigitalTechClientPortal.Controllers
 {
+    [RequireModule(PortalModuleKeys.Reportes)]
     public class ReportesController : Controller
     {
         private readonly ReportesCloudService _reportesService;

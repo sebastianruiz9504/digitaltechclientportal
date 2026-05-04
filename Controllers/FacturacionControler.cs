@@ -7,9 +7,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using DigitalTechClientPortal.Services;
+using DigitalTechClientPortal.Security;
 
 namespace DigitalTechClientPortal.Web.Controllers
 {
+    [RequireModule(PortalModuleKeys.Facturacion)]
     public class FacturacionController : Controller
     {
         private readonly IDataverseService _dv;
@@ -23,9 +25,6 @@ namespace DigitalTechClientPortal.Web.Controllers
 
         public async Task<IActionResult> Index()
         {
-            if (User.HasClaim("limited_access", "true"))
-    return Forbid(); // o RedirectToAction("Index","Home")
-
             // Obtener el email del usuario logueado desde los claims
             var email = User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value
                         ?? User.FindFirst("preferred_username")?.Value

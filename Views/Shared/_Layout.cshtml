@@ -1,5 +1,7 @@
 @using System.Security.Claims
+@using DigitalTechClientPortal.Services
 @inject DigitalTechClientPortal.Services.DataverseClienteService ClienteService
+@inject DigitalTechClientPortal.Services.PortalPermissionService PermissionService
 
 @{
     var title = ViewData["Title"]?.ToString() ?? "Dashboard · Digital Tech";
@@ -26,11 +28,15 @@
         try { cliente = await ClienteService.GetClienteByEmailAsync(email); } catch { }
     }
 
-    var companyName = (string)(cliente?.Nombre ?? "Digital Tech");
+    var access = await PermissionService.GetAccessForEmailAsync(email);
+    var companyName = (string)(cliente?.Nombre ?? access.ClienteNombre ?? "Digital Tech");
     var workspaceName = email ?? string.Empty;
     var isAuthenticated = User.Identity?.IsAuthenticated == true;
     var displayName = User.Identity?.Name ?? email ?? string.Empty;
-    var isLimited = User?.HasClaim("limited_access", "true") ?? false;
+    var isLimited = access.IsLimited;
+    var canManagePermissions = access.IsPrincipal;
+    Func<string, bool> canAccessModule = moduleKey =>
+        !isLimited || (access.IsActive && access.AllowedModules.Contains(moduleKey));
 
     var usuariosContadores = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
@@ -92,7 +98,16 @@
                         </a>
                     </li>
 
-                    @if (!isLimited)
+                    @if (canManagePermissions)
+                    {
+                        <li>
+                            <a class='@navClasses("Permisos","Index")' href='@Url.Action("Index","Permisos")' title="Permisos">
+                                <i class="ti ti-users-group"></i><span class="nav-text">Permisos</span>
+                            </a>
+                        </li>
+                    }
+
+                    @if (canAccessModule(PortalModuleKeys.Facturacion))
                     {
                         <li>
                             <a class='@navClasses("Facturacion","Index")' href='@Url.Action("Index","Facturacion", new { email = email })' title="Facturación">
@@ -101,46 +116,70 @@
                         </li>
                     }
 
-                    <li>
-                        <a class='@navClasses("Capacitaciones","Index")' href='@Url.Action("Index","Capacitaciones")' title="Capacitaciones">
-                            <i class="ti ti-school"></i><span class="nav-text">Capacitaciones</span>
-                        </a>
-                    </li>
-                    <li>
-                        <a class='@navClasses("Academy","Index")' href='@Url.Action("Index","Academy")' title="Academy">
-                            <i class="ti ti-book"></i><span class="nav-text">Academy</span>
-                        </a>
-                    </li>
-                    <li>
-                        <a class='@navClasses("Reportes","Index")' href='@Url.Action("Index","Reportes")' title="Reportes">
-                            <i class="ti ti-report"></i><span class="nav-text">Reportes</span>
-                        </a>
-                    </li>
-                    <li>
-                        <a class='@navClasses("Soporte","Index")' href='@Url.Action("Index","Soporte")' title="Soporte">
-                            <i class="ti ti-headset"></i><span class="nav-text">Soporte</span>
-                        </a>
-                    </li>
-                    <li>
-                        <a class='@navClasses("Seguridad","Panel")' href='@Url.Action("Panel","Seguridad")' title="Seguridad">
-                            <i class="ti ti-shield-lock"></i><span class="nav-text">Seguridad</span>
-                        </a>
-                    </li>
-                    <li>
-                        <a class='@navClasses("Gobierno","Index")' href='@Url.Action("Index","Gobierno")' title="Gobierno Microsoft 365">
-                            <i class="ti ti-chart-pie"></i><span class="nav-text">Gobierno M365</span>
-                        </a>
-                    </li>
-                    <li>
-                        <a class='@navClasses("Inventario","Equipos")' href='@Url.Action("Equipos","Inventario")' title="Inventario">
-                            <i class="ti ti-device-desktop"></i><span class="nav-text">Inventario</span>
-                        </a>
-                    </li>
-                    <li>
-                        <a class='@navClasses("Impresoras","Index")' href='@Url.Action("Index","Impresoras")' title="Impresoras">
-                            <i class="ti ti-printer"></i><span class="nav-text">Impresoras</span>
-                        </a>
-                    </li>
+                    @if (canAccessModule(PortalModuleKeys.Capacitaciones))
+                    {
+                        <li>
+                            <a class='@navClasses("Capacitaciones","Index")' href='@Url.Action("Index","Capacitaciones")' title="Capacitaciones">
+                                <i class="ti ti-school"></i><span class="nav-text">Capacitaciones</span>
+                            </a>
+                        </li>
+                    }
+                    @if (canAccessModule(PortalModuleKeys.Academy))
+                    {
+                        <li>
+                            <a class='@navClasses("Academy","Index")' href='@Url.Action("Index","Academy")' title="Academy">
+                                <i class="ti ti-book"></i><span class="nav-text">Academy</span>
+                            </a>
+                        </li>
+                    }
+                    @if (canAccessModule(PortalModuleKeys.Reportes))
+                    {
+                        <li>
+                            <a class='@navClasses("Reportes","Index")' href='@Url.Action("Index","Reportes")' title="Reportes">
+                                <i class="ti ti-report"></i><span class="nav-text">Reportes</span>
+                            </a>
+                        </li>
+                    }
+                    @if (canAccessModule(PortalModuleKeys.Soporte))
+                    {
+                        <li>
+                            <a class='@navClasses("Soporte","Index")' href='@Url.Action("Index","Soporte")' title="Soporte">
+                                <i class="ti ti-headset"></i><span class="nav-text">Soporte</span>
+                            </a>
+                        </li>
+                    }
+                    @if (canAccessModule(PortalModuleKeys.Seguridad))
+                    {
+                        <li>
+                            <a class='@navClasses("Seguridad","Panel")' href='@Url.Action("Panel","Seguridad")' title="Seguridad">
+                                <i class="ti ti-shield-lock"></i><span class="nav-text">Seguridad</span>
+                            </a>
+                        </li>
+                    }
+                    @if (canAccessModule(PortalModuleKeys.Gobierno))
+                    {
+                        <li>
+                            <a class='@navClasses("Gobierno","Index")' href='@Url.Action("Index","Gobierno")' title="Gobierno Microsoft 365">
+                                <i class="ti ti-chart-pie"></i><span class="nav-text">Gobierno M365</span>
+                            </a>
+                        </li>
+                    }
+                    @if (canAccessModule(PortalModuleKeys.Inventario))
+                    {
+                        <li>
+                            <a class='@navClasses("Inventario","Equipos")' href='@Url.Action("Equipos","Inventario")' title="Inventario">
+                                <i class="ti ti-device-desktop"></i><span class="nav-text">Inventario</span>
+                            </a>
+                        </li>
+                    }
+                    @if (canAccessModule(PortalModuleKeys.Impresoras))
+                    {
+                        <li>
+                            <a class='@navClasses("Impresoras","Index")' href='@Url.Action("Index","Impresoras")' title="Impresoras">
+                                <i class="ti ti-printer"></i><span class="nav-text">Impresoras</span>
+                            </a>
+                        </li>
+                    }
                     @if (canSeeContadores)
                     {
                         <li>

@@ -13,14 +13,19 @@ namespace DigitalTechClientPortal.Services
     {
         private readonly IConfiguration _config;
         private readonly IHttpClientFactory _httpClientFactory;
+        private readonly ClientesService _clientesService;
 
         private string _accessToken = string.Empty;
         private DateTimeOffset _tokenExpiresAt = DateTimeOffset.MinValue;
 
-        public DataverseClienteService(IConfiguration config, IHttpClientFactory httpClientFactory)
+        public DataverseClienteService(
+            IConfiguration config,
+            IHttpClientFactory httpClientFactory,
+            ClientesService clientesService)
         {
             _config = config;
             _httpClientFactory = httpClientFactory;
+            _clientesService = clientesService;
         }
 
         private async Task<string> GetAccessTokenAsync()
@@ -89,7 +94,7 @@ public async Task<ClienteInfo?> GetClienteByEmailAsync(string email)
         };
     }
 
-    return null;
+    return await GetClienteFallbackAsync(email);
 }
         /// <summary>
         /// Busca el cliente en Dataverse basado en el email del usuario.
@@ -128,7 +133,20 @@ public async Task<ClienteInfo?> GetClienteByEmailAsync(string email)
                 return nombre;
             }
 
-            return null;
+            return await _clientesService.GetClienteNombreByEmailAsync(email);
+        }
+
+        private async Task<ClienteInfo?> GetClienteFallbackAsync(string email)
+        {
+            var clienteId = await _clientesService.GetClienteIdByEmailAsync(email);
+            if (clienteId == Guid.Empty)
+                return null;
+
+            return new ClienteInfo
+            {
+                Id = clienteId,
+                Nombre = await _clientesService.GetClienteNombreByEmailAsync(email)
+            };
         }
     }
 }

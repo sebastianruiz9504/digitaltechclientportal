@@ -1,5 +1,6 @@
 using DigitalTechClientPortal.Models;
 using DigitalTechClientPortal.Services;
+using DigitalTechClientPortal.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Net;
@@ -9,6 +10,7 @@ using System.Text.Json;
 namespace DigitalTechClientPortal.Controllers
 {
     [Authorize]
+    [RequireModule(PortalModuleKeys.Seguridad)]
     [Route("[controller]")]
     public class SeguridadController : Controller
     {
