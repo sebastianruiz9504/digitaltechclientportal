@@ -256,7 +256,7 @@ namespace DigitalTechClientPortal.Services
                 }
 
                 var token = await GetAccessTokenAsync();
-                var nextUrl = $"{baseUrl}/api/data/v9.2/cr07a_clientes?$select=cr07a_clienteid,cr07a_nombre,cr07a_name,cr07a_correoelectronico&$top=5000";
+                var nextUrl = $"{baseUrl}/api/data/v9.2/cr07a_clientes?$top=5000";
 
                 while (!string.IsNullOrWhiteSpace(nextUrl))
                 {
@@ -693,7 +693,7 @@ namespace DigitalTechClientPortal.Services
                 return (true, true, principal.ClienteId, principal.ClienteNombre);
             }
 
-            if (FullAccessOverrideEmails.Contains(email))
+            if (FullAccessOverrideEmails.Contains(email) && principal.ClienteId != Guid.Empty)
             {
                 return (true, true, principal.ClienteId, principal.ClienteNombre);
             }

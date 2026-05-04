@@ -47,10 +47,11 @@
     var isAuthenticated = User.Identity?.IsAuthenticated == true;
     var displayName = User.Identity?.Name ?? email ?? string.Empty;
     var isLimited = access.IsLimited;
-    var canManagePermissions = access.IsPrincipal
+    var hasPermissionClient = access.ClienteId != Guid.Empty;
+    var canManagePermissions = hasPermissionClient && (access.IsPrincipal
         || (access.IsLimited
             && access.IsActive
-            && PortalModuleKeys.AllKeys.All(moduleKey => access.AllowedModules.Contains(moduleKey)));
+            && PortalModuleKeys.AllKeys.All(moduleKey => access.AllowedModules.Contains(moduleKey))));
     Func<string, bool> canAccessModule = moduleKey =>
         !isLimited || (access.IsActive && access.AllowedModules.Contains(moduleKey));
 

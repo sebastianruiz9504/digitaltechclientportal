@@ -25,10 +25,19 @@ namespace DigitalTechClientPortal.Controllers
         [HttpGet("Index")]
         public async Task<IActionResult> Index()
         {
-            var data = await _permissions.GetUsersForPrincipalAsync(GetCurrentEmails());
+            PermissionUserListResult data;
+            try
+            {
+                data = await _permissions.GetUsersForPrincipalAsync(GetCurrentEmails());
+            }
+            catch
+            {
+                return RedirectToAction(nameof(Denegado));
+            }
+
             if (!data.IsPrincipal)
             {
-                return Forbid();
+                return RedirectToAction(nameof(Denegado));
             }
 
             var vm = new PermisosIndexVm
