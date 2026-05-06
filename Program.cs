@@ -16,7 +16,6 @@ using DigitalTechClientPortal.Security;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Identity.Client; // app-only Graph
 using System;
 using System.Linq;
 using System.Threading.Tasks;
@@ -109,7 +108,7 @@ builder.Services
     })
     .AddCookie(options =>
     {
-        options.Cookie.Name = ".DigitalTech.Auth";
+        options.Cookie.Name = ".DigitalTech.Auth.TenantScoped";
         options.Cookie.SameSite = SameSiteMode.None;
         options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
 
@@ -122,11 +121,9 @@ builder.Services
     })
     .AddOpenIdConnect(options =>
     {
-        // Azure AD (Entra ID)
-        var azureAdTenantId = string.IsNullOrWhiteSpace(builder.Configuration["AzureAd:TenantId"])
-            ? "common"
-            : builder.Configuration["AzureAd:TenantId"];
-        options.Authority = $"https://login.microsoftonline.com/{azureAdTenantId}/v2.0";
+        // Portal multi-tenant: autenticar contra un tenant fijo haria que Graph lea
+        // el directorio del proveedor cuando el usuario entra como invitado B2B.
+        options.Authority = "https://login.microsoftonline.com/organizations/v2.0";
 
         var azureAdClientId = builder.Configuration["AzureAd:ClientId"];
         var azureAdClientSecret = builder.Configuration["AzureAd:ClientSecret"];
@@ -175,6 +172,18 @@ builder.Services
                 if (!string.IsNullOrWhiteSpace(scopeOverride))
                 {
                     ctx.ProtocolMessage.Scope = scopeOverride;
+                }
+
+                return Task.CompletedTask;
+            },
+            OnTokenValidated = ctx =>
+            {
+                var tenantId = ctx.Principal?.FindFirst("tid")?.Value
+                    ?? ctx.Principal?.FindFirst("http://schemas.microsoft.com/identity/claims/tenantid")?.Value;
+
+                if (string.IsNullOrWhiteSpace(tenantId))
+                {
+                    ctx.Fail("El inicio de sesion no incluye tenant de Entra ID.");
                 }
 
                 return Task.CompletedTask;
@@ -302,30 +311,6 @@ builder.Services.AddSingleton<ServiceClient>(sp =>
 builder.Services.AddScoped<CapacitacionService>();
 builder.Services.AddScoped<IDataverseService, DataverseService>();
 builder.Services.AddScoped<ContactsPanelService>();
-
-// Graph app-only para Seguridad
-builder.Services.AddScoped<GraphAppOnlyClientFactory>(sp =>
-{
-    var cfg = builder.Configuration;
-    var tenantId = cfg["Graph:TenantId"];
-    var clientId = cfg["Graph:ClientId"];
-    var clientSecret = cfg["Graph:ClientSecret"];
-
-    if (string.IsNullOrWhiteSpace(tenantId) ||
-        string.IsNullOrWhiteSpace(clientId) ||
-        string.IsNullOrWhiteSpace(clientSecret))
-    {
-        throw new InvalidOperationException("Configura Graph:TenantId, Graph:ClientId y Graph:ClientSecret para el cliente app-only.");
-    }
-
-    var cca = ConfidentialClientApplicationBuilder
-        .Create(clientId)
-        .WithClientSecret(clientSecret)
-        .WithAuthority($"https://login.microsoftonline.com/{tenantId}")
-        .Build();
-
-    return new GraphAppOnlyClientFactory(cca);
-});
 
 var app = builder.Build();
 

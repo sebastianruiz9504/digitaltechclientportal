@@ -5,6 +5,8 @@
     var es = CultureInfo.GetCultureInfo("es-CO");
     var sources = Model.DataSources?.ToList() ?? new List<DigitalTechClientPortal.Models.SecurityDataSourceStatus>();
     var unavailable = sources.Where(s => !s.IsAvailable).ToList();
+    var permissionStatus = Model.PermissionStatus ?? new DigitalTechClientPortal.Models.SecurityPermissionStatus();
+    var hasMissingPermissions = permissionStatus.HasMissingRequiredScopes;
     var topOpportunities = Model.Opportunities
         .OrderByDescending(o => (o.Severity ?? "").ToLowerInvariant() is "alta" ? 3 : (o.Severity ?? "").ToLowerInvariant() is "media" ? 2 : 1)
         .ThenByDescending(o => o.Count)
@@ -106,7 +108,35 @@
     </div>
   </section>
 
-  @if (!string.IsNullOrWhiteSpace(Model.GraphError))
+  @if (hasMissingPermissions)
+  {
+    var currentReturnUrl = $"{Context.Request.PathBase}{Context.Request.Path}{Context.Request.QueryString}";
+    <div class="alert alert-warning mb-0">
+      <div class="d-flex flex-column flex-lg-row gap-3 align-items-lg-start justify-content-between">
+        <div>
+          <strong>Faltan permisos de Microsoft Graph.</strong>
+          <p class="mb-2 mt-1">@Model.GraphError</p>
+          <div class="d-flex flex-wrap gap-2">
+            @foreach (var scope in permissionStatus.MissingScopes)
+            {
+              <span class="gov-chip warning">
+                @(permissionStatus.ScopeDescriptions.TryGetValue(scope, out var description) ? description : scope)
+              </span>
+            }
+          </div>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          <a class="btn btn-primary btn-sm" href='@Url.Action("Consent","Login", new { returnUrl = currentReturnUrl, admin = false })'>
+            <i class="ti ti-key"></i> Pedir consentimiento
+          </a>
+          <a class="btn btn-outline-primary btn-sm" href='@Url.Action("Consent","Login", new { returnUrl = currentReturnUrl, admin = true })'>
+            <i class="ti ti-shield-lock"></i> Consentimiento admin
+          </a>
+        </div>
+      </div>
+    </div>
+  }
+  else if (!string.IsNullOrWhiteSpace(Model.GraphError))
   {
     <div class="alert alert-warning mb-0">@Model.GraphError</div>
   }

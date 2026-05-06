@@ -128,7 +128,6 @@ public class LoginController : Controller
     {
         var tenantId =
             User.FindFirst("tid")?.Value
-            ?? _configuration["AzureAd:TenantId"]
             ?? "organizations";
 
         if (string.Equals(tenantId, "common", StringComparison.OrdinalIgnoreCase))
@@ -144,7 +143,7 @@ public class LoginController : Controller
             protocol: Request.Scheme)
             ?? throw new InvalidOperationException("No fue posible construir redirect_uri para consentimiento.");
 
-        var scope = string.Join(" ", GraphPermissionRequirements.SecurityPanelScopes
+        var scope = string.Join(" ", GraphPermissionRequirements.TenantReadScopes
             .Select(GraphPermissionRequirements.ToGraphScope));
 
         var query = new QueryString()

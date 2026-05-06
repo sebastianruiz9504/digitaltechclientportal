@@ -16,9 +16,25 @@ namespace DigitalTechClientPortal.Services
             _httpContextAccessor = httpContextAccessor;
         }
 
-        public async Task<SecurityPermissionStatus> GetSecurityPermissionStatusAsync()
+        public Task<SecurityPermissionStatus> GetSecurityPermissionStatusAsync()
         {
-            var required = GraphPermissionRequirements.SecurityPanelScopes.ToList();
+            return GetPermissionStatusAsync(
+                GraphPermissionRequirements.SecurityPanelScopes,
+                GraphPermissionRequirements.SecurityScopeDescriptions);
+        }
+
+        public Task<SecurityPermissionStatus> GetGovernancePermissionStatusAsync()
+        {
+            return GetPermissionStatusAsync(
+                GraphPermissionRequirements.GovernanceScopes,
+                GraphPermissionRequirements.GovernanceScopeDescriptions);
+        }
+
+        private async Task<SecurityPermissionStatus> GetPermissionStatusAsync(
+            IEnumerable<string> requiredScopes,
+            IReadOnlyDictionary<string, string> descriptions)
+        {
+            var required = requiredScopes.ToList();
             var granted = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             var ctx = _httpContextAccessor.HttpContext;
@@ -39,7 +55,7 @@ namespace DigitalTechClientPortal.Services
                 GrantedScopes = granted.OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToList(),
                 MissingScopes = missing,
                 ScopeDescriptions = new Dictionary<string, string>(
-                    GraphPermissionRequirements.SecurityScopeDescriptions,
+                    descriptions,
                     StringComparer.OrdinalIgnoreCase)
             };
         }

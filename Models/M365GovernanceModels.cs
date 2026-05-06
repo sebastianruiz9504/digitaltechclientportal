@@ -10,6 +10,7 @@ namespace DigitalTechClientPortal.Models
         public string? GraphError { get; set; }
         public string? AiPlanError { get; set; }
         public M365OptimizationAiPlan? OptimizationPlanAi { get; set; }
+        public SecurityPermissionStatus PermissionStatus { get; set; } = new();
 
         public List<M365LicenseSku> Licenses { get; set; } = new();
         public List<M365UserSnapshot> Users { get; set; } = new();

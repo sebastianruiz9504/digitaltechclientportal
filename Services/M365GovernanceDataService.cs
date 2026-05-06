@@ -10,10 +10,10 @@ namespace DigitalTechClientPortal.Services
     {
         private const string GraphV1 = "https://graph.microsoft.com/v1.0";
         private const string GraphBeta = "https://graph.microsoft.com/beta";
-        private readonly GraphAppOnlyClientFactory _factory;
+        private readonly GraphClientFactory _factory;
         private readonly ILogger<M365GovernanceDataService> _logger;
 
-        public M365GovernanceDataService(GraphAppOnlyClientFactory factory, ILogger<M365GovernanceDataService> logger)
+        public M365GovernanceDataService(GraphClientFactory factory, ILogger<M365GovernanceDataService> logger)
         {
             _factory = factory;
             _logger = logger;
@@ -46,8 +46,8 @@ namespace DigitalTechClientPortal.Services
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "No fue posible inicializar Microsoft Graph app-only para Gobierno M365.");
-                vm.GraphError = "No fue posible conectar con Microsoft Graph app-only. Valida credenciales, permisos y consentimiento de administrador.";
+                _logger.LogWarning(ex, "No fue posible inicializar Microsoft Graph para Gobierno M365.");
+                vm.GraphError = "No fue posible conectar con Microsoft Graph. Inicia sesion nuevamente o valida el consentimiento de permisos del tenant.";
                 RegisterDataSource(vm, "Microsoft Graph", false, 0, vm.GraphError);
             }
 
