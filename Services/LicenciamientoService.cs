@@ -22,6 +22,12 @@ namespace DigitalTechClientPortal.Services
         private const string ClienteEntity = "cr07a_cliente";
         private const string ClienteNombre = "cr07a_nombre";
 
+        private const string AccountIdEntity = "cr07a_accountidicp";
+        private const string AccountIdName = "cr07a_name";
+        private const string AccountIdCliente = "cr07a_cliente";
+        private const string AccountIdGrupoEmpresarialId = "cr07a_grupoempresarialid";
+        private const string AccountIdGrupoEmpresarialName = "cr07a_grupoempresarialname";
+
         private const string ProductoCloudEntity = "cr07a_salesperformancerecord";
         private const string ProductoCloudId = "cr07a_salesperformancerecordid";
         private const string ProductoCloudCliente = "cr07a_clientelookup";
@@ -42,25 +48,17 @@ namespace DigitalTechClientPortal.Services
         private const string SolicitudNombre = "cr07a_name";
         private const string SolicitudDetalle = "cr07a_productoycantidades";
         private const string SolicitudValorUnitario = "cr07a_valorunitario";
-        private const string SolicitudSubRazon = "cr07a_subrazonlicenciamiento";
         private const string SolicitudRegistroProductoCloud = "cr07a_registroproductocloud";
         private const string SolicitudSolicitadoPor = "cr07a_solicitadopor";
-
-        private const string SubRazonEntity = "cr07a_subrazonsociallicenciamiento";
-        private const string SubRazonNombre = "cr07a_name";
-        private const string SubRazonCliente = "cr07a_cliente";
-
-        private const string AsignacionEntity = "cr07a_asignacionlicenciamiento";
-        private const string AsignacionNombre = "cr07a_name";
-        private const string AsignacionCliente = "cr07a_cliente";
-        private const string AsignacionSubRazon = "cr07a_subrazon";
-        private const string AsignacionProductoCloud = "cr07a_registroproductocloud";
-        private const string AsignacionCantidad = "cr07a_cantidad";
+        private const string SolicitudGrupoEmpresarialId = "cr07a_grupoempresarialid";
+        private const string SolicitudGrupoEmpresarialName = "cr07a_grupoempresarialname";
+        private const string SolicitudClienteHijoName = "cr07a_clientehijoname";
+        private const string SolicitudAccountIds = "cr07a_accountids";
 
         private const int SolicitudEstadoPendiente = 645250000;
         private const int SolicitudEstadoAprovisionado = 645250001;
         private const int SolicitudEstadoAprobado = 645250002;
-        private const int LabelLanguage = 1033;
+        private const int LabelLanguage = 3082;
 
         private static readonly SemaphoreSlim SchemaLock = new(1, 1);
         private static LicenciamientoSchemaStatus? CachedSchemaStatus;
@@ -85,24 +83,25 @@ namespace DigitalTechClientPortal.Services
             string? mensaje = null,
             string? error = null)
         {
-            var now = DateTime.Today;
-            var selectedMonth = mes.GetValueOrDefault(now.Month);
-            var selectedYear = anio.GetValueOrDefault(now.Year);
+            var today = DateTime.Today;
+            var selectedMonth = mes.GetValueOrDefault(today.Month);
+            var selectedYear = anio.GetValueOrDefault(today.Year);
 
             if (selectedMonth is < 1 or > 12)
             {
-                selectedMonth = now.Month;
+                selectedMonth = today.Month;
             }
 
             if (selectedYear is < 2000 or > 2100)
             {
-                selectedYear = now.Year;
+                selectedYear = today.Year;
             }
 
             var schema = await EnsureSchemaAsync();
             var canSwitchClient = IsAdminLicenciamiento(candidateEmails);
             var clientes = canSwitchClient ? await GetClientesAsync() : new List<ClienteLookupVm>();
             var clienteId = await ResolveAuthorizedClientIdAsync(candidateEmails, requestedClientId, clientes);
+            var diasMes = DateTime.DaysInMonth(selectedYear, selectedMonth);
 
             if (clienteId == Guid.Empty)
             {
@@ -110,7 +109,7 @@ namespace DigitalTechClientPortal.Services
                 {
                     MesSeleccionado = selectedMonth,
                     AnioSeleccionado = selectedYear,
-                    DiasMes = DateTime.DaysInMonth(selectedYear, selectedMonth),
+                    DiasMes = diasMes,
                     PuedeCambiarCliente = canSwitchClient,
                     PuedeEditarEstructura = canSwitchClient,
                     ClientesDisponibles = clientes,
@@ -125,73 +124,50 @@ namespace DigitalTechClientPortal.Services
                 clientes = clientes.OrderBy(c => c.Nombre, StringComparer.OrdinalIgnoreCase).ToList();
             }
 
-            var diasMes = DateTime.DaysInMonth(selectedYear, selectedMonth);
-            var productos = await GetProductosCloudAsync(clienteId);
-            var subRazones = schema.SubRazonReady
-                ? await GetSubRazonesAsync(clienteId)
-                : new List<SubRazonDto>();
-            var asignaciones = schema.AsignacionReady
-                ? await GetAsignacionesAsync(clienteId)
-                : new List<AsignacionDto>();
-
+            var enterprise = await GetEnterpriseContextAsync(clienteId, clienteNombre, schema);
+            var productos = await GetProductosCloudAsync(enterprise.ChildrenById.Keys.ToList(), enterprise.ChildrenById);
             var productosPorId = productos.ToDictionary(p => p.SalesRecordId);
-            var subRazonesPorId = subRazones.ToDictionary(s => s.Id);
-            var solicitudes = await GetSolicitudesAsync(clienteId, schema, productosPorId, subRazonesPorId);
+            var solicitudes = await GetSolicitudesAsync(
+                enterprise.ChildrenById.Keys.ToList(),
+                schema,
+                productosPorId,
+                enterprise.ChildrenById,
+                enterprise.GrupoEmpresarialNombre);
 
-            var productosVm = productos
-                .Select(p => new LicenciaProductoResumenVm
+            var clientesHijos = enterprise.Children
+                .OrderBy(c => c.ClienteNombre, StringComparer.OrdinalIgnoreCase)
+                .Select(c => new ClienteLicenciamientoVm
                 {
-                    SalesRecordId = p.SalesRecordId,
-                    ProductoId = p.ProductoReference?.Id,
-                    ProductoLogicalName = p.ProductoReference?.LogicalName ?? string.Empty,
-                    Producto = p.Nombre,
-                    CantidadTotal = p.Cantidad,
-                    CantidadAsignada = asignaciones
-                        .Where(a => a.SalesRecordId == p.SalesRecordId)
-                        .Sum(a => a.Cantidad),
-                    PrecioUnitarioUsd = p.PrecioUnitarioUsd,
-                    DiaFacturacion = p.DiaFacturacion
-                })
-                .OrderBy(p => p.Producto, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-
-            var subRazonesVm = subRazones
-                .OrderBy(s => s.Nombre, StringComparer.OrdinalIgnoreCase)
-                .Select(s => new SubRazonSocialVm
-                {
-                    Id = s.Id,
-                    Nombre = s.Nombre,
-                    Consumo = asignaciones
-                        .Where(a => a.SubRazonId == s.Id && productosPorId.ContainsKey(a.SalesRecordId) && a.Cantidad > 0)
-                        .Select(a =>
+                    ClienteId = c.ClienteId,
+                    ClienteNombre = c.ClienteNombre,
+                    AccountIds = c.AccountIds,
+                    Consumo = productos
+                        .Where(p => p.ClienteId == c.ClienteId && p.Cantidad > 0)
+                        .Select(p => new ConsumoLicenciaVm
                         {
-                            var producto = productosPorId[a.SalesRecordId];
-                            return new ConsumoLicenciaVm
-                            {
-                                SalesRecordId = producto.SalesRecordId,
-                                Producto = producto.Nombre,
-                                Cantidad = a.Cantidad,
-                                DiasConsumo = diasMes,
-                                DiasMes = diasMes,
-                                PrecioUnitarioUsd = producto.PrecioUnitarioUsd,
-                                Origen = "Base mensual"
-                            };
+                            SalesRecordId = p.SalesRecordId,
+                            ClienteId = p.ClienteId,
+                            ClienteNombre = p.ClienteNombre,
+                            AccountId = string.Join(", ", p.AccountIds),
+                            ProductoId = p.ProductoReference?.Id,
+                            ProductoLogicalName = p.ProductoReference?.LogicalName ?? string.Empty,
+                            Producto = p.Nombre,
+                            Cantidad = p.Cantidad,
+                            DiasConsumo = diasMes,
+                            DiasMes = diasMes,
+                            PrecioUnitarioUsd = p.PrecioUnitarioUsd,
+                            Origen = "Mes completo"
                         })
                         .OrderBy(c => c.Producto, StringComparer.OrdinalIgnoreCase)
+                        .ThenBy(c => c.PrecioUnitarioUsd)
                         .ToList()
                 })
                 .ToList();
 
             foreach (var solicitud in solicitudes.Where(s => IsSolicitudFacturable(s.EstadoValor)))
             {
-                if (!solicitud.SubRazonId.HasValue ||
-                    !productosPorId.TryGetValue(solicitud.SalesRecordId.GetValueOrDefault(), out var producto))
-                {
-                    continue;
-                }
-
-                var subRazonVm = subRazonesVm.FirstOrDefault(s => s.Id == solicitud.SubRazonId.Value);
-                if (subRazonVm == null)
+                if (!solicitud.SalesRecordId.HasValue ||
+                    !productosPorId.TryGetValue(solicitud.SalesRecordId.Value, out var producto))
                 {
                     continue;
                 }
@@ -202,10 +178,21 @@ namespace DigitalTechClientPortal.Services
                     continue;
                 }
 
-                subRazonVm.Consumo.Add(new ConsumoLicenciaVm
+                var clienteVm = clientesHijos.FirstOrDefault(c => c.ClienteId == solicitud.ClienteId);
+                if (clienteVm == null)
+                {
+                    continue;
+                }
+
+                clienteVm.Consumo.Add(new ConsumoLicenciaVm
                 {
                     SalesRecordId = producto.SalesRecordId,
                     SolicitudId = solicitud.Id,
+                    ClienteId = solicitud.ClienteId,
+                    ClienteNombre = solicitud.ClienteNombre,
+                    AccountId = string.Join(", ", producto.AccountIds),
+                    ProductoId = producto.ProductoReference?.Id,
+                    ProductoLogicalName = producto.ProductoReference?.LogicalName ?? string.Empty,
                     Producto = producto.Nombre,
                     Cantidad = solicitud.Cantidad,
                     DiasConsumo = Math.Max(1, diasMes - fechaBase.Day + 1),
@@ -216,6 +203,45 @@ namespace DigitalTechClientPortal.Services
                 });
             }
 
+            var productosRazonPadre = productos
+                .GroupBy(p => new
+                {
+                    ProductoKey = GetProductGroupKey(p),
+                    Precio = p.PrecioUnitarioUsd
+                })
+                .Select(g =>
+                {
+                    var first = g.First();
+                    var clientesConProducto = g
+                        .Select(p => p.ClienteNombre)
+                        .Where(n => !string.IsNullOrWhiteSpace(n))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+
+                    return new LicenciaProductoResumenVm
+                    {
+                        SalesRecordId = first.SalesRecordId,
+                        ProductoId = first.ProductoReference?.Id,
+                        ProductoLogicalName = first.ProductoReference?.LogicalName ?? string.Empty,
+                        Producto = first.Nombre,
+                        CantidadTotal = g.Sum(p => p.Cantidad),
+                        CantidadAsignada = g.Sum(p => p.Cantidad),
+                        PrecioUnitarioUsd = first.PrecioUnitarioUsd,
+                        DiaFacturacion = g.Select(p => p.DiaFacturacion).FirstOrDefault(d => d.HasValue),
+                        ClientesConProducto = clientesConProducto,
+                        AccountIds = g
+                            .SelectMany(p => p.AccountIds)
+                            .Where(a => !string.IsNullOrWhiteSpace(a))
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .OrderBy(a => a, StringComparer.OrdinalIgnoreCase)
+                            .ToList()
+                    };
+                })
+                .OrderBy(p => p.Producto, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(p => p.PrecioUnitarioUsd)
+                .ToList();
+
             var diaCorte = productos.FirstOrDefault(p => p.DiaFacturacion.HasValue)?.DiaFacturacion ?? 15;
             var fechaCorte = new DateTime(selectedYear, selectedMonth, Math.Min(diaCorte, diasMes));
 
@@ -223,6 +249,9 @@ namespace DigitalTechClientPortal.Services
             {
                 ClienteId = clienteId,
                 ClienteNombre = clienteNombre,
+                GrupoEmpresarialId = enterprise.GrupoEmpresarialId,
+                GrupoEmpresarialNombre = enterprise.GrupoEmpresarialNombre,
+                TieneGrupoEmpresarial = enterprise.TieneGrupoEmpresarial,
                 FechaCorte = fechaCorte,
                 DiaCorte = diaCorte,
                 MesSeleccionado = selectedMonth,
@@ -232,8 +261,8 @@ namespace DigitalTechClientPortal.Services
                 PuedeEditarEstructura = true,
                 ClienteSeleccionadoId = clienteId,
                 ClientesDisponibles = clientes,
-                ProductosRazonPadre = productosVm,
-                SubRazones = subRazonesVm,
+                ProductosRazonPadre = productosRazonPadre,
+                ClientesHijos = clientesHijos,
                 HistoricoSolicitudes = solicitudes
                     .Select(s => new SolicitudLicenciaVm
                     {
@@ -241,7 +270,9 @@ namespace DigitalTechClientPortal.Services
                         FechaSolicitud = s.FechaSolicitud,
                         FechaProrrateo = s.FechaProrrateo,
                         SolicitadoPor = s.SolicitadoPor,
-                        SubRazon = s.SubRazonNombre,
+                        ClienteHijo = s.ClienteNombre,
+                        SubRazon = s.ClienteNombre,
+                        GrupoEmpresarial = s.GrupoEmpresarialNombre,
                         Producto = s.ProductoNombre,
                         CantidadNueva = s.Cantidad,
                         PrecioUnitarioUsd = s.PrecioUnitarioUsd,
@@ -253,106 +284,14 @@ namespace DigitalTechClientPortal.Services
             };
         }
 
-        public async Task<Guid> CrearSubRazonAsync(IReadOnlyList<string> candidateEmails, CrearSubRazonLicenciamientoVm input)
+        public Task<Guid> CrearSubRazonAsync(IReadOnlyList<string> candidateEmails, CrearSubRazonLicenciamientoVm input)
         {
-            var clienteId = await ResolveAuthorizedClientIdAsync(candidateEmails, input.ClienteId, null);
-            if (clienteId == Guid.Empty)
-            {
-                throw new UnauthorizedAccessException("No tienes un cliente asociado para crear subrazones.");
-            }
-
-            var schema = await EnsureSchemaAsync();
-            if (!schema.SubRazonReady)
-            {
-                throw new InvalidOperationException("La tabla de subrazones de licenciamiento no está disponible en Dataverse.");
-            }
-
-            var nombre = (input.Nombre ?? string.Empty).Trim();
-            if (string.IsNullOrWhiteSpace(nombre))
-            {
-                throw new InvalidOperationException("Escribe el nombre de la subrazón social.");
-            }
-
-            var existing = await GetSubRazonByNameAsync(clienteId, nombre);
-            if (existing.HasValue)
-            {
-                return clienteId;
-            }
-
-            var entity = new Entity(SubRazonEntity)
-            {
-                [SubRazonNombre] = nombre,
-                [SubRazonCliente] = new EntityReference(ClienteEntity, clienteId)
-            };
-
-            await _svc.CreateAsync(entity);
-            return clienteId;
+            throw new InvalidOperationException("La estructura de licenciamiento ahora se administra desde la tabla Account ID icp con GrupoempresarialID y grupoempresarialname.");
         }
 
-        public async Task<Guid> GuardarAsignacionAsync(IReadOnlyList<string> candidateEmails, GuardarAsignacionLicenciamientoVm input)
+        public Task<Guid> GuardarAsignacionAsync(IReadOnlyList<string> candidateEmails, GuardarAsignacionLicenciamientoVm input)
         {
-            var clienteId = await ResolveAuthorizedClientIdAsync(candidateEmails, input.ClienteId, null);
-            if (clienteId == Guid.Empty)
-            {
-                throw new UnauthorizedAccessException("No tienes un cliente asociado para modificar asignaciones.");
-            }
-
-            var schema = await EnsureSchemaAsync();
-            if (!schema.SubRazonReady || !schema.AsignacionReady)
-            {
-                throw new InvalidOperationException("Las tablas de subrazones/asignaciones de licenciamiento no están disponibles en Dataverse.");
-            }
-
-            var producto = await GetProductoCloudAsync(input.SalesRecordId, clienteId);
-            var subRazon = await GetSubRazonAsync(input.SubRazonId, clienteId);
-            if (producto == null)
-            {
-                throw new InvalidOperationException("El producto seleccionado no pertenece al cliente actual.");
-            }
-
-            if (subRazon == null)
-            {
-                throw new InvalidOperationException("La subrazón seleccionada no pertenece al cliente actual.");
-            }
-
-            if (input.Cantidad < 0)
-            {
-                throw new InvalidOperationException("La cantidad asignada no puede ser negativa.");
-            }
-
-            var existing = await GetAsignacionAsync(clienteId, input.SubRazonId, input.SalesRecordId);
-            var totalOtros = await GetTotalAsignadoProductoAsync(clienteId, input.SalesRecordId, existing?.Id);
-            if (totalOtros + input.Cantidad > producto.Cantidad)
-            {
-                throw new InvalidOperationException(
-                    $"La asignación supera las {producto.Cantidad} licencias disponibles para {producto.Nombre}.");
-            }
-
-            if (existing == null)
-            {
-                var entity = new Entity(AsignacionEntity)
-                {
-                    [AsignacionNombre] = $"{subRazon.Nombre} - {producto.Nombre}",
-                    [AsignacionCliente] = new EntityReference(ClienteEntity, clienteId),
-                    [AsignacionSubRazon] = new EntityReference(SubRazonEntity, subRazon.Id),
-                    [AsignacionProductoCloud] = new EntityReference(ProductoCloudEntity, producto.SalesRecordId),
-                    [AsignacionCantidad] = input.Cantidad
-                };
-
-                await _svc.CreateAsync(entity);
-            }
-            else
-            {
-                var entity = new Entity(AsignacionEntity, existing.Id)
-                {
-                    [AsignacionNombre] = $"{subRazon.Nombre} - {producto.Nombre}",
-                    [AsignacionCantidad] = input.Cantidad
-                };
-
-                await _svc.UpdateAsync(entity);
-            }
-
-            return clienteId;
+            throw new InvalidOperationException("Las asignaciones manuales fueron reemplazadas por clientes hijos reales asociados a Account ID icp.");
         }
 
         public async Task<Guid> SolicitarLicenciasAsync(
@@ -372,24 +311,31 @@ namespace DigitalTechClientPortal.Services
             }
 
             var schema = await EnsureSchemaAsync();
-            var producto = await GetProductoCloudAsync(input.SalesRecordId, clienteId);
-            var subRazon = await GetSubRazonAsync(input.SubRazonId, clienteId);
-            if (producto == null)
+            if (!schema.SolicitudEntityReady || !schema.SolicitudClienteLookupReady)
             {
-                throw new InvalidOperationException("El producto seleccionado no pertenece al cliente actual.");
+                throw new InvalidOperationException("La tabla de solicitudes de aprovisionamiento no está lista en Dataverse.");
             }
 
-            if (subRazon == null)
+            var clienteNombre = await GetClienteNombreAsync(clienteId);
+            var enterprise = await GetEnterpriseContextAsync(clienteId, clienteNombre, schema);
+            var clienteHijoId = input.ClienteHijoId != Guid.Empty ? input.ClienteHijoId : clienteId;
+            if (!enterprise.ChildrenById.TryGetValue(clienteHijoId, out var clienteHijo))
             {
-                throw new InvalidOperationException("Cada solicitud debe estar asignada a una subrazón social del cliente.");
+                throw new InvalidOperationException("El cliente hijo seleccionado no pertenece al grupo empresarial visible para este usuario.");
+            }
+
+            var producto = await GetProductoCloudAsync(input.SalesRecordId, clienteHijoId, enterprise.ChildrenById);
+            if (producto == null)
+            {
+                throw new InvalidOperationException("El producto seleccionado no pertenece al cliente hijo seleccionado.");
             }
 
             var nowUtc = DateTime.UtcNow;
-            var detalle = BuildSolicitudDetalle(subRazon, producto, solicitante, input.Cantidad);
+            var detalle = BuildSolicitudDetalle(enterprise, clienteHijo, producto, solicitante, input.Cantidad);
             var solicitud = new Entity(SolicitudEntity)
             {
                 [SolicitudNombre] = $"Aumento licencias - {producto.Nombre}",
-                [SolicitudCliente] = new EntityReference(ClienteEntity, clienteId),
+                [SolicitudCliente] = new EntityReference(ClienteEntity, clienteHijo.ClienteId),
                 [SolicitudCantidad] = input.Cantidad,
                 [SolicitudEstado] = new OptionSetValue(SolicitudEstadoPendiente),
                 [SolicitudFecha] = nowUtc,
@@ -398,14 +344,9 @@ namespace DigitalTechClientPortal.Services
                 [SolicitudValorUnitario] = producto.PrecioUnitarioUsd
             };
 
-            if (producto.ProductoReference != null)
+            if (schema.SolicitudProductoLookupReady && producto.ProductoReference != null)
             {
                 solicitud[SolicitudProducto] = producto.ProductoReference;
-            }
-
-            if (schema.SolicitudSubRazonLookupReady)
-            {
-                solicitud[SolicitudSubRazon] = new EntityReference(SubRazonEntity, subRazon.Id);
             }
 
             if (schema.SolicitudRegistroProductoCloudLookupReady)
@@ -416,6 +357,26 @@ namespace DigitalTechClientPortal.Services
             if (schema.SolicitadoPorReady)
             {
                 solicitud[SolicitudSolicitadoPor] = solicitante;
+            }
+
+            if (schema.SolicitudGrupoEmpresarialIdReady)
+            {
+                solicitud[SolicitudGrupoEmpresarialId] = enterprise.GrupoEmpresarialId;
+            }
+
+            if (schema.SolicitudGrupoEmpresarialNameReady)
+            {
+                solicitud[SolicitudGrupoEmpresarialName] = enterprise.GrupoEmpresarialNombre;
+            }
+
+            if (schema.SolicitudClienteHijoNameReady)
+            {
+                solicitud[SolicitudClienteHijoName] = clienteHijo.ClienteNombre;
+            }
+
+            if (schema.SolicitudAccountIdsReady)
+            {
+                solicitud[SolicitudAccountIds] = string.Join(", ", clienteHijo.AccountIds);
             }
 
             await _svc.CreateAsync(solicitud);
@@ -435,7 +396,11 @@ namespace DigitalTechClientPortal.Services
                 throw new InvalidOperationException("El día de facturación debe estar entre 1 y 31.");
             }
 
-            var productos = await GetProductosCloudAsync(clienteId);
+            var schema = await EnsureSchemaAsync();
+            var clienteNombre = await GetClienteNombreAsync(clienteId);
+            var enterprise = await GetEnterpriseContextAsync(clienteId, clienteNombre, schema);
+            var productos = await GetProductosCloudAsync(enterprise.ChildrenById.Keys.ToList(), enterprise.ChildrenById);
+
             foreach (var producto in productos)
             {
                 var entity = new Entity(ProductoCloudEntity, producto.SalesRecordId)
@@ -511,8 +476,200 @@ namespace DigitalTechClientPortal.Services
             }
         }
 
-        private async Task<List<ProductoCloudDto>> GetProductosCloudAsync(Guid clienteId)
+        private async Task<EnterpriseContextDto> GetEnterpriseContextAsync(
+            Guid selectedClienteId,
+            string selectedClienteNombre,
+            LicenciamientoSchemaStatus schema)
         {
+            var ownRows = await GetAccountIdRowsByClienteAsync(selectedClienteId, schema);
+            var anchorRow = ownRows.FirstOrDefault(r => !string.IsNullOrWhiteSpace(r.GrupoEmpresarialId))
+                ?? ownRows.FirstOrDefault(r => !string.IsNullOrWhiteSpace(r.GrupoEmpresarialName));
+
+            var rows = anchorRow != null
+                ? await GetAccountIdRowsByGroupAsync(anchorRow.GrupoEmpresarialId, anchorRow.GrupoEmpresarialName, schema)
+                : ownRows;
+
+            if (rows.Count == 0)
+            {
+                rows.Add(new AccountIdRowDto(
+                    Guid.Empty,
+                    selectedClienteId,
+                    selectedClienteNombre,
+                    string.Empty,
+                    string.Empty,
+                    string.Empty));
+            }
+
+            rows = await HydrateAccountRowsAsync(rows, selectedClienteId, selectedClienteNombre);
+
+            var groupId = rows.Select(r => r.GrupoEmpresarialId).FirstOrDefault(v => !string.IsNullOrWhiteSpace(v)) ?? string.Empty;
+            var groupName = rows.Select(r => r.GrupoEmpresarialName).FirstOrDefault(v => !string.IsNullOrWhiteSpace(v)) ?? selectedClienteNombre;
+            var children = rows
+                .Where(r => r.ClienteId != Guid.Empty)
+                .GroupBy(r => r.ClienteId)
+                .Select(g => new ChildClienteDto(
+                    g.Key,
+                    g.Select(r => r.ClienteNombre).FirstOrDefault(n => !string.IsNullOrWhiteSpace(n)) ?? "Cliente",
+                    g.Select(r => r.AccountId)
+                        .Where(a => !string.IsNullOrWhiteSpace(a))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .OrderBy(a => a, StringComparer.OrdinalIgnoreCase)
+                        .ToList()))
+                .OrderBy(c => c.ClienteNombre, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (children.Count == 0)
+            {
+                children.Add(new ChildClienteDto(selectedClienteId, selectedClienteNombre, new List<string>()));
+            }
+
+            return new EnterpriseContextDto
+            {
+                GrupoEmpresarialId = groupId,
+                GrupoEmpresarialNombre = groupName,
+                TieneGrupoEmpresarial = !string.IsNullOrWhiteSpace(groupId)
+                    || !string.IsNullOrWhiteSpace(anchorRow?.GrupoEmpresarialName)
+                    || children.Count > 1,
+                Children = children,
+                ChildrenById = children.ToDictionary(c => c.ClienteId)
+            };
+        }
+
+        private async Task<List<AccountIdRowDto>> GetAccountIdRowsByClienteAsync(Guid clienteId, LicenciamientoSchemaStatus schema)
+        {
+            var columns = GetAccountIdColumns(schema);
+            var query = new QueryExpression(AccountIdEntity)
+            {
+                ColumnSet = new ColumnSet(columns.ToArray()),
+                Criteria =
+                {
+                    Conditions =
+                    {
+                        new ConditionExpression(AccountIdCliente, ConditionOperator.Equal, clienteId),
+                        new ConditionExpression("statecode", ConditionOperator.Equal, 0)
+                    }
+                }
+            };
+            query.AddOrder(AccountIdName, OrderType.Ascending);
+
+            var result = await _svc.RetrieveMultipleAsync(query);
+            return result.Entities.Select(e => ToAccountIdRowDto(e, schema)).Where(r => r.ClienteId != Guid.Empty).ToList();
+        }
+
+        private async Task<List<AccountIdRowDto>> GetAccountIdRowsByGroupAsync(
+            string? grupoEmpresarialId,
+            string? grupoEmpresarialName,
+            LicenciamientoSchemaStatus schema)
+        {
+            if (!schema.AccountIdGrupoEmpresarialIdReady && !schema.AccountIdGrupoEmpresarialNameReady)
+            {
+                return new List<AccountIdRowDto>();
+            }
+
+            var groupFilter = new FilterExpression(LogicalOperator.Or);
+            if (schema.AccountIdGrupoEmpresarialIdReady && !string.IsNullOrWhiteSpace(grupoEmpresarialId))
+            {
+                groupFilter.AddCondition(AccountIdGrupoEmpresarialId, ConditionOperator.Equal, grupoEmpresarialId);
+            }
+
+            if (schema.AccountIdGrupoEmpresarialNameReady && !string.IsNullOrWhiteSpace(grupoEmpresarialName))
+            {
+                groupFilter.AddCondition(AccountIdGrupoEmpresarialName, ConditionOperator.Equal, grupoEmpresarialName);
+            }
+
+            if (groupFilter.Conditions.Count == 0)
+            {
+                return new List<AccountIdRowDto>();
+            }
+
+            var query = new QueryExpression(AccountIdEntity)
+            {
+                ColumnSet = new ColumnSet(GetAccountIdColumns(schema).ToArray()),
+                Criteria =
+                {
+                    Conditions =
+                    {
+                        new ConditionExpression("statecode", ConditionOperator.Equal, 0)
+                    }
+                }
+            };
+            query.Criteria.AddFilter(groupFilter);
+            query.AddOrder(AccountIdName, OrderType.Ascending);
+
+            var result = await _svc.RetrieveMultipleAsync(query);
+            return result.Entities.Select(e => ToAccountIdRowDto(e, schema)).Where(r => r.ClienteId != Guid.Empty).ToList();
+        }
+
+        private async Task<List<AccountIdRowDto>> HydrateAccountRowsAsync(
+            List<AccountIdRowDto> rows,
+            Guid selectedClienteId,
+            string selectedClienteNombre)
+        {
+            var names = new Dictionary<Guid, string>();
+            if (selectedClienteId != Guid.Empty)
+            {
+                names[selectedClienteId] = selectedClienteNombre;
+            }
+
+            foreach (var clienteId in rows.Select(r => r.ClienteId).Where(id => id != Guid.Empty).Distinct())
+            {
+                if (!names.ContainsKey(clienteId))
+                {
+                    names[clienteId] = await GetClienteNombreAsync(clienteId);
+                }
+            }
+
+            return rows
+                .Select(r => r with
+                {
+                    ClienteNombre = !string.IsNullOrWhiteSpace(r.ClienteNombre) ? r.ClienteNombre : names.GetValueOrDefault(r.ClienteId, "Cliente")
+                })
+                .ToList();
+        }
+
+        private static List<string> GetAccountIdColumns(LicenciamientoSchemaStatus schema)
+        {
+            var columns = new List<string>
+            {
+                AccountIdName,
+                AccountIdCliente,
+                "statecode"
+            };
+
+            if (schema.AccountIdGrupoEmpresarialIdReady)
+            {
+                columns.Add(AccountIdGrupoEmpresarialId);
+            }
+
+            if (schema.AccountIdGrupoEmpresarialNameReady)
+            {
+                columns.Add(AccountIdGrupoEmpresarialName);
+            }
+
+            return columns;
+        }
+
+        private static AccountIdRowDto ToAccountIdRowDto(Entity entity, LicenciamientoSchemaStatus schema)
+        {
+            var clienteRef = entity.GetAttributeValue<EntityReference>(AccountIdCliente);
+            return new AccountIdRowDto(
+                entity.Id,
+                clienteRef?.Id ?? Guid.Empty,
+                clienteRef?.Name ?? string.Empty,
+                entity.GetAttributeValue<string>(AccountIdName) ?? string.Empty,
+                schema.AccountIdGrupoEmpresarialIdReady ? entity.GetAttributeValue<string>(AccountIdGrupoEmpresarialId) ?? string.Empty : string.Empty,
+                schema.AccountIdGrupoEmpresarialNameReady ? entity.GetAttributeValue<string>(AccountIdGrupoEmpresarialName) ?? string.Empty : string.Empty);
+        }
+
+        private async Task<List<ProductoCloudDto>> GetProductosCloudAsync(
+            IReadOnlyCollection<Guid> clienteIds,
+            IReadOnlyDictionary<Guid, ChildClienteDto> childrenById)
+        {
+            if (clienteIds.Count == 0)
+            {
+                return new List<ProductoCloudDto>();
+            }
+
             var query = new QueryExpression(ProductoCloudEntity)
             {
                 ColumnSet = new ColumnSet(
@@ -524,26 +681,32 @@ namespace DigitalTechClientPortal.Services
                     ProductoCloudPrecioDecimal,
                     ProductoCloudPrecioMoney,
                     ProductoCloudDiaFacturacion,
-                    "statecode"),
-                Criteria =
-                {
-                    Conditions =
-                    {
-                        new ConditionExpression(ProductoCloudCliente, ConditionOperator.Equal, clienteId),
-                        new ConditionExpression("statecode", ConditionOperator.Equal, 0)
-                    }
-                }
+                    "statecode")
             };
+
+            if (clienteIds.Count == 1)
+            {
+                query.Criteria.AddCondition(ProductoCloudCliente, ConditionOperator.Equal, clienteIds.First());
+            }
+            else
+            {
+                query.Criteria.AddCondition(ProductoCloudCliente, ConditionOperator.In, clienteIds.Select(id => (object)id).ToArray());
+            }
+
+            query.Criteria.AddCondition("statecode", ConditionOperator.Equal, 0);
             query.AddOrder(ProductoCloudNombre, OrderType.Ascending);
 
             var result = await _svc.RetrieveMultipleAsync(query);
             return result.Entities
-                .Select(ToProductoCloudDto)
-                .Where(p => p.SalesRecordId != Guid.Empty && p.Cantidad > 0)
+                .Select(e => ToProductoCloudDto(e, childrenById))
+                .Where(p => p.SalesRecordId != Guid.Empty && p.ClienteId != Guid.Empty && p.Cantidad > 0)
                 .ToList();
         }
 
-        private async Task<ProductoCloudDto?> GetProductoCloudAsync(Guid salesRecordId, Guid clienteId)
+        private async Task<ProductoCloudDto?> GetProductoCloudAsync(
+            Guid salesRecordId,
+            Guid clienteHijoId,
+            IReadOnlyDictionary<Guid, ChildClienteDto> childrenById)
         {
             if (salesRecordId == Guid.Empty)
             {
@@ -566,12 +729,12 @@ namespace DigitalTechClientPortal.Services
                         ProductoCloudDiaFacturacion));
 
                 var clienteRef = entity.GetAttributeValue<EntityReference>(ProductoCloudCliente);
-                if (clienteRef?.Id != clienteId)
+                if (clienteRef?.Id != clienteHijoId)
                 {
                     return null;
                 }
 
-                return ToProductoCloudDto(entity);
+                return ToProductoCloudDto(entity, childrenById);
             }
             catch (Exception ex)
             {
@@ -580,9 +743,14 @@ namespace DigitalTechClientPortal.Services
             }
         }
 
-        private static ProductoCloudDto ToProductoCloudDto(Entity entity)
+        private static ProductoCloudDto ToProductoCloudDto(
+            Entity entity,
+            IReadOnlyDictionary<Guid, ChildClienteDto> childrenById)
         {
             var productoRef = entity.GetAttributeValue<EntityReference>(ProductoCloudProducto);
+            var clienteRef = entity.GetAttributeValue<EntityReference>(ProductoCloudCliente);
+            var clienteId = clienteRef?.Id ?? Guid.Empty;
+            childrenById.TryGetValue(clienteId, out var child);
             var productName = entity.GetAttributeValue<string>(ProductoCloudNombre);
             var displayName = !string.IsNullOrWhiteSpace(productName)
                 ? productName
@@ -594,6 +762,9 @@ namespace DigitalTechClientPortal.Services
 
             return new ProductoCloudDto(
                 entity.Id,
+                clienteId,
+                child?.ClienteNombre ?? clienteRef?.Name ?? "Cliente",
+                child?.AccountIds ?? new List<string>(),
                 displayName,
                 entity.GetAttributeValue<int?>(ProductoCloudCantidad) ?? 0,
                 price,
@@ -601,174 +772,22 @@ namespace DigitalTechClientPortal.Services
                 productoRef);
         }
 
-        private async Task<List<SubRazonDto>> GetSubRazonesAsync(Guid clienteId)
-        {
-            try
-            {
-                var query = new QueryExpression(SubRazonEntity)
-                {
-                    ColumnSet = new ColumnSet(SubRazonNombre, SubRazonCliente),
-                    Criteria =
-                    {
-                        Conditions =
-                        {
-                            new ConditionExpression(SubRazonCliente, ConditionOperator.Equal, clienteId),
-                            new ConditionExpression("statecode", ConditionOperator.Equal, 0)
-                        }
-                    }
-                };
-                query.AddOrder(SubRazonNombre, OrderType.Ascending);
-
-                var result = await _svc.RetrieveMultipleAsync(query);
-                return result.Entities
-                    .Select(e => new SubRazonDto(e.Id, e.GetAttributeValue<string>(SubRazonNombre) ?? "(sin nombre)"))
-                    .ToList();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "No se pudieron leer subrazones de licenciamiento.");
-                return new List<SubRazonDto>();
-            }
-        }
-
-        private async Task<SubRazonDto?> GetSubRazonAsync(Guid subRazonId, Guid clienteId)
-        {
-            if (subRazonId == Guid.Empty)
-            {
-                return null;
-            }
-
-            try
-            {
-                var entity = await _svc.RetrieveAsync(
-                    SubRazonEntity,
-                    subRazonId,
-                    new ColumnSet(SubRazonNombre, SubRazonCliente));
-
-                var clienteRef = entity.GetAttributeValue<EntityReference>(SubRazonCliente);
-                if (clienteRef?.Id != clienteId)
-                {
-                    return null;
-                }
-
-                return new SubRazonDto(entity.Id, entity.GetAttributeValue<string>(SubRazonNombre) ?? "(sin nombre)");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "No se pudo leer la subrazón {SubRazonId}", subRazonId);
-                return null;
-            }
-        }
-
-        private async Task<Guid?> GetSubRazonByNameAsync(Guid clienteId, string nombre)
-        {
-            var query = new QueryExpression(SubRazonEntity)
-            {
-                ColumnSet = new ColumnSet(SubRazonNombre, SubRazonCliente),
-                TopCount = 1,
-                Criteria =
-                {
-                    Conditions =
-                    {
-                        new ConditionExpression(SubRazonCliente, ConditionOperator.Equal, clienteId),
-                        new ConditionExpression(SubRazonNombre, ConditionOperator.Equal, nombre)
-                    }
-                }
-            };
-
-            var result = await _svc.RetrieveMultipleAsync(query);
-            return result.Entities.FirstOrDefault()?.Id;
-        }
-
-        private async Task<List<AsignacionDto>> GetAsignacionesAsync(Guid clienteId)
-        {
-            try
-            {
-                var query = new QueryExpression(AsignacionEntity)
-                {
-                    ColumnSet = new ColumnSet(
-                        AsignacionNombre,
-                        AsignacionCliente,
-                        AsignacionSubRazon,
-                        AsignacionProductoCloud,
-                        AsignacionCantidad),
-                    Criteria =
-                    {
-                        Conditions =
-                        {
-                            new ConditionExpression(AsignacionCliente, ConditionOperator.Equal, clienteId),
-                            new ConditionExpression("statecode", ConditionOperator.Equal, 0)
-                        }
-                    }
-                };
-
-                var result = await _svc.RetrieveMultipleAsync(query);
-                return result.Entities
-                    .Select(e => new AsignacionDto(
-                        e.Id,
-                        e.GetAttributeValue<EntityReference>(AsignacionSubRazon)?.Id ?? Guid.Empty,
-                        e.GetAttributeValue<EntityReference>(AsignacionProductoCloud)?.Id ?? Guid.Empty,
-                        e.GetAttributeValue<int?>(AsignacionCantidad) ?? 0))
-                    .Where(a => a.SubRazonId != Guid.Empty && a.SalesRecordId != Guid.Empty)
-                    .ToList();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "No se pudieron leer asignaciones de licenciamiento.");
-                return new List<AsignacionDto>();
-            }
-        }
-
-        private async Task<AsignacionDto?> GetAsignacionAsync(Guid clienteId, Guid subRazonId, Guid salesRecordId)
-        {
-            var query = new QueryExpression(AsignacionEntity)
-            {
-                ColumnSet = new ColumnSet(AsignacionSubRazon, AsignacionProductoCloud, AsignacionCantidad),
-                TopCount = 1,
-                Criteria =
-                {
-                    Conditions =
-                    {
-                        new ConditionExpression(AsignacionCliente, ConditionOperator.Equal, clienteId),
-                        new ConditionExpression(AsignacionSubRazon, ConditionOperator.Equal, subRazonId),
-                        new ConditionExpression(AsignacionProductoCloud, ConditionOperator.Equal, salesRecordId)
-                    }
-                }
-            };
-
-            var result = await _svc.RetrieveMultipleAsync(query);
-            var entity = result.Entities.FirstOrDefault();
-            if (entity == null)
-            {
-                return null;
-            }
-
-            return new AsignacionDto(
-                entity.Id,
-                entity.GetAttributeValue<EntityReference>(AsignacionSubRazon)?.Id ?? Guid.Empty,
-                entity.GetAttributeValue<EntityReference>(AsignacionProductoCloud)?.Id ?? Guid.Empty,
-                entity.GetAttributeValue<int?>(AsignacionCantidad) ?? 0);
-        }
-
-        private async Task<int> GetTotalAsignadoProductoAsync(Guid clienteId, Guid salesRecordId, Guid? exceptAsignacionId)
-        {
-            var asignaciones = await GetAsignacionesAsync(clienteId);
-            return asignaciones
-                .Where(a => a.SalesRecordId == salesRecordId && (!exceptAsignacionId.HasValue || a.Id != exceptAsignacionId.Value))
-                .Sum(a => a.Cantidad);
-        }
-
         private async Task<List<SolicitudDto>> GetSolicitudesAsync(
-            Guid clienteId,
+            IReadOnlyCollection<Guid> clienteIds,
             LicenciamientoSchemaStatus schema,
             IReadOnlyDictionary<Guid, ProductoCloudDto> productosPorId,
-            IReadOnlyDictionary<Guid, SubRazonDto> subRazonesPorId)
+            IReadOnlyDictionary<Guid, ChildClienteDto> childrenById,
+            string grupoEmpresarialNombre)
         {
+            if (!schema.SolicitudEntityReady || !schema.SolicitudClienteLookupReady || clienteIds.Count == 0)
+            {
+                return new List<SolicitudDto>();
+            }
+
             var columns = new List<string>
             {
                 SolicitudNombre,
                 SolicitudCliente,
-                SolicitudProducto,
                 SolicitudCantidad,
                 SolicitudEstado,
                 SolicitudFecha,
@@ -778,9 +797,9 @@ namespace DigitalTechClientPortal.Services
                 "createdon"
             };
 
-            if (schema.SolicitudSubRazonLookupReady)
+            if (schema.SolicitudProductoLookupReady)
             {
-                columns.Add(SolicitudSubRazon);
+                columns.Add(SolicitudProducto);
             }
 
             if (schema.SolicitudRegistroProductoCloudLookupReady)
@@ -793,39 +812,50 @@ namespace DigitalTechClientPortal.Services
                 columns.Add(SolicitudSolicitadoPor);
             }
 
+            if (schema.SolicitudGrupoEmpresarialNameReady)
+            {
+                columns.Add(SolicitudGrupoEmpresarialName);
+            }
+
+            if (schema.SolicitudClienteHijoNameReady)
+            {
+                columns.Add(SolicitudClienteHijoName);
+            }
+
             var query = new QueryExpression(SolicitudEntity)
             {
                 ColumnSet = new ColumnSet(columns.ToArray()),
-                TopCount = 200,
-                Criteria =
-                {
-                    Conditions =
-                    {
-                        new ConditionExpression(SolicitudCliente, ConditionOperator.Equal, clienteId)
-                    }
-                }
+                TopCount = 300
             };
+
+            if (clienteIds.Count == 1)
+            {
+                query.Criteria.AddCondition(SolicitudCliente, ConditionOperator.Equal, clienteIds.First());
+            }
+            else
+            {
+                query.Criteria.AddCondition(SolicitudCliente, ConditionOperator.In, clienteIds.Select(id => (object)id).ToArray());
+            }
+
             query.AddOrder("createdon", OrderType.Descending);
 
             var result = await _svc.RetrieveMultipleAsync(query);
             return result.Entities.Select(e =>
             {
                 var detalle = e.GetAttributeValue<string>(SolicitudDetalle) ?? string.Empty;
+                var clienteRef = e.GetAttributeValue<EntityReference>(SolicitudCliente);
+                var clienteId = clienteRef?.Id ?? Guid.Empty;
+                childrenById.TryGetValue(clienteId, out var child);
+
                 var registroRef = schema.SolicitudRegistroProductoCloudLookupReady
                     ? e.GetAttributeValue<EntityReference>(SolicitudRegistroProductoCloud)
                     : null;
                 var salesRecordId = registroRef?.Id ?? TryReadGuid(detalle, "SalesRecordId");
                 productosPorId.TryGetValue(salesRecordId, out var producto);
 
-                var subRazonRef = schema.SolicitudSubRazonLookupReady
-                    ? e.GetAttributeValue<EntityReference>(SolicitudSubRazon)
+                var productoRef = schema.SolicitudProductoLookupReady
+                    ? e.GetAttributeValue<EntityReference>(SolicitudProducto)
                     : null;
-                var subRazonId = subRazonRef?.Id ?? TryReadGuid(detalle, "SubrazonId");
-                var subRazonNombre = subRazonId != Guid.Empty && subRazonesPorId.TryGetValue(subRazonId, out var subRazon)
-                    ? subRazon.Nombre
-                    : TryReadValue(detalle, "Subrazon");
-
-                var productoRef = e.GetAttributeValue<EntityReference>(SolicitudProducto);
                 var productoNombre = producto?.Nombre
                     ?? TryReadValue(detalle, "Producto")
                     ?? productoRef?.Name
@@ -836,11 +866,20 @@ namespace DigitalTechClientPortal.Services
                     ? e.GetAttributeValue<string>(SolicitudSolicitadoPor)
                     : null;
 
+                var clienteNombre = schema.SolicitudClienteHijoNameReady
+                    ? e.GetAttributeValue<string>(SolicitudClienteHijoName)
+                    : null;
+
+                var grupoNombre = schema.SolicitudGrupoEmpresarialNameReady
+                    ? e.GetAttributeValue<string>(SolicitudGrupoEmpresarialName)
+                    : null;
+
                 return new SolicitudDto(
                     e.Id,
                     salesRecordId == Guid.Empty ? null : salesRecordId,
-                    subRazonId == Guid.Empty ? null : subRazonId,
-                    subRazonNombre ?? "Sin subrazón",
+                    clienteId,
+                    clienteNombre ?? child?.ClienteNombre ?? clienteRef?.Name ?? "Cliente",
+                    grupoNombre ?? grupoEmpresarialNombre,
                     productoNombre,
                     e.GetAttributeValue<int?>(SolicitudCantidad) ?? 0,
                     e.GetAttributeValue<decimal?>(SolicitudValorUnitario) ?? producto?.PrecioUnitarioUsd ?? 0m,
@@ -867,24 +906,67 @@ namespace DigitalTechClientPortal.Services
                 }
 
                 var status = new LicenciamientoSchemaStatus();
-                var publishRequired = false;
                 MetadataTouchedDuringEnsure = false;
 
                 try
                 {
-                    status.SubRazonReady = await EnsureSubRazonEntityAsync();
-                    status.AsignacionReady = await EnsureAsignacionEntityAsync(status.SubRazonReady);
+                    status.AccountIdGrupoEmpresarialIdReady = await EnsureStringAttributeAsync(
+                        AccountIdEntity,
+                        AccountIdGrupoEmpresarialId,
+                        "GrupoempresarialID",
+                        100);
 
-                    if (status.SubRazonReady)
-                    {
-                        status.SolicitudSubRazonLookupReady = await EnsureLookupAttributeAsync(
-                            SolicitudEntity,
-                            SolicitudSubRazon,
-                            "Subrazón licenciamiento",
-                            SubRazonEntity,
-                            "cr07a_solicitudaprovisionamiento_subrazonlicenciamiento");
-                    }
+                    status.AccountIdGrupoEmpresarialNameReady = await EnsureStringAttributeAsync(
+                        AccountIdEntity,
+                        AccountIdGrupoEmpresarialName,
+                        "grupoempresarialname",
+                        200);
 
+                    status.SolicitudEntityReady = await EnsureSolicitudEntityAsync();
+                    status.SolicitudClienteLookupReady = await EnsureLookupAttributeAsync(
+                        SolicitudEntity,
+                        SolicitudCliente,
+                        "Cliente hijo",
+                        ClienteEntity,
+                        "cr07a_cliente_solicitudaprovisionamiento");
+
+                    status.SolicitudCantidadReady = await EnsureIntegerAttributeAsync(
+                        SolicitudEntity,
+                        SolicitudCantidad,
+                        "Cantidad",
+                        0,
+                        1000000);
+
+                    status.SolicitudEstadoReady = await EnsureOptionSetAttributeAsync(
+                        SolicitudEntity,
+                        SolicitudEstado,
+                        "Estado");
+
+                    status.SolicitudFechaReady = await EnsureDateTimeAttributeAsync(
+                        SolicitudEntity,
+                        SolicitudFecha,
+                        "Fecha de aprovisionamiento");
+
+                    status.SolicitudFechaProrrateoReady = await EnsureDateTimeAttributeAsync(
+                        SolicitudEntity,
+                        SolicitudFechaProrrateo,
+                        "Fecha prorrateo si aplica");
+
+                    status.SolicitudDetalleReady = await EnsureMemoAttributeAsync(
+                        SolicitudEntity,
+                        SolicitudDetalle,
+                        "Producto y cantidades",
+                        4000);
+
+                    status.SolicitudValorUnitarioReady = await EnsureDecimalAttributeAsync(
+                        SolicitudEntity,
+                        SolicitudValorUnitario,
+                        "Valor unitario",
+                        0m,
+                        100000000m,
+                        2);
+
+                    status.SolicitudProductoLookupReady = await AttributeExistsAsync(SolicitudEntity, SolicitudProducto);
                     status.SolicitudRegistroProductoCloudLookupReady = await EnsureLookupAttributeAsync(
                         SolicitudEntity,
                         SolicitudRegistroProductoCloud,
@@ -898,22 +980,50 @@ namespace DigitalTechClientPortal.Services
                         "Solicitado por",
                         200);
 
-                    publishRequired = MetadataTouchedDuringEnsure;
+                    status.SolicitudGrupoEmpresarialIdReady = await EnsureStringAttributeAsync(
+                        SolicitudEntity,
+                        SolicitudGrupoEmpresarialId,
+                        "Grupo empresarial ID",
+                        100);
+
+                    status.SolicitudGrupoEmpresarialNameReady = await EnsureStringAttributeAsync(
+                        SolicitudEntity,
+                        SolicitudGrupoEmpresarialName,
+                        "Grupo empresarial name",
+                        200);
+
+                    status.SolicitudClienteHijoNameReady = await EnsureStringAttributeAsync(
+                        SolicitudEntity,
+                        SolicitudClienteHijoName,
+                        "Cliente hijo name",
+                        200);
+
+                    status.SolicitudAccountIdsReady = await EnsureStringAttributeAsync(
+                        SolicitudEntity,
+                        SolicitudAccountIds,
+                        "Account IDs",
+                        500);
                 }
                 catch (Exception ex)
                 {
                     _logger.LogWarning(ex, "No se pudo asegurar todo el esquema de licenciamiento en Dataverse.");
                     status.SetupError = "No se pudo crear o validar todo el esquema de licenciamiento en Dataverse. Revisa permisos de personalización del usuario/aplicación.";
-                    status.SubRazonReady = await EntityExistsAsync(SubRazonEntity);
-                    status.AsignacionReady = await EntityExistsAsync(AsignacionEntity);
-                    status.SolicitudSubRazonLookupReady = await AttributeExistsAsync(SolicitudEntity, SolicitudSubRazon);
+                    status.AccountIdGrupoEmpresarialIdReady = await AttributeExistsAsync(AccountIdEntity, AccountIdGrupoEmpresarialId);
+                    status.AccountIdGrupoEmpresarialNameReady = await AttributeExistsAsync(AccountIdEntity, AccountIdGrupoEmpresarialName);
+                    status.SolicitudEntityReady = await EntityExistsAsync(SolicitudEntity);
+                    status.SolicitudClienteLookupReady = await AttributeExistsAsync(SolicitudEntity, SolicitudCliente);
+                    status.SolicitudProductoLookupReady = await AttributeExistsAsync(SolicitudEntity, SolicitudProducto);
                     status.SolicitudRegistroProductoCloudLookupReady = await AttributeExistsAsync(SolicitudEntity, SolicitudRegistroProductoCloud);
                     status.SolicitadoPorReady = await AttributeExistsAsync(SolicitudEntity, SolicitudSolicitadoPor);
+                    status.SolicitudGrupoEmpresarialIdReady = await AttributeExistsAsync(SolicitudEntity, SolicitudGrupoEmpresarialId);
+                    status.SolicitudGrupoEmpresarialNameReady = await AttributeExistsAsync(SolicitudEntity, SolicitudGrupoEmpresarialName);
+                    status.SolicitudClienteHijoNameReady = await AttributeExistsAsync(SolicitudEntity, SolicitudClienteHijoName);
+                    status.SolicitudAccountIdsReady = await AttributeExistsAsync(SolicitudEntity, SolicitudAccountIds);
                 }
 
-                if (publishRequired)
+                if (MetadataTouchedDuringEnsure)
                 {
-                    await PublishEntitiesAsync(SubRazonEntity, AsignacionEntity, SolicitudEntity);
+                    await PublishEntitiesAsync(AccountIdEntity, SolicitudEntity);
                 }
 
                 CachedSchemaStatus = status;
@@ -925,105 +1035,35 @@ namespace DigitalTechClientPortal.Services
             }
         }
 
-        private async Task<bool> EnsureSubRazonEntityAsync()
+        private async Task<bool> EnsureSolicitudEntityAsync()
         {
-            if (!await EntityExistsAsync(SubRazonEntity))
+            if (await EntityExistsAsync(SolicitudEntity))
             {
-                var request = new CreateEntityRequest
+                return true;
+            }
+
+            var request = new CreateEntityRequest
+            {
+                Entity = new EntityMetadata
                 {
-                    Entity = new EntityMetadata
-                    {
-                        SchemaName = "cr07a_SubrazonSocialLicenciamiento",
-                        DisplayName = Label("Subrazón social licenciamiento"),
-                        DisplayCollectionName = Label("Subrazones sociales licenciamiento"),
-                        Description = Label("Subrazones sociales hijas asociadas a una razón social padre para licenciamiento."),
-                        OwnershipType = OwnershipTypes.UserOwned,
-                        IsActivity = false
-                    },
-                    PrimaryAttribute = new StringAttributeMetadata
-                    {
-                        SchemaName = "cr07a_name",
-                        DisplayName = Label("Nombre"),
-                        RequiredLevel = RequiredLevel(AttributeRequiredLevel.ApplicationRequired),
-                        MaxLength = 200
-                    }
-                };
-
-                await _svc.ExecuteAsync(request);
-                MarkMetadataUpdated();
-            }
-
-            await EnsureLookupAttributeAsync(
-                SubRazonEntity,
-                SubRazonCliente,
-                "Cliente padre",
-                ClienteEntity,
-                "cr07a_cliente_subrazonsociallicenciamiento");
-
-            return true;
-        }
-
-        private async Task<bool> EnsureAsignacionEntityAsync(bool subRazonReady)
-        {
-            if (!subRazonReady)
-            {
-                return false;
-            }
-
-            if (!await EntityExistsAsync(AsignacionEntity))
-            {
-                var request = new CreateEntityRequest
+                    SchemaName = "cr07a_SolicitudAprovisionamiento",
+                    DisplayName = Label("Solicitud de aprovisionamiento"),
+                    DisplayCollectionName = Label("Solicitudes de aprovisionamiento"),
+                    Description = Label("Solicitudes de aumento de licencias asociadas al cliente hijo para prorrateo mensual."),
+                    OwnershipType = OwnershipTypes.UserOwned,
+                    IsActivity = false
+                },
+                PrimaryAttribute = new StringAttributeMetadata
                 {
-                    Entity = new EntityMetadata
-                    {
-                        SchemaName = "cr07a_AsignacionLicenciamiento",
-                        DisplayName = Label("Asignación licenciamiento"),
-                        DisplayCollectionName = Label("Asignaciones licenciamiento"),
-                        Description = Label("Asignación de licencias cloud por subrazón social."),
-                        OwnershipType = OwnershipTypes.UserOwned,
-                        IsActivity = false
-                    },
-                    PrimaryAttribute = new StringAttributeMetadata
-                    {
-                        SchemaName = "cr07a_name",
-                        DisplayName = Label("Nombre"),
-                        RequiredLevel = RequiredLevel(AttributeRequiredLevel.ApplicationRequired),
-                        MaxLength = 250
-                    }
-                };
+                    SchemaName = SolicitudNombre,
+                    DisplayName = Label("Nombre"),
+                    RequiredLevel = RequiredLevel(AttributeRequiredLevel.ApplicationRequired),
+                    MaxLength = 250
+                }
+            };
 
-                await _svc.ExecuteAsync(request);
-                MarkMetadataUpdated();
-            }
-
-            await EnsureLookupAttributeAsync(
-                AsignacionEntity,
-                AsignacionCliente,
-                "Cliente padre",
-                ClienteEntity,
-                "cr07a_cliente_asignacionlicenciamiento");
-
-            await EnsureLookupAttributeAsync(
-                AsignacionEntity,
-                AsignacionSubRazon,
-                "Subrazón social",
-                SubRazonEntity,
-                "cr07a_subrazonsocial_asignacionlicenciamiento");
-
-            await EnsureLookupAttributeAsync(
-                AsignacionEntity,
-                AsignacionProductoCloud,
-                "Registro producto cloud",
-                ProductoCloudEntity,
-                "cr07a_salesperformancerecord_asignacionlicenciamiento");
-
-            await EnsureIntegerAttributeAsync(
-                AsignacionEntity,
-                AsignacionCantidad,
-                "Cantidad asignada",
-                0,
-                1000000);
-
+            await _svc.ExecuteAsync(request);
+            MarkMetadataUpdated();
             return true;
         }
 
@@ -1038,6 +1078,29 @@ namespace DigitalTechClientPortal.Services
             {
                 EntityName = entityName,
                 Attribute = new StringAttributeMetadata
+                {
+                    SchemaName = ToSchemaName(logicalName),
+                    DisplayName = Label(displayName),
+                    RequiredLevel = RequiredLevel(AttributeRequiredLevel.None),
+                    MaxLength = maxLength
+                }
+            });
+
+            MarkMetadataUpdated();
+            return true;
+        }
+
+        private async Task<bool> EnsureMemoAttributeAsync(string entityName, string logicalName, string displayName, int maxLength)
+        {
+            if (await AttributeExistsAsync(entityName, logicalName))
+            {
+                return true;
+            }
+
+            await _svc.ExecuteAsync(new CreateAttributeRequest
+            {
+                EntityName = entityName,
+                Attribute = new MemoAttributeMetadata
                 {
                     SchemaName = ToSchemaName(logicalName),
                     DisplayName = Label(displayName),
@@ -1068,6 +1131,94 @@ namespace DigitalTechClientPortal.Services
                     Format = IntegerFormat.None,
                     MinValue = min,
                     MaxValue = max
+                }
+            });
+
+            MarkMetadataUpdated();
+            return true;
+        }
+
+        private async Task<bool> EnsureDecimalAttributeAsync(
+            string entityName,
+            string logicalName,
+            string displayName,
+            decimal min,
+            decimal max,
+            int precision)
+        {
+            if (await AttributeExistsAsync(entityName, logicalName))
+            {
+                return true;
+            }
+
+            await _svc.ExecuteAsync(new CreateAttributeRequest
+            {
+                EntityName = entityName,
+                Attribute = new DecimalAttributeMetadata
+                {
+                    SchemaName = ToSchemaName(logicalName),
+                    DisplayName = Label(displayName),
+                    RequiredLevel = RequiredLevel(AttributeRequiredLevel.None),
+                    MinValue = min,
+                    MaxValue = max,
+                    Precision = precision
+                }
+            });
+
+            MarkMetadataUpdated();
+            return true;
+        }
+
+        private async Task<bool> EnsureDateTimeAttributeAsync(string entityName, string logicalName, string displayName)
+        {
+            if (await AttributeExistsAsync(entityName, logicalName))
+            {
+                return true;
+            }
+
+            await _svc.ExecuteAsync(new CreateAttributeRequest
+            {
+                EntityName = entityName,
+                Attribute = new DateTimeAttributeMetadata
+                {
+                    SchemaName = ToSchemaName(logicalName),
+                    DisplayName = Label(displayName),
+                    RequiredLevel = RequiredLevel(AttributeRequiredLevel.None),
+                    DateTimeBehavior = DateTimeBehavior.UserLocal,
+                    Format = DateTimeFormat.DateAndTime
+                }
+            });
+
+            MarkMetadataUpdated();
+            return true;
+        }
+
+        private async Task<bool> EnsureOptionSetAttributeAsync(string entityName, string logicalName, string displayName)
+        {
+            if (await AttributeExistsAsync(entityName, logicalName))
+            {
+                return true;
+            }
+
+            await _svc.ExecuteAsync(new CreateAttributeRequest
+            {
+                EntityName = entityName,
+                Attribute = new PicklistAttributeMetadata
+                {
+                    SchemaName = ToSchemaName(logicalName),
+                    DisplayName = Label(displayName),
+                    RequiredLevel = RequiredLevel(AttributeRequiredLevel.None),
+                    OptionSet = new OptionSetMetadata
+                    {
+                        IsGlobal = false,
+                        OptionSetType = OptionSetType.Picklist,
+                        Options =
+                        {
+                            new OptionMetadata(Label("Pendiente"), SolicitudEstadoPendiente),
+                            new OptionMetadata(Label("Aprovisionado"), SolicitudEstadoAprovisionado),
+                            new OptionMetadata(Label("Aprobado para aprovisionar"), SolicitudEstadoAprobado)
+                        }
+                    }
                 }
             });
 
@@ -1172,7 +1323,7 @@ namespace DigitalTechClientPortal.Services
 
         private async Task PublishEntitiesAsync(params string[] entityNames)
         {
-            var parameterXml = string.Join(string.Empty, entityNames.Select(e => $"<entity>{e}</entity>"));
+            var parameterXml = string.Join(string.Empty, entityNames.Distinct(StringComparer.OrdinalIgnoreCase).Select(e => $"<entity>{e}</entity>"));
             var request = new OrganizationRequest("PublishXml");
             request["ParameterXml"] = $"<importexportxml><entities>{parameterXml}</entities><nodes/><securityroles/><settings/><workflows/></importexportxml>";
             await _svc.ExecuteAsync(request);
@@ -1226,12 +1377,30 @@ namespace DigitalTechClientPortal.Services
             };
         }
 
-        private static string BuildSolicitudDetalle(SubRazonDto subRazon, ProductoCloudDto producto, string solicitante, int cantidad)
+        private static string GetProductGroupKey(ProductoCloudDto producto)
+        {
+            if (producto.ProductoReference != null)
+            {
+                return $"{producto.ProductoReference.LogicalName}:{producto.ProductoReference.Id:D}";
+            }
+
+            return (producto.Nombre ?? string.Empty).Trim().ToUpperInvariant();
+        }
+
+        private static string BuildSolicitudDetalle(
+            EnterpriseContextDto enterprise,
+            ChildClienteDto clienteHijo,
+            ProductoCloudDto producto,
+            string solicitante,
+            int cantidad)
         {
             return string.Join(";",
                 "PortalLicenciamiento",
-                $"SubrazonId={subRazon.Id:D}",
-                $"Subrazon={EscapeDetail(subRazon.Nombre)}",
+                $"GrupoEmpresarialId={EscapeDetail(enterprise.GrupoEmpresarialId)}",
+                $"GrupoEmpresarial={EscapeDetail(enterprise.GrupoEmpresarialNombre)}",
+                $"ClienteHijoId={clienteHijo.ClienteId:D}",
+                $"ClienteHijo={EscapeDetail(clienteHijo.ClienteNombre)}",
+                $"AccountIds={EscapeDetail(string.Join(",", clienteHijo.AccountIds))}",
                 $"SalesRecordId={producto.SalesRecordId:D}",
                 $"Producto={EscapeDetail(producto.Nombre)}",
                 $"SolicitadoPor={EscapeDetail(solicitante)}",
@@ -1262,23 +1431,33 @@ namespace DigitalTechClientPortal.Services
             return Guid.TryParse(raw, out var value) ? value : Guid.Empty;
         }
 
+        private sealed record AccountIdRowDto(
+            Guid Id,
+            Guid ClienteId,
+            string ClienteNombre,
+            string AccountId,
+            string GrupoEmpresarialId,
+            string GrupoEmpresarialName);
+
+        private sealed record ChildClienteDto(Guid ClienteId, string ClienteNombre, List<string> AccountIds);
+
         private sealed record ProductoCloudDto(
             Guid SalesRecordId,
+            Guid ClienteId,
+            string ClienteNombre,
+            List<string> AccountIds,
             string Nombre,
             int Cantidad,
             decimal PrecioUnitarioUsd,
             int? DiaFacturacion,
             EntityReference? ProductoReference);
 
-        private sealed record SubRazonDto(Guid Id, string Nombre);
-
-        private sealed record AsignacionDto(Guid Id, Guid SubRazonId, Guid SalesRecordId, int Cantidad);
-
         private sealed record SolicitudDto(
             Guid Id,
             Guid? SalesRecordId,
-            Guid? SubRazonId,
-            string SubRazonNombre,
+            Guid ClienteId,
+            string ClienteNombre,
+            string GrupoEmpresarialNombre,
             string ProductoNombre,
             int Cantidad,
             decimal PrecioUnitarioUsd,
@@ -1287,13 +1466,34 @@ namespace DigitalTechClientPortal.Services
             int EstadoValor,
             string SolicitadoPor);
 
+        private sealed class EnterpriseContextDto
+        {
+            public string GrupoEmpresarialId { get; set; } = string.Empty;
+            public string GrupoEmpresarialNombre { get; set; } = string.Empty;
+            public bool TieneGrupoEmpresarial { get; set; }
+            public List<ChildClienteDto> Children { get; set; } = new();
+            public Dictionary<Guid, ChildClienteDto> ChildrenById { get; set; } = new();
+        }
+
         private sealed class LicenciamientoSchemaStatus
         {
-            public bool SubRazonReady { get; set; }
-            public bool AsignacionReady { get; set; }
-            public bool SolicitudSubRazonLookupReady { get; set; }
+            public bool AccountIdGrupoEmpresarialIdReady { get; set; }
+            public bool AccountIdGrupoEmpresarialNameReady { get; set; }
+            public bool SolicitudEntityReady { get; set; }
+            public bool SolicitudClienteLookupReady { get; set; }
+            public bool SolicitudProductoLookupReady { get; set; }
+            public bool SolicitudCantidadReady { get; set; }
+            public bool SolicitudEstadoReady { get; set; }
+            public bool SolicitudFechaReady { get; set; }
+            public bool SolicitudFechaProrrateoReady { get; set; }
+            public bool SolicitudDetalleReady { get; set; }
+            public bool SolicitudValorUnitarioReady { get; set; }
             public bool SolicitudRegistroProductoCloudLookupReady { get; set; }
             public bool SolicitadoPorReady { get; set; }
+            public bool SolicitudGrupoEmpresarialIdReady { get; set; }
+            public bool SolicitudGrupoEmpresarialNameReady { get; set; }
+            public bool SolicitudClienteHijoNameReady { get; set; }
+            public bool SolicitudAccountIdsReady { get; set; }
             public string? SetupError { get; set; }
         }
     }

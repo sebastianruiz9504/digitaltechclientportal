@@ -9,6 +9,9 @@ namespace DigitalTechClientPortal.Web.Models
     {
         public Guid ClienteId { get; set; }
         public string ClienteNombre { get; set; } = string.Empty;
+        public string GrupoEmpresarialId { get; set; } = string.Empty;
+        public string GrupoEmpresarialNombre { get; set; } = string.Empty;
+        public bool TieneGrupoEmpresarial { get; set; }
         public DateTime FechaCorte { get; set; }
         public int DiaCorte { get; set; } = 15;
         public int MesSeleccionado { get; set; }
@@ -21,13 +24,19 @@ namespace DigitalTechClientPortal.Web.Models
         public string? Error { get; set; }
         public List<ClienteLookupVm> ClientesDisponibles { get; set; } = new();
         public List<LicenciaProductoResumenVm> ProductosRazonPadre { get; set; } = new();
-        public List<SubRazonSocialVm> SubRazones { get; set; } = new();
+        public List<ClienteLicenciamientoVm> ClientesHijos { get; set; } = new();
         public List<SolicitudLicenciaVm> HistoricoSolicitudes { get; set; } = new();
 
-        public decimal TotalPrefactura => SubRazones.Sum(x => x.TotalPrefactura);
+        public string RazonPadreNombre => string.IsNullOrWhiteSpace(GrupoEmpresarialNombre)
+            ? ClienteNombre
+            : GrupoEmpresarialNombre;
+
+        public decimal TotalPrefactura => ClientesHijos.Sum(x => x.TotalPrefactura);
         public int TotalLicenciasPadre => ProductosRazonPadre.Sum(x => x.CantidadTotal);
-        public int TotalLicenciasAsignadas => ProductosRazonPadre.Sum(x => x.CantidadAsignada);
-        public int TotalLicenciasSinAsignar => ProductosRazonPadre.Sum(x => Math.Max(0, x.CantidadSinAsignar));
+        public int TotalLicenciasAsignadas => ClientesHijos.Sum(x => x.TotalLicencias);
+        public int TotalLicenciasSinAsignar => 0;
+        public int TotalClientesHijos => ClientesHijos.Count;
+        public int TotalAccountIds => ClientesHijos.Sum(c => c.AccountIds.Count);
     }
 
     public sealed class ClienteLookupVm
@@ -47,6 +56,20 @@ namespace DigitalTechClientPortal.Web.Models
         public int CantidadSinAsignar => CantidadTotal - CantidadAsignada;
         public decimal PrecioUnitarioUsd { get; set; }
         public int? DiaFacturacion { get; set; }
+        public List<string> ClientesConProducto { get; set; } = new();
+        public List<string> AccountIds { get; set; } = new();
+    }
+
+    public sealed class ClienteLicenciamientoVm
+    {
+        public Guid ClienteId { get; set; }
+        public string ClienteNombre { get; set; } = string.Empty;
+        public List<string> AccountIds { get; set; } = new();
+        public List<ConsumoLicenciaVm> Consumo { get; set; } = new();
+
+        public decimal TotalPrefactura => Consumo.Sum(c => c.TotalProrrateadoUsd);
+        public int TotalLicencias => Consumo.Where(c => !c.EsProrrateoSolicitud).Sum(c => c.Cantidad);
+        public int TotalProductos => Consumo.Where(c => !c.EsProrrateoSolicitud).Select(c => c.SalesRecordId).Distinct().Count();
     }
 
     public sealed class SubRazonSocialVm
@@ -62,6 +85,11 @@ namespace DigitalTechClientPortal.Web.Models
     {
         public Guid SalesRecordId { get; set; }
         public Guid? SolicitudId { get; set; }
+        public Guid ClienteId { get; set; }
+        public string ClienteNombre { get; set; } = string.Empty;
+        public string AccountId { get; set; } = string.Empty;
+        public Guid? ProductoId { get; set; }
+        public string ProductoLogicalName { get; set; } = string.Empty;
         public string Producto { get; set; } = string.Empty;
         public int Cantidad { get; set; }
         public int DiasConsumo { get; set; }
@@ -80,7 +108,9 @@ namespace DigitalTechClientPortal.Web.Models
         public DateTime? FechaSolicitud { get; set; }
         public DateTime? FechaProrrateo { get; set; }
         public string SolicitadoPor { get; set; } = string.Empty;
+        public string ClienteHijo { get; set; } = string.Empty;
         public string SubRazon { get; set; } = string.Empty;
+        public string GrupoEmpresarial { get; set; } = string.Empty;
         public string Producto { get; set; } = string.Empty;
         public int CantidadNueva { get; set; }
         public decimal PrecioUnitarioUsd { get; set; }
@@ -113,6 +143,7 @@ namespace DigitalTechClientPortal.Web.Models
     public sealed class SolicitarLicenciasVm
     {
         public Guid ClienteId { get; set; }
+        public Guid ClienteHijoId { get; set; }
         public Guid SubRazonId { get; set; }
         public Guid SalesRecordId { get; set; }
         public int Mes { get; set; }
