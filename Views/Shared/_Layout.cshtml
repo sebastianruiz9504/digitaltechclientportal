@@ -197,6 +197,15 @@
                             </a>
                         </li>
                     }
+
+                    @if (canAccessModule(PortalModuleKeys.Licenciamiento))
+                    {
+                        <li>
+                            <a class='@navClasses("Licenciamiento","Index")' href='@Url.Action("Index","Licenciamiento")' title="Licenciamiento">
+                                <i class="ti ti-license"></i><span class="nav-text">Licenciamiento</span>
+                            </a>
+                        </li>
+                    }
                     @if (canSeeContadores)
                     {
                         <li>

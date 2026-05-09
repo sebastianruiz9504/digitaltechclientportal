@@ -1,0 +1,86 @@
+@model DigitalTechClientPortal.Web.Models.LicenciamientoViewModel
+@{
+    ViewData["Title"] = "Licenciamiento";
+}
+
+<div class="lic-wrap">
+    <section class="lic-hero">
+        <div>
+            <h1>Licenciamiento</h1>
+            <p>Gestión de licencias por razón social, subrazón social, prorrateo y prefactura mensual.</p>
+        </div>
+        <div class="lic-meta">
+            <div><span>Cliente:</span><strong>@Model.ClienteNombre</strong></div>
+            <div><span>Fecha de corte:</span><strong>@Model.FechaCorte.ToString("dd/MM/yyyy")</strong></div>
+        </div>
+    </section>
+
+    @if (Model.PuedeCambiarCliente)
+    {
+        <form method="get" class="lic-card">
+            <label>Ver como cliente</label>
+            <select name="clienteId" onchange="this.form.submit()">
+                @foreach (var c in Model.ClientesDisponibles)
+                {
+                    <option value="@c.Id" selected="@(c.Id == Model.ClienteSeleccionadoId)">@c.Nombre</option>
+                }
+            </select>
+        </form>
+    }
+
+    <section class="lic-grid">
+        <div class="lic-card">
+            <h2>Razón social (total disponible)</h2>
+            <table>
+                <thead><tr><th>Producto</th><th>Licencias</th><th>USD unitario</th></tr></thead>
+                <tbody>
+                @foreach (var p in Model.ProductosRazonPadre)
+                {
+                    <tr><td>@p.Producto</td><td>@p.CantidadTotal</td><td>$ @p.PrecioUnitarioUsd</td></tr>
+                }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="lic-card">
+            <h2>Liquidación mensual (prefactura)</h2>
+            @foreach (var sr in Model.SubRazones)
+            {
+                <h3>@sr.Nombre</h3>
+                <table>
+                    <thead><tr><th>Producto</th><th>Cantidad</th><th>Días</th><th>Total prorrateado</th></tr></thead>
+                    <tbody>
+                    @foreach (var c in sr.Consumo)
+                    {
+                        <tr><td>@c.Producto</td><td>@c.Cantidad</td><td>@c.DiasConsumo</td><td>$ @c.TotalProrrateadoUsd</td></tr>
+                    }
+                    </tbody>
+                </table>
+                <p><strong>Total @sr.Nombre: $ @sr.TotalPrefactura</strong></p>
+            }
+            <p class="lic-total">Total prefactura cliente: <strong>$ @Model.TotalPrefactura</strong></p>
+        </div>
+    </section>
+
+    <section class="lic-card">
+        <h2>Histórico de solicitudes de aumento</h2>
+        <p>Nota: solo se permiten solicitudes para subir licencias.</p>
+        <table>
+            <thead><tr><th>Fecha</th><th>Solicitante</th><th>Subrazón</th><th>Producto</th><th>Cantidad</th><th>Estado</th></tr></thead>
+            <tbody>
+            @foreach (var h in Model.HistoricoSolicitudes)
+            {
+                <tr><td>@h.FechaSolicitud.ToString("dd/MM/yyyy")</td><td>@h.SolicitadoPor</td><td>@h.SubRazon</td><td>@h.Producto</td><td>+@h.CantidadNueva</td><td>@h.Estado</td></tr>
+            }
+            </tbody>
+        </table>
+        <button type="button">Solicitar más licencias</button>
+    </section>
+</div>
+
+<style>
+.lic-wrap{display:grid;gap:1rem}.lic-hero,.lic-card{background:#fff;border-radius:16px;padding:1rem 1.2rem;box-shadow:0 8px 24px rgba(0,0,0,.05)}
+.lic-hero{display:flex;justify-content:space-between;align-items:center;background:linear-gradient(135deg,#0ea5e9,#6366f1);color:#fff}
+.lic-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem}.lic-meta span{opacity:.8;display:block;font-size:.8rem}
+table{width:100%;border-collapse:collapse}th,td{padding:.45rem;border-bottom:1px solid #e5e7eb;text-align:left}.lic-total{font-size:1.1rem}
+</style>

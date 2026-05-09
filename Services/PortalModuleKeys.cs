@@ -15,6 +15,7 @@ namespace DigitalTechClientPortal.Services
         public const string Gobierno = "gobierno";
         public const string Inventario = "inventario";
         public const string Impresoras = "impresoras";
+        public const string Licenciamiento = "licenciamiento";
 
         public static readonly IReadOnlyList<PortalModuleDefinition> All = new List<PortalModuleDefinition>
         {
@@ -26,7 +27,8 @@ namespace DigitalTechClientPortal.Services
             new(Seguridad, "Seguridad", "Seguridad", "Panel", "ti-shield-lock"),
             new(Gobierno, "Gobierno M365", "Gobierno", "Index", "ti-chart-pie"),
             new(Inventario, "Inventario", "Inventario", "Equipos", "ti-device-desktop"),
-            new(Impresoras, "Impresoras", "Impresoras", "Index", "ti-printer")
+            new(Impresoras, "Impresoras", "Impresoras", "Index", "ti-printer"),
+            new(Licenciamiento, "Licenciamiento", "Licenciamiento", "Index", "ti-license")
         };
 
         public static readonly IReadOnlySet<string> AllKeys = All
