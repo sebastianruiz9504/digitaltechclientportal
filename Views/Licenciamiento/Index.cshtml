@@ -1,331 +1,582 @@
 @model DigitalTechClientPortal.Web.Models.LicenciamientoViewModel
 @{
+    Layout = null;
     ViewData["Title"] = "Licenciamiento";
+
     var cultura = new System.Globalization.CultureInfo("es-CO");
     var meses = cultura.DateTimeFormat.MonthNames.Take(12).Select((nombre, index) => new { Nombre = cultura.TextInfo.ToTitleCase(nombre), Numero = index + 1 }).ToList();
+    var productos = Model.ProductosRazonPadre.Take(6).ToList();
+    var subRazones = Model.SubRazones.Take(6).ToList();
+    var historico = Model.HistoricoSolicitudes.Take(6).ToList();
+    var totalPadre = Math.Max(1, Model.TotalLicenciasPadre);
+    var totalAsignadas = Math.Max(0, Model.TotalLicenciasAsignadas);
+    var asignacionPct = Math.Min(100, Math.Round(totalAsignadas * 100m / totalPadre, 1));
+    var sinAsignarPct = Math.Max(0, Math.Round(Model.TotalLicenciasSinAsignar * 100m / totalPadre, 1));
+    var maxCantidadProducto = Math.Max(1, productos.Select(p => p.CantidadTotal).DefaultIfEmpty(1).Max());
+    var maxSubTotal = Math.Max(1m, subRazones.Select(s => s.TotalPrefactura).DefaultIfEmpty(1m).Max());
 }
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Licenciamiento</title>
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@@tabler/icons-webfont@latest/tabler-icons.min.css">
+</head>
+<body>
+<div class="byewind-shell">
+    <aside class="byewind-sidebar">
+        <a class="brand" href="@Url.Action("Index", "Home")">
+            <span class="brand-mark"><i class="ti ti-cloud"></i></span>
+            <span>Digital Tech</span>
+        </a>
 
-<div class="lic-page">
-    <section class="lic-head">
-        <div>
-            <span class="lic-kicker">Microsoft 365 / Cloud</span>
-            <h1>Licenciamiento</h1>
+        <div class="nav-tabs">
+            <span>Favorites</span>
+            <span>Recently</span>
         </div>
-        <div class="lic-head__meta">
-            <span>@Model.ClienteNombre</span>
-            <strong>Corte @Model.FechaCorte.ToString("dd MMM yyyy", cultura)</strong>
+        <nav class="side-nav">
+            <a href="@Url.Action("Index", "Home")"><i class="ti ti-point-filled"></i>Overview</a>
+            <a href="@Url.Action("Index", "Reportes")"><i class="ti ti-point-filled"></i>Projects</a>
+        </nav>
+
+        <p class="nav-title">Dashboards</p>
+        <nav class="side-nav stacked">
+            <a class="active" href="@Url.Action("Index", "Licenciamiento")"><i class="ti ti-license"></i>Licenciamiento</a>
+            <a href="@Url.Action("Index", "Gobierno")"><i class="ti ti-chart-pie"></i>Gobierno M365</a>
+            <a href="@Url.Action("Index", "Facturacion")"><i class="ti ti-file-invoice"></i>Facturación</a>
+            <a href="@Url.Action("Equipos", "Inventario")"><i class="ti ti-device-desktop"></i>Inventario</a>
+        </nav>
+
+        <p class="nav-title">Pages</p>
+        <nav class="side-nav stacked">
+            <a href="@Url.Action("Index", "Permisos")"><i class="ti ti-user-square"></i>Permisos</a>
+            <a href="@Url.Action("Index", "Soporte")"><i class="ti ti-headset"></i>Soporte</a>
+            <a href="@Url.Action("Index", "Academy")"><i class="ti ti-book"></i>Academy</a>
+            <a href="@Url.Action("Panel", "Seguridad")"><i class="ti ti-shield-lock"></i>Seguridad</a>
+        </nav>
+
+        <div class="sidebar-footer">
+            <span class="snow-mark"><i class="ti ti-sparkles"></i></span>
+            <span>CloudIA</span>
         </div>
-    </section>
+    </aside>
 
-    @if (!string.IsNullOrWhiteSpace(Model.Mensaje))
-    {
-        <div class="lic-alert ok">@Model.Mensaje</div>
-    }
-    @if (!string.IsNullOrWhiteSpace(Model.Error))
-    {
-        <div class="lic-alert warn">@Model.Error</div>
-    }
-
-    <section class="lic-toolbar">
-        <form method="get" asp-action="Index" class="lic-filter">
-            @if (Model.PuedeCambiarCliente)
-            {
-                <label>
-                    <span>Cliente</span>
-                    <select name="clienteId" onchange="this.form.submit()">
+    <main class="byewind-main">
+        <header class="topbar">
+            <div class="topbar-left">
+                <i class="ti ti-layout-sidebar-left-collapse"></i>
+                <i class="ti ti-star"></i>
+                <span>Dashboards</span>
+                <i class="ti ti-slash"></i>
+                <strong>Licenciamiento</strong>
+            </div>
+            <form method="get" asp-action="Index" class="topbar-search">
+                @if (Model.PuedeCambiarCliente)
+                {
+                    <select name="clienteId" aria-label="Cliente">
                         @foreach (var c in Model.ClientesDisponibles)
                         {
                             <option value="@c.Id" selected="@(c.Id == Model.ClienteSeleccionadoId)">@c.Nombre</option>
                         }
                     </select>
-                </label>
-            }
-            else
-            {
-                <input type="hidden" name="clienteId" value="@Model.ClienteId" />
-            }
-
-            <label>
-                <span>Mes</span>
-                <select name="mes" onchange="this.form.submit()">
+                }
+                else
+                {
+                    <input type="hidden" name="clienteId" value="@Model.ClienteId" />
+                }
+                <select name="mes" aria-label="Mes">
                     @foreach (var mes in meses)
                     {
                         <option value="@mes.Numero" selected="@(mes.Numero == Model.MesSeleccionado)">@mes.Nombre</option>
                     }
                 </select>
-            </label>
-
-            <label>
-                <span>Año</span>
-                <input name="anio" value="@Model.AnioSeleccionado" inputmode="numeric" />
-            </label>
-
-            <button type="submit" class="lic-icon-btn" title="Aplicar filtros" aria-label="Aplicar filtros">
-                <i class="ti ti-filter"></i>
-            </button>
-        </form>
-
-        <form method="post" asp-action="ActualizarFechaCorte" class="lic-filter compact">
-            @Html.AntiForgeryToken()
-            <input type="hidden" name="ClienteId" value="@Model.ClienteId" />
-            <input type="hidden" name="Mes" value="@Model.MesSeleccionado" />
-            <input type="hidden" name="Anio" value="@Model.AnioSeleccionado" />
-            <label>
-                <span>Día facturación</span>
-                <input name="DiaCorte" value="@Model.DiaCorte" inputmode="numeric" min="1" max="31" />
-            </label>
-            <button type="submit" class="lic-icon-btn" title="Guardar día de facturación" aria-label="Guardar día de facturación">
-                <i class="ti ti-device-floppy"></i>
-            </button>
-        </form>
-    </section>
-
-    <section class="lic-stats">
-        <div><span>Licencias padre</span><strong>@Model.TotalLicenciasPadre</strong></div>
-        <div><span>Asignadas</span><strong>@Model.TotalLicenciasAsignadas</strong></div>
-        <div><span>Sin asignar</span><strong>@Model.TotalLicenciasSinAsignar</strong></div>
-        <div><span>Prefactura</span><strong>USD @Model.TotalPrefactura.ToString("N2")</strong></div>
-    </section>
-
-    <section class="lic-grid">
-        <div class="lic-panel">
-            <div class="lic-panel__head">
-                <h2>Razón Padre</h2>
-                <span>@Model.ProductosRazonPadre.Count productos</span>
-            </div>
-            <div class="lic-table-wrap">
-                <table class="lic-table">
-                    <thead>
-                        <tr>
-                            <th>Producto</th>
-                            <th>Total</th>
-                            <th>Asignado</th>
-                            <th>Diferencia</th>
-                            <th>USD unitario</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var p in Model.ProductosRazonPadre)
-                        {
-                            var diffClass = p.CantidadSinAsignar == 0 ? "ok" : p.CantidadSinAsignar < 0 ? "bad" : "open";
-                            <tr>
-                                <td>@p.Producto</td>
-                                <td>@p.CantidadTotal</td>
-                                <td>@p.CantidadAsignada</td>
-                                <td><span class="lic-pill @diffClass">@p.CantidadSinAsignar</span></td>
-                                <td>USD @p.PrecioUnitarioUsd.ToString("N2")</td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <div class="lic-panel">
-            <div class="lic-panel__head">
-                <h2>Subrazones</h2>
-                <span>@Model.SubRazones.Count registradas</span>
-            </div>
-            <form method="post" asp-action="CrearSubRazon" class="lic-create">
-                @Html.AntiForgeryToken()
-                <input type="hidden" name="ClienteId" value="@Model.ClienteId" />
-                <input type="hidden" name="Mes" value="@Model.MesSeleccionado" />
-                <input type="hidden" name="Anio" value="@Model.AnioSeleccionado" />
-                <input name="Nombre" maxlength="200" placeholder="Nueva subrazón social" />
-                <button type="submit" title="Crear subrazón" aria-label="Crear subrazón"><i class="ti ti-plus"></i></button>
+                <input name="anio" value="@Model.AnioSeleccionado" aria-label="Año" inputmode="numeric" />
+                <button type="submit" title="Aplicar filtros" aria-label="Aplicar filtros"><i class="ti ti-search"></i></button>
             </form>
+            <div class="topbar-icons">
+                <i class="ti ti-sun"></i>
+                <i class="ti ti-history"></i>
+                <i class="ti ti-bell"></i>
+                <i class="ti ti-layout-grid"></i>
+            </div>
+        </header>
 
-            @if (Model.SubRazones.Count == 0)
+        <section class="dashboard-content">
+            @if (!string.IsNullOrWhiteSpace(Model.Mensaje))
             {
-                <div class="lic-empty">No hay subrazones registradas para este cliente.</div>
+                <div class="notice good">@Model.Mensaje</div>
             }
-            else
+            @if (!string.IsNullOrWhiteSpace(Model.Error))
             {
-                <div class="lic-sub-list">
-                    @foreach (var sr in Model.SubRazones)
-                    {
-                        <article class="lic-sub">
-                            <div class="lic-sub__head">
-                                <div>
-                                    <h3>@sr.Nombre</h3>
-                                    <span>@sr.TotalLicencias licencias base</span>
-                                </div>
-                                <strong>USD @sr.TotalPrefactura.ToString("N2")</strong>
-                            </div>
+                <div class="notice warn">@Model.Error</div>
+            }
 
-                            <div class="lic-table-wrap slim">
-                                <table class="lic-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Producto</th>
-                                            <th>Cantidad</th>
-                                            <th>Días</th>
-                                            <th>Origen</th>
-                                            <th>Total</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
+            <div class="section-label">Licenciamiento</div>
+            <section class="metric-grid">
+                <article class="metric-card light">
+                    <span>Licencias Padre</span>
+                    <strong>@Model.TotalLicenciasPadre.ToString("N0")</strong>
+                    <small>+@asignacionPct% asignado <i class="ti ti-trending-up"></i></small>
+                </article>
+                <article class="metric-card dark">
+                    <span>Asignadas</span>
+                    <strong>@Model.TotalLicenciasAsignadas.ToString("N0")</strong>
+                    <small>@Model.SubRazones.Count subrazones <i class="ti ti-arrow-up-right"></i></small>
+                </article>
+                <article class="metric-card light">
+                    <span>Sin Asignar</span>
+                    <strong>@Model.TotalLicenciasSinAsignar.ToString("N0")</strong>
+                    <small>@sinAsignarPct% pendiente <i class="ti ti-chart-dots"></i></small>
+                </article>
+                <article class="metric-card dark">
+                    <span>Prefactura</span>
+                    <strong>USD @Model.TotalPrefactura.ToString("N0")</strong>
+                    <small>Corte @Model.FechaCorte.ToString("dd MMM", cultura) <i class="ti ti-calendar"></i></small>
+                </article>
+            </section>
+
+            <section class="main-grid">
+                <article class="panel chart-panel">
+                    <div class="panel-head">
+                        <div>
+                            <h2>Liquidación mensual</h2>
+                            <span>@Model.ClienteNombre</span>
+                        </div>
+                        <div class="legend">
+                            <span><i class="dot violet"></i>Prefactura</span>
+                            <span><i class="dot cyan"></i>Base mensual</span>
+                        </div>
+                    </div>
+                    <svg class="line-chart" viewBox="0 0 720 220" role="img" aria-label="Gráfica de liquidación mensual">
+                        <line x1="52" y1="178" x2="684" y2="178" />
+                        <line x1="52" y1="126" x2="684" y2="126" />
+                        <line x1="52" y1="74" x2="684" y2="74" />
+                        <path class="line cyan" d="M58 156 C120 84 176 82 232 98 S342 150 412 126 S548 104 676 48" />
+                        <path class="line violet" d="M58 96 C134 150 216 150 300 128 S458 54 676 88" />
+                        <circle cx="232" cy="98" r="6" />
+                        <foreignObject x="200" y="62" width="98" height="26">
+                            <div class="chart-tip">@Model.TotalPrefactura.ToString("N0")</div>
+                        </foreignObject>
+                        <g class="months">
+                            <text x="74" y="205">Ene</text><text x="174" y="205">Feb</text><text x="274" y="205">Mar</text>
+                            <text x="374" y="205">Abr</text><text x="474" y="205">May</text><text x="574" y="205">Jun</text>
+                        </g>
+                    </svg>
+                </article>
+
+                <article class="panel bars-panel">
+                    <div class="panel-head">
+                        <h2>Por Producto</h2>
+                    </div>
+                    <div class="bar-list">
+                        @foreach (var p in productos)
+                        {
+                            var width = Math.Max(8, Math.Round(p.CantidadTotal * 100m / maxCantidadProducto, 0));
+                            <div class="bar-row">
+                                <span title="@p.Producto">@p.Producto</span>
+                                <div><i style="width:@width%"></i></div>
+                                <strong>@p.CantidadTotal</strong>
+                            </div>
+                        }
+                    </div>
+                </article>
+
+                <article class="panel table-panel">
+                    <div class="panel-head">
+                        <h2>Razón Padre</h2>
+                        <span>@Model.ProductosRazonPadre.Count productos</span>
+                    </div>
+                    <div class="table-scroll">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Producto</th>
+                                    <th>Total</th>
+                                    <th>Asignado</th>
+                                    <th>Diferencia</th>
+                                    <th>USD</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var p in Model.ProductosRazonPadre)
+                                {
+                                    var diffClass = p.CantidadSinAsignar == 0 ? "ok" : p.CantidadSinAsignar < 0 ? "bad" : "open";
+                                    <tr>
+                                        <td>@p.Producto</td>
+                                        <td>@p.CantidadTotal</td>
+                                        <td>@p.CantidadAsignada</td>
+                                        <td><span class="status-pill @diffClass">@p.CantidadSinAsignar</span></td>
+                                        <td>@p.PrecioUnitarioUsd.ToString("N2")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </article>
+
+                <article class="panel donut-panel">
+                    <div class="panel-head">
+                        <h2>Asignación</h2>
+                    </div>
+                    <div class="donut-wrap">
+                        <div class="donut" style="--pct:@asignacionPct"></div>
+                        <div class="donut-label">@asignacionPct%</div>
+                    </div>
+                    <div class="donut-legend">
+                        <span><i class="dot green"></i>Asignado <strong>@Model.TotalLicenciasAsignadas</strong></span>
+                        <span><i class="dot blue"></i>Sin asignar <strong>@Model.TotalLicenciasSinAsignar</strong></span>
+                    </div>
+                </article>
+            </section>
+
+            <section class="subreason-grid">
+                <article class="panel subreason-panel">
+                    <div class="panel-head">
+                        <h2>Subrazones</h2>
+                        <span>@Model.SubRazones.Count registradas</span>
+                    </div>
+                    <form method="post" asp-action="CrearSubRazon" class="inline-form">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="ClienteId" value="@Model.ClienteId" />
+                        <input type="hidden" name="Mes" value="@Model.MesSeleccionado" />
+                        <input type="hidden" name="Anio" value="@Model.AnioSeleccionado" />
+                        <input name="Nombre" maxlength="200" placeholder="Nueva subrazón social" />
+                        <button type="submit" title="Crear subrazón" aria-label="Crear subrazón"><i class="ti ti-plus"></i></button>
+                    </form>
+
+                    <div class="subreason-list">
+                        @foreach (var sr in Model.SubRazones)
+                        {
+                            <details class="subreason-item">
+                                <summary>
+                                    <span>
+                                        <strong>@sr.Nombre</strong>
+                                        <small>@sr.TotalLicencias licencias base</small>
+                                    </span>
+                                    <b>USD @sr.TotalPrefactura.ToString("N2")</b>
+                                </summary>
+
+                                <div class="subreason-body">
+                                    <div class="mini-consumption">
                                         @foreach (var c in sr.Consumo.OrderBy(c => c.Producto).ThenBy(c => c.EsProrrateoSolicitud))
                                         {
-                                            <tr>
-                                                <td>@c.Producto</td>
-                                                <td>@c.Cantidad</td>
-                                                <td>@c.DiasConsumo / @c.DiasMes</td>
-                                                <td>@c.Origen</td>
-                                                <td>USD @c.TotalProrrateadoUsd.ToString("N2")</td>
-                                            </tr>
+                                            <div>
+                                                <span>@c.Producto</span>
+                                                <small>@c.Cantidad x @c.DiasConsumo/@c.DiasMes días · @c.Origen</small>
+                                                <strong>USD @c.TotalProrrateadoUsd.ToString("N2")</strong>
+                                            </div>
                                         }
                                         @if (sr.Consumo.Count == 0)
                                         {
-                                            <tr><td colspan="5">Sin consumo asignado.</td></tr>
+                                            <div><span>Sin consumo asignado.</span></div>
                                         }
-                                    </tbody>
-                                </table>
-                            </div>
+                                    </div>
 
-                            <div class="lic-actions">
-                                <form method="post" asp-action="GuardarAsignacion" class="lic-action-form">
-                                    @Html.AntiForgeryToken()
-                                    <input type="hidden" name="ClienteId" value="@Model.ClienteId" />
-                                    <input type="hidden" name="SubRazonId" value="@sr.Id" />
-                                    <input type="hidden" name="Mes" value="@Model.MesSeleccionado" />
-                                    <input type="hidden" name="Anio" value="@Model.AnioSeleccionado" />
-                                    <select name="SalesRecordId">
-                                        @foreach (var p in Model.ProductosRazonPadre)
-                                        {
-                                            <option value="@p.SalesRecordId">@p.Producto</option>
-                                        }
-                                    </select>
-                                    <input name="Cantidad" type="number" min="0" value="0" />
-                                    <button type="submit" title="Guardar asignación" aria-label="Guardar asignación">
-                                        <i class="ti ti-check"></i>
-                                    </button>
-                                </form>
+                                    <div class="action-forms">
+                                        <form method="post" asp-action="GuardarAsignacion" class="row-form">
+                                            @Html.AntiForgeryToken()
+                                            <input type="hidden" name="ClienteId" value="@Model.ClienteId" />
+                                            <input type="hidden" name="SubRazonId" value="@sr.Id" />
+                                            <input type="hidden" name="Mes" value="@Model.MesSeleccionado" />
+                                            <input type="hidden" name="Anio" value="@Model.AnioSeleccionado" />
+                                            <select name="SalesRecordId" aria-label="Producto">
+                                                @foreach (var p in Model.ProductosRazonPadre)
+                                                {
+                                                    <option value="@p.SalesRecordId">@p.Producto</option>
+                                                }
+                                            </select>
+                                            <input name="Cantidad" type="number" min="0" value="0" aria-label="Cantidad" />
+                                            <button type="submit" title="Guardar asignación" aria-label="Guardar asignación"><i class="ti ti-check"></i></button>
+                                        </form>
 
-                                <form method="post" asp-action="SolicitarLicencias" class="lic-action-form request">
-                                    @Html.AntiForgeryToken()
-                                    <input type="hidden" name="ClienteId" value="@Model.ClienteId" />
-                                    <input type="hidden" name="SubRazonId" value="@sr.Id" />
-                                    <input type="hidden" name="Mes" value="@Model.MesSeleccionado" />
-                                    <input type="hidden" name="Anio" value="@Model.AnioSeleccionado" />
-                                    <select name="SalesRecordId">
-                                        @foreach (var p in Model.ProductosRazonPadre)
-                                        {
-                                            <option value="@p.SalesRecordId">@p.Producto</option>
-                                        }
-                                    </select>
-                                    <input name="Cantidad" type="number" min="1" value="1" />
-                                    <button type="submit" title="Solicitar aumento" aria-label="Solicitar aumento">
-                                        <i class="ti ti-arrow-up-right"></i>
-                                    </button>
-                                </form>
+                                        <form method="post" asp-action="SolicitarLicencias" class="row-form request">
+                                            @Html.AntiForgeryToken()
+                                            <input type="hidden" name="ClienteId" value="@Model.ClienteId" />
+                                            <input type="hidden" name="SubRazonId" value="@sr.Id" />
+                                            <input type="hidden" name="Mes" value="@Model.MesSeleccionado" />
+                                            <input type="hidden" name="Anio" value="@Model.AnioSeleccionado" />
+                                            <select name="SalesRecordId" aria-label="Producto">
+                                                @foreach (var p in Model.ProductosRazonPadre)
+                                                {
+                                                    <option value="@p.SalesRecordId">@p.Producto</option>
+                                                }
+                                            </select>
+                                            <input name="Cantidad" type="number" min="1" value="1" aria-label="Cantidad" />
+                                            <button type="submit" title="Solicitar aumento" aria-label="Solicitar aumento"><i class="ti ti-arrow-up-right"></i></button>
+                                        </form>
+                                    </div>
+                                </div>
+                            </details>
+                        }
+                        @if (Model.SubRazones.Count == 0)
+                        {
+                            <div class="empty-state">No hay subrazones registradas para este cliente.</div>
+                        }
+                    </div>
+                </article>
+
+                <article class="panel small-bars">
+                    <div class="panel-head">
+                        <h2>Facturación Por Subrazón</h2>
+                    </div>
+                    <div class="location-bars">
+                        @foreach (var sr in subRazones)
+                        {
+                            var width = Math.Max(10, Math.Round(sr.TotalPrefactura * 100m / maxSubTotal, 0));
+                            <div>
+                                <span>@sr.Nombre</span>
+                                <b>USD @sr.TotalPrefactura.ToString("N0")</b>
+                                <i><em style="width:@width%"></em></i>
                             </div>
-                        </article>
-                    }
+                        }
+                    </div>
+                    <form method="post" asp-action="ActualizarFechaCorte" class="cutoff-form">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="ClienteId" value="@Model.ClienteId" />
+                        <input type="hidden" name="Mes" value="@Model.MesSeleccionado" />
+                        <input type="hidden" name="Anio" value="@Model.AnioSeleccionado" />
+                        <label>Día facturación</label>
+                        <input name="DiaCorte" value="@Model.DiaCorte" inputmode="numeric" min="1" max="31" />
+                        <button type="submit">Guardar</button>
+                    </form>
+                </article>
+            </section>
+
+            <section class="panel order-panel">
+                <div class="panel-head">
+                    <h2>Solicitudes De Aprovisionamiento</h2>
+                    <div class="panel-tools">
+                        <i class="ti ti-plus"></i>
+                        <i class="ti ti-filter"></i>
+                        <i class="ti ti-arrows-sort"></i>
+                    </div>
+                </div>
+                <div class="table-scroll">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Solicitante</th>
+                                <th>Subrazón</th>
+                                <th>Producto</th>
+                                <th>Cantidad</th>
+                                <th>Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var h in Model.HistoricoSolicitudes)
+                            {
+                                <tr>
+                                    <td><i class="ti ti-calendar"></i> @(h.FechaSolicitud?.ToString("dd/MM/yyyy") ?? "-")</td>
+                                    <td>@h.SolicitadoPor</td>
+                                    <td>@h.SubRazon</td>
+                                    <td>@h.Producto</td>
+                                    <td>+@h.CantidadNueva</td>
+                                    <td><span class="request-state">@h.Estado</span></td>
+                                </tr>
+                            }
+                            @if (Model.HistoricoSolicitudes.Count == 0)
+                            {
+                                <tr><td colspan="6">Sin solicitudes registradas.</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </section>
+    </main>
+
+    <aside class="right-rail">
+        <section>
+            <h3>Notifications</h3>
+            @foreach (var item in historico.Take(4))
+            {
+                <div class="rail-item">
+                    <span><i class="ti ti-bell"></i></span>
+                    <p>Solicitud de @item.CantidadNueva licencia(s)<small>@(item.FechaSolicitud?.ToString("dd MMM", cultura) ?? "Sin fecha")</small></p>
                 </div>
             }
-        </div>
-    </section>
-
-    <section class="lic-panel">
-        <div class="lic-panel__head">
-            <h2>Histórico De Solicitudes</h2>
-            <span>@Model.HistoricoSolicitudes.Count últimos registros</span>
-        </div>
-        <div class="lic-table-wrap">
-            <table class="lic-table">
-                <thead>
-                    <tr>
-                        <th>Fecha</th>
-                        <th>Solicitante</th>
-                        <th>Subrazón</th>
-                        <th>Producto</th>
-                        <th>Cantidad</th>
-                        <th>USD unitario</th>
-                        <th>Estado</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var h in Model.HistoricoSolicitudes)
-                    {
-                        <tr>
-                            <td>@(h.FechaSolicitud?.ToString("dd/MM/yyyy") ?? "-")</td>
-                            <td>@h.SolicitadoPor</td>
-                            <td>@h.SubRazon</td>
-                            <td>@h.Producto</td>
-                            <td>+@h.CantidadNueva</td>
-                            <td>USD @h.PrecioUnitarioUsd.ToString("N2")</td>
-                            <td><span class="lic-status">@h.Estado</span></td>
-                        </tr>
-                    }
-                    @if (Model.HistoricoSolicitudes.Count == 0)
-                    {
-                        <tr><td colspan="7">Sin solicitudes registradas.</td></tr>
-                    }
-                </tbody>
-            </table>
-        </div>
-    </section>
+            @if (historico.Count == 0)
+            {
+                <div class="rail-item"><span><i class="ti ti-info-circle"></i></span><p>No hay notificaciones<small>Ahora</small></p></div>
+            }
+        </section>
+        <section>
+            <h3>Activities</h3>
+            @foreach (var sr in subRazones.Take(5))
+            {
+                <div class="rail-item avatar">
+                    <span>@sr.Nombre.Substring(0, 1).ToUpperInvariant()</span>
+                    <p>@sr.Nombre<small>USD @sr.TotalPrefactura.ToString("N2")</small></p>
+                </div>
+            }
+        </section>
+        <section>
+            <h3>Contacts</h3>
+            <div class="rail-item avatar"><span>DT</span><p>@Model.ClienteNombre<small>Razón padre</small></p></div>
+            <div class="rail-item avatar"><span>SR</span><p>sruiz@digitaltechcolombia.com<small>Administrador</small></p></div>
+        </section>
+    </aside>
 </div>
 
 <style>
-.lic-page{display:grid;gap:16px;color:#17202a}
-.lic-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;padding:22px 24px;border-radius:8px;background:#12343b;color:#fff}
-.lic-head h1{font-size:2rem;line-height:1;margin:4px 0 0;letter-spacing:0}
-.lic-kicker{display:block;font-size:.78rem;text-transform:uppercase;letter-spacing:.08em;color:#a7f3d0}
-.lic-head__meta{text-align:right;display:grid;gap:4px}
-.lic-head__meta span{color:#d9e6e8}
-.lic-alert{border-radius:8px;padding:12px 14px;border:1px solid}
-.lic-alert.ok{background:#ecfdf5;border-color:#a7f3d0;color:#065f46}
-.lic-alert.warn{background:#fff7ed;border-color:#fed7aa;color:#9a3412}
-.lic-toolbar{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap}
-.lic-filter{display:flex;gap:10px;align-items:end;flex-wrap:wrap;background:#fff;border:1px solid #dbe3ea;border-radius:8px;padding:10px}
-.lic-filter.compact{margin-left:auto}
-.lic-filter label{display:grid;gap:4px;font-size:.8rem;color:#52616b}
-.lic-filter select,.lic-filter input,.lic-create input,.lic-action-form select,.lic-action-form input{height:38px;border:1px solid #cbd5df;border-radius:6px;padding:0 10px;background:#fff;color:#17202a;min-width:110px}
-.lic-filter select{min-width:240px}
-.lic-filter input{width:92px}
-.lic-icon-btn,.lic-create button,.lic-action-form button{height:38px;width:38px;display:inline-grid;place-items:center;border:0;border-radius:6px;background:#0f766e;color:#fff;cursor:pointer}
-.lic-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
-.lic-stats div{background:#fff;border:1px solid #dbe3ea;border-radius:8px;padding:14px}
-.lic-stats span{display:block;font-size:.78rem;color:#64748b}
-.lic-stats strong{font-size:1.35rem;color:#111827}
-.lic-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);gap:16px;align-items:start}
-.lic-panel{background:#fff;border:1px solid #dbe3ea;border-radius:8px;padding:16px;box-shadow:0 8px 22px rgba(15,23,42,.04)}
-.lic-panel__head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:12px}
-.lic-panel__head h2,.lic-sub h3{margin:0;letter-spacing:0}
-.lic-panel__head h2{font-size:1.05rem}
-.lic-panel__head span,.lic-sub__head span{color:#64748b;font-size:.82rem}
-.lic-table-wrap{overflow:auto}
-.lic-table{width:100%;border-collapse:collapse;font-size:.9rem}
-.lic-table th,.lic-table td{padding:10px;border-bottom:1px solid #e8eef3;text-align:left;vertical-align:top}
-.lic-table th{font-size:.72rem;text-transform:uppercase;color:#64748b;background:#f8fafc}
-.lic-pill,.lic-status{display:inline-flex;align-items:center;justify-content:center;min-width:34px;height:24px;border-radius:999px;padding:0 8px;font-size:.78rem;font-weight:700}
-.lic-pill.ok{background:#dcfce7;color:#166534}.lic-pill.open{background:#fef3c7;color:#92400e}.lic-pill.bad{background:#fee2e2;color:#991b1b}
-.lic-status{background:#eef2ff;color:#3730a3}
-.lic-create{display:flex;gap:8px;margin-bottom:12px}
-.lic-create input{min-width:0;flex:1}
-.lic-empty{padding:18px;border:1px dashed #cbd5df;border-radius:8px;color:#64748b;background:#f8fafc}
-.lic-sub-list{display:grid;gap:12px}
-.lic-sub{border:1px solid #dbe3ea;border-radius:8px;padding:12px;background:#fcfdff}
-.lic-sub__head{display:flex;justify-content:space-between;gap:12px;align-items:start;margin-bottom:10px}
-.lic-sub__head strong{color:#0f766e}
-.lic-table-wrap.slim{max-height:320px}
-.lic-actions{display:grid;gap:8px;margin-top:12px}
-.lic-action-form{display:grid;grid-template-columns:minmax(0,1fr) 92px 38px;gap:8px}
-.lic-action-form.request button{background:#b45309}
-@@media (max-width: 980px){
-  .lic-head,.lic-toolbar{align-items:stretch}
-  .lic-head{display:grid}
-  .lic-head__meta{text-align:left}
-  .lic-stats,.lic-grid{grid-template-columns:1fr}
-  .lic-filter,.lic-filter.compact{width:100%;margin-left:0}
+:root{
+  --bg:#02072d;
+  --bg-2:#030b38;
+  --panel:#08133f;
+  --panel-2:#0b1648;
+  --line:rgba(202,218,255,.13);
+  --text:#edf4ff;
+  --muted:#8390b2;
+  --soft:#dff2ff;
+  --soft-2:#e8f0ff;
+  --accent:#aeb4ff;
+  --cyan:#a8dcff;
+  --green:#bff0c8;
 }
-@@media (max-width: 620px){
-  .lic-panel,.lic-head{padding:14px}
-  .lic-action-form{grid-template-columns:1fr}
-  .lic-action-form button{width:100%}
-  .lic-filter label,.lic-filter select,.lic-filter input{width:100%;min-width:0}
-  .lic-icon-btn{width:100%}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;background:var(--bg);color:var(--text);letter-spacing:0}
+button,select,input{font:inherit}
+.byewind-shell{min-height:100vh;display:grid;grid-template-columns:180px minmax(0,1fr) 240px;background:var(--bg)}
+.byewind-sidebar{position:sticky;top:0;height:100vh;border-right:1px solid var(--line);background:#010629;padding:14px 10px;display:flex;flex-direction:column;gap:18px}
+.brand{height:30px;display:flex;align-items:center;gap:8px;color:#fff;text-decoration:none;font-size:14px;font-weight:650}
+.brand-mark{width:21px;height:21px;border-radius:50%;display:grid;place-items:center;background:#f3fbff;color:#04103d;font-size:15px}
+.nav-tabs{display:flex;gap:18px;color:#596586;font-size:12px}
+.nav-title{margin:0;color:#687392;font-size:12px}
+.side-nav{display:grid;gap:4px}
+.side-nav a{min-height:26px;display:flex;align-items:center;gap:7px;color:#d5def7;text-decoration:none;border-radius:6px;padding:5px 8px;font-size:13px}
+.side-nav a i{font-size:15px;color:#dfe9ff}
+.side-nav a.active,.side-nav a:hover{background:rgba(225,238,255,.14)}
+.side-nav:not(.stacked) a{padding-left:0;color:#d1d9ee}
+.side-nav:not(.stacked) i{font-size:10px;color:#8291bb}
+.sidebar-footer{margin-top:auto;display:flex;align-items:center;gap:7px;color:#dce7ff;font-size:12px;padding:0 8px 4px}
+.snow-mark{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;background:#dff2ff;color:#3155ff}
+.byewind-main{min-width:0}
+.topbar{height:56px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:16px;padding:0 22px;background:#02072d}
+.topbar-left{display:flex;align-items:center;gap:14px;color:#657191;font-size:13px;white-space:nowrap}
+.topbar-left strong{color:#eef5ff;font-weight:650}
+.topbar-left i{color:#dce5fb;font-size:17px}
+.topbar-search{margin-left:auto;display:flex;align-items:center;gap:7px;min-width:280px;max-width:620px}
+.topbar-search select,.topbar-search input{height:28px;border:0;border-radius:7px;background:rgba(255,255,255,.08);color:#cdd8f2;padding:0 10px;min-width:84px;outline:none}
+.topbar-search select:first-child{min-width:230px;max-width:300px}
+.topbar-search option{background:#09123c;color:#fff}
+.topbar-search button{height:28px;width:34px;border:0;border-radius:7px;background:rgba(255,255,255,.08);color:#9aa8ca}
+.topbar-icons{display:flex;align-items:center;gap:14px;color:#e9f2ff}
+.dashboard-content{display:grid;gap:24px;padding:30px 24px 40px}
+.notice{border-radius:8px;padding:10px 12px;font-size:13px;border:1px solid}
+.notice.good{background:rgba(95,220,150,.12);border-color:rgba(95,220,150,.35);color:#c9f8dc}
+.notice.warn{background:rgba(255,193,116,.12);border-color:rgba(255,193,116,.36);color:#ffdcb3}
+.section-label{font-size:13px;font-weight:700;color:#fff}
+.metric-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:24px}
+.metric-card{height:102px;border-radius:13px;padding:20px;display:grid;align-content:center;gap:6px}
+.metric-card span{font-size:12px;font-weight:700}
+.metric-card strong{font-size:25px;line-height:1;color:#0a0f1f}
+.metric-card small{font-size:11px;color:#07142e}
+.metric-card.light{background:var(--soft)}
+.metric-card.dark{background:var(--panel);border:1px solid var(--line)}
+.metric-card.dark strong,.metric-card.dark small{color:#eaf3ff}
+.metric-card.dark span{color:#fff}
+.main-grid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(260px,.65fr);gap:24px}
+.panel{background:rgba(255,255,255,.055);border:1px solid var(--line);border-radius:13px;padding:20px;box-shadow:0 18px 44px rgba(0,0,0,.18)}
+.panel-head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:15px}
+.panel-head h2{margin:0;font-size:14px;color:#fff}
+.panel-head span{color:var(--muted);font-size:12px}
+.legend{display:flex;gap:18px;color:#cfd9f2;font-size:11px}
+.dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:6px;vertical-align:middle}
+.dot.violet{background:var(--accent)}.dot.cyan{background:var(--cyan)}.dot.green{background:var(--green)}.dot.blue{background:#aeb4ff}
+.line-chart{width:100%;height:250px}
+.line-chart line{stroke:rgba(255,255,255,.13);stroke-width:1}
+.line-chart .line{fill:none;stroke-width:3}
+.line-chart .cyan{stroke:var(--cyan)}
+.line-chart .violet{stroke:var(--accent)}
+.line-chart circle{fill:#dff2ff;stroke:#fff;stroke-width:2}
+.line-chart .months text{fill:#7783a4;font-size:12px}
+.chart-tip{height:24px;border-radius:5px;background:#1a2453;color:#fff;display:grid;place-items:center;font-size:11px}
+.bar-list{display:grid;gap:16px}
+.bar-row{display:grid;grid-template-columns:72px 1fr 38px;gap:10px;align-items:center;font-size:12px;color:#d9e3fb}
+.bar-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar-row div{height:5px;border-radius:999px;background:rgba(255,255,255,.11);overflow:hidden}
+.bar-row i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--cyan),var(--accent))}
+.bar-row strong{font-size:11px;color:#fff;text-align:right}
+.table-panel{grid-column:span 1}
+.donut-panel{display:grid;align-content:start;gap:14px}
+.table-scroll{overflow:auto}
+table{width:100%;border-collapse:collapse;font-size:12px;color:#dfe8fb}
+th,td{padding:11px 10px;border-bottom:1px solid rgba(255,255,255,.1);text-align:left;vertical-align:middle;white-space:nowrap}
+th{color:#8793b2;font-weight:500}
+td:first-child{white-space:normal;min-width:220px}
+.status-pill,.request-state{display:inline-flex;align-items:center;gap:5px;font-size:11px}
+.status-pill:before,.request-state:before{content:"";width:6px;height:6px;border-radius:50%;background:#8ea1ff}
+.status-pill.ok:before{background:#9ce7b1}.status-pill.open:before{background:#ffd36b}.status-pill.bad:before{background:#ff7f87}
+.donut-wrap{position:relative;width:146px;height:146px;margin:6px auto}
+.donut{width:146px;height:146px;border-radius:50%;background:conic-gradient(var(--accent) calc(var(--pct) * 1%), var(--green) 0 76%, var(--cyan) 0 100%);position:relative}
+.donut:after{content:"";position:absolute;inset:28px;border-radius:50%;background:var(--panel)}
+.donut-label{position:absolute;inset:0;display:grid;place-items:center;font-size:12px;color:#fff}
+.donut-legend{display:grid;gap:9px;font-size:12px;color:#dce7ff}
+.donut-legend span{display:flex;justify-content:space-between;gap:10px}
+.subreason-grid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(260px,.65fr);gap:24px}
+.inline-form{display:grid;grid-template-columns:minmax(0,1fr) 34px;gap:8px;margin-bottom:14px}
+.inline-form input,.row-form select,.row-form input,.cutoff-form input{height:34px;border:1px solid rgba(255,255,255,.1);border-radius:7px;background:#07113e;color:#eef5ff;padding:0 10px;min-width:0;outline:none}
+.inline-form button,.row-form button{height:34px;width:34px;border:0;border-radius:7px;background:#dff2ff;color:#08113e}
+.subreason-list{display:grid;gap:10px}
+.subreason-item{border:1px solid rgba(255,255,255,.1);border-radius:10px;background:rgba(255,255,255,.035)}
+.subreason-item summary{list-style:none;cursor:pointer;display:flex;justify-content:space-between;gap:12px;padding:13px 14px;align-items:center}
+.subreason-item summary::-webkit-details-marker{display:none}
+.subreason-item summary span{display:grid;gap:4px;min-width:0}
+.subreason-item strong{font-size:13px;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.subreason-item small{font-size:11px;color:#8793b2}
+.subreason-item b{font-size:12px;color:#dff2ff}
+.subreason-body{border-top:1px solid rgba(255,255,255,.1);padding:12px;display:grid;gap:12px}
+.mini-consumption{display:grid;gap:8px}
+.mini-consumption div{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 12px;color:#dfe8fb;font-size:12px}
+.mini-consumption small{grid-column:1/-1;color:#7e8aaa}
+.mini-consumption strong{font-size:12px;color:#cfe9ff}
+.action-forms{display:grid;gap:8px}
+.row-form{display:grid;grid-template-columns:minmax(0,1fr) 74px 34px;gap:8px}
+.row-form select option{background:#07113e;color:#fff}
+.row-form.request button{background:#b8f2c9}
+.empty-state{border:1px dashed rgba(255,255,255,.16);border-radius:9px;padding:18px;color:#8e9abb;font-size:13px}
+.location-bars{display:grid;gap:15px;margin-bottom:20px}
+.location-bars div{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 10px;font-size:12px;color:#dce7ff}
+.location-bars span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.location-bars b{font-weight:500}
+.location-bars i{grid-column:1/-1;height:4px;border-radius:999px;background:rgba(255,255,255,.12);overflow:hidden}
+.location-bars em{display:block;height:100%;border-radius:999px;background:#dff2ff}
+.cutoff-form{display:grid;grid-template-columns:1fr 72px;gap:8px;align-items:end;border-top:1px solid rgba(255,255,255,.1);padding-top:14px}
+.cutoff-form label{grid-column:1/-1;color:#8793b2;font-size:12px}
+.cutoff-form button{height:34px;border:0;border-radius:7px;background:#dff2ff;color:#08113e}
+.order-panel{min-height:260px}
+.panel-tools{display:flex;gap:14px;color:#dfe8fb}
+.right-rail{position:sticky;top:0;height:100vh;overflow:auto;border-left:1px solid var(--line);background:#010629;padding:22px 20px;display:grid;align-content:start;gap:28px}
+.right-rail h3{margin:0 0 13px;font-size:13px;color:#fff}
+.rail-item{display:grid;grid-template-columns:24px minmax(0,1fr);gap:10px;align-items:start;margin-bottom:13px}
+.rail-item>span{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;background:#e6f6ff;color:#06103a;font-size:12px;font-weight:700}
+.rail-item.avatar>span{background:#1f2a5e;color:#dff2ff}
+.rail-item p{margin:0;color:#f4f7ff;font-size:12px;line-height:1.25;min-width:0}
+.rail-item small{display:block;color:#7d89a7;font-size:11px;margin-top:3px}
+@@media (max-width:1180px){
+  .byewind-shell{grid-template-columns:164px minmax(0,1fr)}
+  .right-rail{display:none}
+  .metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@@media (max-width:860px){
+  .byewind-shell{display:block}
+  .byewind-sidebar{position:relative;height:auto;border-right:0;border-bottom:1px solid var(--line)}
+  .topbar{height:auto;align-items:stretch;flex-wrap:wrap;padding:12px}
+  .topbar-search{margin-left:0;max-width:none;width:100%;display:grid;grid-template-columns:1fr 104px 74px 34px}
+  .topbar-search select:first-child{min-width:0;max-width:none}
+  .main-grid,.subreason-grid,.metric-grid{grid-template-columns:1fr}
+  .dashboard-content{padding:18px 14px 28px}
+}
+@@media (max-width:560px){
+  .topbar-search{grid-template-columns:1fr}
+  .topbar-search select,.topbar-search input,.topbar-search button{width:100%;min-width:0}
+  .metric-card{height:auto}
+  .row-form,.cutoff-form{grid-template-columns:1fr}
+  .row-form button,.inline-form button{width:100%}
 }
 </style>
+</body>
+</html>
