@@ -1,86 +1,331 @@
 @model DigitalTechClientPortal.Web.Models.LicenciamientoViewModel
 @{
     ViewData["Title"] = "Licenciamiento";
+    var cultura = new System.Globalization.CultureInfo("es-CO");
+    var meses = cultura.DateTimeFormat.MonthNames.Take(12).Select((nombre, index) => new { Nombre = cultura.TextInfo.ToTitleCase(nombre), Numero = index + 1 }).ToList();
 }
 
-<div class="lic-wrap">
-    <section class="lic-hero">
+<div class="lic-page">
+    <section class="lic-head">
         <div>
+            <span class="lic-kicker">Microsoft 365 / Cloud</span>
             <h1>Licenciamiento</h1>
-            <p>Gestión de licencias por razón social, subrazón social, prorrateo y prefactura mensual.</p>
         </div>
-        <div class="lic-meta">
-            <div><span>Cliente:</span><strong>@Model.ClienteNombre</strong></div>
-            <div><span>Fecha de corte:</span><strong>@Model.FechaCorte.ToString("dd/MM/yyyy")</strong></div>
+        <div class="lic-head__meta">
+            <span>@Model.ClienteNombre</span>
+            <strong>Corte @Model.FechaCorte.ToString("dd MMM yyyy", cultura)</strong>
         </div>
     </section>
 
-    @if (Model.PuedeCambiarCliente)
+    @if (!string.IsNullOrWhiteSpace(Model.Mensaje))
     {
-        <form method="get" class="lic-card">
-            <label>Ver como cliente</label>
-            <select name="clienteId" onchange="this.form.submit()">
-                @foreach (var c in Model.ClientesDisponibles)
-                {
-                    <option value="@c.Id" selected="@(c.Id == Model.ClienteSeleccionadoId)">@c.Nombre</option>
-                }
-            </select>
-        </form>
+        <div class="lic-alert ok">@Model.Mensaje</div>
+    }
+    @if (!string.IsNullOrWhiteSpace(Model.Error))
+    {
+        <div class="lic-alert warn">@Model.Error</div>
     }
 
+    <section class="lic-toolbar">
+        <form method="get" asp-action="Index" class="lic-filter">
+            @if (Model.PuedeCambiarCliente)
+            {
+                <label>
+                    <span>Cliente</span>
+                    <select name="clienteId" onchange="this.form.submit()">
+                        @foreach (var c in Model.ClientesDisponibles)
+                        {
+                            <option value="@c.Id" selected="@(c.Id == Model.ClienteSeleccionadoId)">@c.Nombre</option>
+                        }
+                    </select>
+                </label>
+            }
+            else
+            {
+                <input type="hidden" name="clienteId" value="@Model.ClienteId" />
+            }
+
+            <label>
+                <span>Mes</span>
+                <select name="mes" onchange="this.form.submit()">
+                    @foreach (var mes in meses)
+                    {
+                        <option value="@mes.Numero" selected="@(mes.Numero == Model.MesSeleccionado)">@mes.Nombre</option>
+                    }
+                </select>
+            </label>
+
+            <label>
+                <span>Año</span>
+                <input name="anio" value="@Model.AnioSeleccionado" inputmode="numeric" />
+            </label>
+
+            <button type="submit" class="lic-icon-btn" title="Aplicar filtros" aria-label="Aplicar filtros">
+                <i class="ti ti-filter"></i>
+            </button>
+        </form>
+
+        <form method="post" asp-action="ActualizarFechaCorte" class="lic-filter compact">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="ClienteId" value="@Model.ClienteId" />
+            <input type="hidden" name="Mes" value="@Model.MesSeleccionado" />
+            <input type="hidden" name="Anio" value="@Model.AnioSeleccionado" />
+            <label>
+                <span>Día facturación</span>
+                <input name="DiaCorte" value="@Model.DiaCorte" inputmode="numeric" min="1" max="31" />
+            </label>
+            <button type="submit" class="lic-icon-btn" title="Guardar día de facturación" aria-label="Guardar día de facturación">
+                <i class="ti ti-device-floppy"></i>
+            </button>
+        </form>
+    </section>
+
+    <section class="lic-stats">
+        <div><span>Licencias padre</span><strong>@Model.TotalLicenciasPadre</strong></div>
+        <div><span>Asignadas</span><strong>@Model.TotalLicenciasAsignadas</strong></div>
+        <div><span>Sin asignar</span><strong>@Model.TotalLicenciasSinAsignar</strong></div>
+        <div><span>Prefactura</span><strong>USD @Model.TotalPrefactura.ToString("N2")</strong></div>
+    </section>
+
     <section class="lic-grid">
-        <div class="lic-card">
-            <h2>Razón social (total disponible)</h2>
-            <table>
-                <thead><tr><th>Producto</th><th>Licencias</th><th>USD unitario</th></tr></thead>
+        <div class="lic-panel">
+            <div class="lic-panel__head">
+                <h2>Razón Padre</h2>
+                <span>@Model.ProductosRazonPadre.Count productos</span>
+            </div>
+            <div class="lic-table-wrap">
+                <table class="lic-table">
+                    <thead>
+                        <tr>
+                            <th>Producto</th>
+                            <th>Total</th>
+                            <th>Asignado</th>
+                            <th>Diferencia</th>
+                            <th>USD unitario</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var p in Model.ProductosRazonPadre)
+                        {
+                            var diffClass = p.CantidadSinAsignar == 0 ? "ok" : p.CantidadSinAsignar < 0 ? "bad" : "open";
+                            <tr>
+                                <td>@p.Producto</td>
+                                <td>@p.CantidadTotal</td>
+                                <td>@p.CantidadAsignada</td>
+                                <td><span class="lic-pill @diffClass">@p.CantidadSinAsignar</span></td>
+                                <td>USD @p.PrecioUnitarioUsd.ToString("N2")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="lic-panel">
+            <div class="lic-panel__head">
+                <h2>Subrazones</h2>
+                <span>@Model.SubRazones.Count registradas</span>
+            </div>
+            <form method="post" asp-action="CrearSubRazon" class="lic-create">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="ClienteId" value="@Model.ClienteId" />
+                <input type="hidden" name="Mes" value="@Model.MesSeleccionado" />
+                <input type="hidden" name="Anio" value="@Model.AnioSeleccionado" />
+                <input name="Nombre" maxlength="200" placeholder="Nueva subrazón social" />
+                <button type="submit" title="Crear subrazón" aria-label="Crear subrazón"><i class="ti ti-plus"></i></button>
+            </form>
+
+            @if (Model.SubRazones.Count == 0)
+            {
+                <div class="lic-empty">No hay subrazones registradas para este cliente.</div>
+            }
+            else
+            {
+                <div class="lic-sub-list">
+                    @foreach (var sr in Model.SubRazones)
+                    {
+                        <article class="lic-sub">
+                            <div class="lic-sub__head">
+                                <div>
+                                    <h3>@sr.Nombre</h3>
+                                    <span>@sr.TotalLicencias licencias base</span>
+                                </div>
+                                <strong>USD @sr.TotalPrefactura.ToString("N2")</strong>
+                            </div>
+
+                            <div class="lic-table-wrap slim">
+                                <table class="lic-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Producto</th>
+                                            <th>Cantidad</th>
+                                            <th>Días</th>
+                                            <th>Origen</th>
+                                            <th>Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var c in sr.Consumo.OrderBy(c => c.Producto).ThenBy(c => c.EsProrrateoSolicitud))
+                                        {
+                                            <tr>
+                                                <td>@c.Producto</td>
+                                                <td>@c.Cantidad</td>
+                                                <td>@c.DiasConsumo / @c.DiasMes</td>
+                                                <td>@c.Origen</td>
+                                                <td>USD @c.TotalProrrateadoUsd.ToString("N2")</td>
+                                            </tr>
+                                        }
+                                        @if (sr.Consumo.Count == 0)
+                                        {
+                                            <tr><td colspan="5">Sin consumo asignado.</td></tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div class="lic-actions">
+                                <form method="post" asp-action="GuardarAsignacion" class="lic-action-form">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="ClienteId" value="@Model.ClienteId" />
+                                    <input type="hidden" name="SubRazonId" value="@sr.Id" />
+                                    <input type="hidden" name="Mes" value="@Model.MesSeleccionado" />
+                                    <input type="hidden" name="Anio" value="@Model.AnioSeleccionado" />
+                                    <select name="SalesRecordId">
+                                        @foreach (var p in Model.ProductosRazonPadre)
+                                        {
+                                            <option value="@p.SalesRecordId">@p.Producto</option>
+                                        }
+                                    </select>
+                                    <input name="Cantidad" type="number" min="0" value="0" />
+                                    <button type="submit" title="Guardar asignación" aria-label="Guardar asignación">
+                                        <i class="ti ti-check"></i>
+                                    </button>
+                                </form>
+
+                                <form method="post" asp-action="SolicitarLicencias" class="lic-action-form request">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="ClienteId" value="@Model.ClienteId" />
+                                    <input type="hidden" name="SubRazonId" value="@sr.Id" />
+                                    <input type="hidden" name="Mes" value="@Model.MesSeleccionado" />
+                                    <input type="hidden" name="Anio" value="@Model.AnioSeleccionado" />
+                                    <select name="SalesRecordId">
+                                        @foreach (var p in Model.ProductosRazonPadre)
+                                        {
+                                            <option value="@p.SalesRecordId">@p.Producto</option>
+                                        }
+                                    </select>
+                                    <input name="Cantidad" type="number" min="1" value="1" />
+                                    <button type="submit" title="Solicitar aumento" aria-label="Solicitar aumento">
+                                        <i class="ti ti-arrow-up-right"></i>
+                                    </button>
+                                </form>
+                            </div>
+                        </article>
+                    }
+                </div>
+            }
+        </div>
+    </section>
+
+    <section class="lic-panel">
+        <div class="lic-panel__head">
+            <h2>Histórico De Solicitudes</h2>
+            <span>@Model.HistoricoSolicitudes.Count últimos registros</span>
+        </div>
+        <div class="lic-table-wrap">
+            <table class="lic-table">
+                <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Solicitante</th>
+                        <th>Subrazón</th>
+                        <th>Producto</th>
+                        <th>Cantidad</th>
+                        <th>USD unitario</th>
+                        <th>Estado</th>
+                    </tr>
+                </thead>
                 <tbody>
-                @foreach (var p in Model.ProductosRazonPadre)
-                {
-                    <tr><td>@p.Producto</td><td>@p.CantidadTotal</td><td>$ @p.PrecioUnitarioUsd</td></tr>
-                }
+                    @foreach (var h in Model.HistoricoSolicitudes)
+                    {
+                        <tr>
+                            <td>@(h.FechaSolicitud?.ToString("dd/MM/yyyy") ?? "-")</td>
+                            <td>@h.SolicitadoPor</td>
+                            <td>@h.SubRazon</td>
+                            <td>@h.Producto</td>
+                            <td>+@h.CantidadNueva</td>
+                            <td>USD @h.PrecioUnitarioUsd.ToString("N2")</td>
+                            <td><span class="lic-status">@h.Estado</span></td>
+                        </tr>
+                    }
+                    @if (Model.HistoricoSolicitudes.Count == 0)
+                    {
+                        <tr><td colspan="7">Sin solicitudes registradas.</td></tr>
+                    }
                 </tbody>
             </table>
         </div>
-
-        <div class="lic-card">
-            <h2>Liquidación mensual (prefactura)</h2>
-            @foreach (var sr in Model.SubRazones)
-            {
-                <h3>@sr.Nombre</h3>
-                <table>
-                    <thead><tr><th>Producto</th><th>Cantidad</th><th>Días</th><th>Total prorrateado</th></tr></thead>
-                    <tbody>
-                    @foreach (var c in sr.Consumo)
-                    {
-                        <tr><td>@c.Producto</td><td>@c.Cantidad</td><td>@c.DiasConsumo</td><td>$ @c.TotalProrrateadoUsd</td></tr>
-                    }
-                    </tbody>
-                </table>
-                <p><strong>Total @sr.Nombre: $ @sr.TotalPrefactura</strong></p>
-            }
-            <p class="lic-total">Total prefactura cliente: <strong>$ @Model.TotalPrefactura</strong></p>
-        </div>
-    </section>
-
-    <section class="lic-card">
-        <h2>Histórico de solicitudes de aumento</h2>
-        <p>Nota: solo se permiten solicitudes para subir licencias.</p>
-        <table>
-            <thead><tr><th>Fecha</th><th>Solicitante</th><th>Subrazón</th><th>Producto</th><th>Cantidad</th><th>Estado</th></tr></thead>
-            <tbody>
-            @foreach (var h in Model.HistoricoSolicitudes)
-            {
-                <tr><td>@h.FechaSolicitud.ToString("dd/MM/yyyy")</td><td>@h.SolicitadoPor</td><td>@h.SubRazon</td><td>@h.Producto</td><td>+@h.CantidadNueva</td><td>@h.Estado</td></tr>
-            }
-            </tbody>
-        </table>
-        <button type="button">Solicitar más licencias</button>
     </section>
 </div>
 
 <style>
-.lic-wrap{display:grid;gap:1rem}.lic-hero,.lic-card{background:#fff;border-radius:16px;padding:1rem 1.2rem;box-shadow:0 8px 24px rgba(0,0,0,.05)}
-.lic-hero{display:flex;justify-content:space-between;align-items:center;background:linear-gradient(135deg,#0ea5e9,#6366f1);color:#fff}
-.lic-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem}.lic-meta span{opacity:.8;display:block;font-size:.8rem}
-table{width:100%;border-collapse:collapse}th,td{padding:.45rem;border-bottom:1px solid #e5e7eb;text-align:left}.lic-total{font-size:1.1rem}
+.lic-page{display:grid;gap:16px;color:#17202a}
+.lic-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;padding:22px 24px;border-radius:8px;background:#12343b;color:#fff}
+.lic-head h1{font-size:2rem;line-height:1;margin:4px 0 0;letter-spacing:0}
+.lic-kicker{display:block;font-size:.78rem;text-transform:uppercase;letter-spacing:.08em;color:#a7f3d0}
+.lic-head__meta{text-align:right;display:grid;gap:4px}
+.lic-head__meta span{color:#d9e6e8}
+.lic-alert{border-radius:8px;padding:12px 14px;border:1px solid}
+.lic-alert.ok{background:#ecfdf5;border-color:#a7f3d0;color:#065f46}
+.lic-alert.warn{background:#fff7ed;border-color:#fed7aa;color:#9a3412}
+.lic-toolbar{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap}
+.lic-filter{display:flex;gap:10px;align-items:end;flex-wrap:wrap;background:#fff;border:1px solid #dbe3ea;border-radius:8px;padding:10px}
+.lic-filter.compact{margin-left:auto}
+.lic-filter label{display:grid;gap:4px;font-size:.8rem;color:#52616b}
+.lic-filter select,.lic-filter input,.lic-create input,.lic-action-form select,.lic-action-form input{height:38px;border:1px solid #cbd5df;border-radius:6px;padding:0 10px;background:#fff;color:#17202a;min-width:110px}
+.lic-filter select{min-width:240px}
+.lic-filter input{width:92px}
+.lic-icon-btn,.lic-create button,.lic-action-form button{height:38px;width:38px;display:inline-grid;place-items:center;border:0;border-radius:6px;background:#0f766e;color:#fff;cursor:pointer}
+.lic-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.lic-stats div{background:#fff;border:1px solid #dbe3ea;border-radius:8px;padding:14px}
+.lic-stats span{display:block;font-size:.78rem;color:#64748b}
+.lic-stats strong{font-size:1.35rem;color:#111827}
+.lic-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);gap:16px;align-items:start}
+.lic-panel{background:#fff;border:1px solid #dbe3ea;border-radius:8px;padding:16px;box-shadow:0 8px 22px rgba(15,23,42,.04)}
+.lic-panel__head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:12px}
+.lic-panel__head h2,.lic-sub h3{margin:0;letter-spacing:0}
+.lic-panel__head h2{font-size:1.05rem}
+.lic-panel__head span,.lic-sub__head span{color:#64748b;font-size:.82rem}
+.lic-table-wrap{overflow:auto}
+.lic-table{width:100%;border-collapse:collapse;font-size:.9rem}
+.lic-table th,.lic-table td{padding:10px;border-bottom:1px solid #e8eef3;text-align:left;vertical-align:top}
+.lic-table th{font-size:.72rem;text-transform:uppercase;color:#64748b;background:#f8fafc}
+.lic-pill,.lic-status{display:inline-flex;align-items:center;justify-content:center;min-width:34px;height:24px;border-radius:999px;padding:0 8px;font-size:.78rem;font-weight:700}
+.lic-pill.ok{background:#dcfce7;color:#166534}.lic-pill.open{background:#fef3c7;color:#92400e}.lic-pill.bad{background:#fee2e2;color:#991b1b}
+.lic-status{background:#eef2ff;color:#3730a3}
+.lic-create{display:flex;gap:8px;margin-bottom:12px}
+.lic-create input{min-width:0;flex:1}
+.lic-empty{padding:18px;border:1px dashed #cbd5df;border-radius:8px;color:#64748b;background:#f8fafc}
+.lic-sub-list{display:grid;gap:12px}
+.lic-sub{border:1px solid #dbe3ea;border-radius:8px;padding:12px;background:#fcfdff}
+.lic-sub__head{display:flex;justify-content:space-between;gap:12px;align-items:start;margin-bottom:10px}
+.lic-sub__head strong{color:#0f766e}
+.lic-table-wrap.slim{max-height:320px}
+.lic-actions{display:grid;gap:8px;margin-top:12px}
+.lic-action-form{display:grid;grid-template-columns:minmax(0,1fr) 92px 38px;gap:8px}
+.lic-action-form.request button{background:#b45309}
+@@media (max-width: 980px){
+  .lic-head,.lic-toolbar{align-items:stretch}
+  .lic-head{display:grid}
+  .lic-head__meta{text-align:left}
+  .lic-stats,.lic-grid{grid-template-columns:1fr}
+  .lic-filter,.lic-filter.compact{width:100%;margin-left:0}
+}
+@@media (max-width: 620px){
+  .lic-panel,.lic-head{padding:14px}
+  .lic-action-form{grid-template-columns:1fr}
+  .lic-action-form button{width:100%}
+  .lic-filter label,.lic-filter select,.lic-filter input{width:100%;min-width:0}
+  .lic-icon-btn{width:100%}
+}
 </style>

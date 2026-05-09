@@ -1,74 +1,146 @@
 using System;
-using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Mvc;
-using DigitalTechClientPortal.Web.Models;
 using DigitalTechClientPortal.Security;
 using DigitalTechClientPortal.Services;
+using DigitalTechClientPortal.Web.Models;
+using Microsoft.AspNetCore.Mvc;
 
 namespace DigitalTechClientPortal.Web.Controllers
 {
     [RequireModule(PortalModuleKeys.Licenciamiento)]
     public class LicenciamientoController : Controller
     {
-        [HttpGet]
-        public Task<IActionResult> Index(string? clienteId = null)
+        private readonly LicenciamientoService _licenciamientoService;
+
+        public LicenciamientoController(LicenciamientoService licenciamientoService)
         {
-            var email = UserEmailResolver.GetCurrentEmail(User) ?? string.Empty;
-            var isAdminLic = email.Equals("sruiz@digitaltechcolombia.com", StringComparison.OrdinalIgnoreCase);
+            _licenciamientoService = licenciamientoService ?? throw new ArgumentNullException(nameof(licenciamientoService));
+        }
 
-            var precios = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase)
+        [HttpGet]
+        public async Task<IActionResult> Index(Guid? clienteId = null, int? mes = null, int? anio = null)
+        {
+            var vm = await _licenciamientoService.BuildViewModelAsync(
+                UserEmailResolver.GetCandidateEmails(User),
+                clienteId,
+                mes,
+                anio,
+                TempData["LicenciamientoMensaje"] as string,
+                TempData["LicenciamientoError"] as string);
+
+            return View(vm);
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> CrearSubRazon(CrearSubRazonLicenciamientoVm input)
+        {
+            if (!ModelState.IsValid)
             {
-                ["Business Premium"] = 22m,
-                ["Business Standard"] = 12.50m,
-                ["Business Basic"] = 6m
-            };
+                TempData["LicenciamientoError"] = FirstModelError();
+                return RedirectToIndex(input.ClienteId, input.Mes, input.Anio);
+            }
 
-            var vm = new LicenciamientoViewModel
+            try
             {
-                ClienteNombre = "Digital Tech",
-                FechaCorte = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 15),
-                PuedeCambiarCliente = isAdminLic,
-                ClienteSeleccionadoId = clienteId,
-                ClientesDisponibles = new List<ClienteLookupVm>
-                {
-                    new() { Id = "digital-tech", Nombre = "Digital Tech" },
-                    new() { Id = "cliente-demo", Nombre = "Cliente Demo" }
-                },
-                ProductosRazonPadre = new List<LicenciaProductoResumenVm>
-                {
-                    new() { Producto = "Business Premium", CantidadTotal = 300, PrecioUnitarioUsd = precios["Business Premium"] },
-                    new() { Producto = "Business Standard", CantidadTotal = 100, PrecioUnitarioUsd = precios["Business Standard"] }
-                },
-                SubRazones = new List<SubRazonSocialVm>
-                {
-                    new()
-                    {
-                        Nombre = "Digital Tech Servicios",
-                        Consumo = new List<ConsumoLicenciaVm>
-                        {
-                            new() { Producto = "Business Premium", Cantidad = 200, DiasConsumo = 30, PrecioUnitarioUsd = precios["Business Premium"] },
-                            new() { Producto = "Business Standard", Cantidad = 100, DiasConsumo = 20, PrecioUnitarioUsd = precios["Business Standard"] }
-                        }
-                    },
-                    new()
-                    {
-                        Nombre = "Digital Tech Envios",
-                        Consumo = new List<ConsumoLicenciaVm>
-                        {
-                            new() { Producto = "Business Premium", Cantidad = 100, DiasConsumo = 30, PrecioUnitarioUsd = precios["Business Premium"] },
-                            new() { Producto = "Business Basic", Cantidad = 2, DiasConsumo = 15, PrecioUnitarioUsd = precios["Business Basic"] }
-                        }
-                    }
-                },
-                HistoricoSolicitudes = new List<SolicitudLicenciaVm>
-                {
-                    new() { FechaSolicitud = DateTime.UtcNow.AddDays(-4), SolicitadoPor = "cliente@digitaltech.com", SubRazon = "Digital Tech Servicios", Producto = "Business Standard", CantidadNueva = 10, Estado = "Aprobada" },
-                    new() { FechaSolicitud = DateTime.UtcNow.AddDays(-1), SolicitadoPor = email, SubRazon = "Razon Padre", Producto = "Business Premium", CantidadNueva = 25, Estado = "Pendiente" }
-                }
-            };
+                var clienteId = await _licenciamientoService.CrearSubRazonAsync(UserEmailResolver.GetCandidateEmails(User), input);
+                TempData["LicenciamientoMensaje"] = "Subrazón social creada en Dataverse.";
+                return RedirectToIndex(clienteId, input.Mes, input.Anio);
+            }
+            catch (Exception ex)
+            {
+                TempData["LicenciamientoError"] = ex.Message;
+                return RedirectToIndex(input.ClienteId, input.Mes, input.Anio);
+            }
+        }
 
-            return Task.FromResult<IActionResult>(View(vm));
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> GuardarAsignacion(GuardarAsignacionLicenciamientoVm input)
+        {
+            if (!ModelState.IsValid)
+            {
+                TempData["LicenciamientoError"] = FirstModelError();
+                return RedirectToIndex(input.ClienteId, input.Mes, input.Anio);
+            }
+
+            try
+            {
+                var clienteId = await _licenciamientoService.GuardarAsignacionAsync(UserEmailResolver.GetCandidateEmails(User), input);
+                TempData["LicenciamientoMensaje"] = "Asignación de licencias actualizada.";
+                return RedirectToIndex(clienteId, input.Mes, input.Anio);
+            }
+            catch (Exception ex)
+            {
+                TempData["LicenciamientoError"] = ex.Message;
+                return RedirectToIndex(input.ClienteId, input.Mes, input.Anio);
+            }
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> SolicitarLicencias(SolicitarLicenciasVm input)
+        {
+            if (!ModelState.IsValid)
+            {
+                TempData["LicenciamientoError"] = FirstModelError();
+                return RedirectToIndex(input.ClienteId, input.Mes, input.Anio);
+            }
+
+            try
+            {
+                var solicitante = UserEmailResolver.GetCurrentEmail(User) ?? string.Empty;
+                var clienteId = await _licenciamientoService.SolicitarLicenciasAsync(
+                    UserEmailResolver.GetCandidateEmails(User),
+                    input,
+                    solicitante);
+
+                TempData["LicenciamientoMensaje"] = "Solicitud de aprovisionamiento creada en Dataverse.";
+                return RedirectToIndex(clienteId, input.Mes, input.Anio);
+            }
+            catch (Exception ex)
+            {
+                TempData["LicenciamientoError"] = ex.Message;
+                return RedirectToIndex(input.ClienteId, input.Mes, input.Anio);
+            }
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ActualizarFechaCorte(ActualizarFechaCorteLicenciamientoVm input)
+        {
+            if (!ModelState.IsValid)
+            {
+                TempData["LicenciamientoError"] = FirstModelError();
+                return RedirectToIndex(input.ClienteId, input.Mes, input.Anio);
+            }
+
+            try
+            {
+                var clienteId = await _licenciamientoService.ActualizarFechaCorteAsync(UserEmailResolver.GetCandidateEmails(User), input);
+                TempData["LicenciamientoMensaje"] = "Día de facturación actualizado en productos cloud.";
+                return RedirectToIndex(clienteId, input.Mes, input.Anio);
+            }
+            catch (Exception ex)
+            {
+                TempData["LicenciamientoError"] = ex.Message;
+                return RedirectToIndex(input.ClienteId, input.Mes, input.Anio);
+            }
+        }
+
+        private RedirectToActionResult RedirectToIndex(Guid clienteId, int mes, int anio)
+        {
+            return RedirectToAction(nameof(Index), new { clienteId, mes, anio });
+        }
+
+        private string FirstModelError()
+        {
+            return ModelState.Values
+                .SelectMany(v => v.Errors)
+                .Select(e => e.ErrorMessage)
+                .FirstOrDefault(m => !string.IsNullOrWhiteSpace(m))
+                ?? "Revisa los datos enviados.";
         }
     }
 }
