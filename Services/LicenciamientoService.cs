@@ -244,6 +244,19 @@ namespace DigitalTechClientPortal.Services
 
             var diaCorte = productos.FirstOrDefault(p => p.DiaFacturacion.HasValue)?.DiaFacturacion ?? 15;
             var fechaCorte = new DateTime(selectedYear, selectedMonth, Math.Min(diaCorte, diasMes));
+            var accountIdsGrupoActual = enterprise.AccountRows
+                .Where(r => r.Id != Guid.Empty)
+                .Select(ToAccountIdLicenciamientoVm)
+                .OrderBy(a => a.ClienteNombre, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(a => a.AccountId, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            var accountIdsDisponibles = canSwitchClient
+                ? (await GetAllAccountIdRowsAsync(schema))
+                    .Select(ToAccountIdLicenciamientoVm)
+                    .OrderBy(a => a.ClienteNombre, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(a => a.AccountId, StringComparer.OrdinalIgnoreCase)
+                    .ToList()
+                : new List<AccountIdLicenciamientoVm>();
 
             return new LicenciamientoViewModel
             {
@@ -258,9 +271,12 @@ namespace DigitalTechClientPortal.Services
                 AnioSeleccionado = selectedYear,
                 DiasMes = diasMes,
                 PuedeCambiarCliente = canSwitchClient,
-                PuedeEditarEstructura = true,
+                PuedeEditarEstructura = canSwitchClient,
+                PuedeMoverCantidades = enterprise.Children.Count > 1,
                 ClienteSeleccionadoId = clienteId,
                 ClientesDisponibles = clientes,
+                AccountIdsDisponibles = accountIdsDisponibles,
+                AccountIdsGrupoActual = accountIdsGrupoActual,
                 ProductosRazonPadre = productosRazonPadre,
                 ClientesHijos = clientesHijos,
                 HistoricoSolicitudes = solicitudes
@@ -385,6 +401,7 @@ namespace DigitalTechClientPortal.Services
 
         public async Task<Guid> ActualizarFechaCorteAsync(IReadOnlyList<string> candidateEmails, ActualizarFechaCorteLicenciamientoVm input)
         {
+            EnsureCanEditStructure(candidateEmails);
             var clienteId = await ResolveAuthorizedClientIdAsync(candidateEmails, input.ClienteId, null);
             if (clienteId == Guid.Empty)
             {
@@ -411,6 +428,185 @@ namespace DigitalTechClientPortal.Services
                 await _svc.UpdateAsync(entity);
             }
 
+            return clienteId;
+        }
+
+        public async Task<Guid> MoverLicenciasAsync(IReadOnlyList<string> candidateEmails, MoverLicenciasVm input)
+        {
+            var clienteId = await ResolveAuthorizedClientIdAsync(candidateEmails, input.ClienteId, null);
+            if (clienteId == Guid.Empty)
+            {
+                throw new UnauthorizedAccessException("No tienes un cliente asociado para mover licencias.");
+            }
+
+            if (input.Cantidad <= 0)
+            {
+                throw new InvalidOperationException("La cantidad a mover debe ser mayor a cero.");
+            }
+
+            if (input.OrigenClienteId == Guid.Empty || input.DestinoClienteId == Guid.Empty || input.OrigenClienteId == input.DestinoClienteId)
+            {
+                throw new InvalidOperationException("Selecciona un cliente origen y un cliente destino diferentes.");
+            }
+
+            var schema = await EnsureSchemaAsync();
+            var clienteNombre = await GetClienteNombreAsync(clienteId);
+            var enterprise = await GetEnterpriseContextAsync(clienteId, clienteNombre, schema);
+            if (!enterprise.ChildrenById.ContainsKey(input.OrigenClienteId) || !enterprise.ChildrenById.ContainsKey(input.DestinoClienteId))
+            {
+                throw new InvalidOperationException("Solo puedes mover licencias entre clientes hijos del grupo empresarial visible.");
+            }
+
+            var productos = await GetProductosCloudAsync(enterprise.ChildrenById.Keys.ToList(), enterprise.ChildrenById);
+            var origen = productos.FirstOrDefault(p => p.SalesRecordId == input.OrigenSalesRecordId && p.ClienteId == input.OrigenClienteId);
+            if (origen == null)
+            {
+                throw new InvalidOperationException("El producto origen no pertenece al cliente hijo seleccionado.");
+            }
+
+            if (origen.Cantidad < input.Cantidad)
+            {
+                throw new InvalidOperationException($"No puedes mover {input.Cantidad} licencias; {origen.ClienteNombre} solo tiene {origen.Cantidad} disponibles en {origen.Nombre}.");
+            }
+
+            var destino = productos.FirstOrDefault(p =>
+                p.ClienteId == input.DestinoClienteId &&
+                IsSameProductAndPrice(origen, p));
+
+            if (destino == null)
+            {
+                throw new InvalidOperationException("El cliente destino no tiene un registro de producto cloud con el mismo producto y el mismo precio unitario.");
+            }
+
+            var request = new ExecuteTransactionRequest
+            {
+                ReturnResponses = false,
+                Requests = new OrganizationRequestCollection()
+            };
+
+            request.Requests.Add(new UpdateRequest
+            {
+                Target = new Entity(ProductoCloudEntity, origen.SalesRecordId)
+                {
+                    [ProductoCloudCantidad] = origen.Cantidad - input.Cantidad
+                }
+            });
+
+            request.Requests.Add(new UpdateRequest
+            {
+                Target = new Entity(ProductoCloudEntity, destino.SalesRecordId)
+                {
+                    [ProductoCloudCantidad] = destino.Cantidad + input.Cantidad
+                }
+            });
+
+            await _svc.ExecuteAsync(request);
+            return clienteId;
+        }
+
+        public async Task<Guid> ActualizarGrupoEmpresarialAsync(IReadOnlyList<string> candidateEmails, ActualizarGrupoEmpresarialVm input)
+        {
+            EnsureCanEditStructure(candidateEmails);
+            var clienteId = await ResolveAuthorizedClientIdAsync(candidateEmails, input.ClienteId, null);
+            if (clienteId == Guid.Empty)
+            {
+                throw new UnauthorizedAccessException("No hay cliente base para actualizar el grupo.");
+            }
+
+            var groupName = (input.GrupoEmpresarialNombre ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(groupName))
+            {
+                throw new InvalidOperationException("Escribe el nombre del grupo empresarial.");
+            }
+
+            var schema = await EnsureSchemaAsync();
+            var clienteNombre = await GetClienteNombreAsync(clienteId);
+            var enterprise = await GetEnterpriseContextAsync(clienteId, clienteNombre, schema);
+            var rows = enterprise.AccountRows.Where(r => r.Id != Guid.Empty).ToList();
+            if (rows.Count == 0)
+            {
+                rows = await GetAccountIdRowsByClienteAsync(clienteId, schema);
+            }
+
+            if (rows.Count == 0)
+            {
+                throw new InvalidOperationException("El cliente seleccionado no tiene Account IDs para asociar al grupo.");
+            }
+
+            var groupId = NormalizeGroupId(input.GrupoEmpresarialId, enterprise.GrupoEmpresarialId);
+            await UpdateAccountRowsGroupAsync(rows.Select(r => r.Id), groupId, groupName, schema);
+            return clienteId;
+        }
+
+        public async Task<Guid> AsignarAccountIdAGrupoAsync(IReadOnlyList<string> candidateEmails, AsignarAccountIdGrupoVm input)
+        {
+            EnsureCanEditStructure(candidateEmails);
+            var clienteId = await ResolveAuthorizedClientIdAsync(candidateEmails, input.ClienteId, null);
+            if (clienteId == Guid.Empty)
+            {
+                throw new UnauthorizedAccessException("No hay cliente base para asignar Account IDs.");
+            }
+
+            if (input.AccountIdRowId == Guid.Empty)
+            {
+                throw new InvalidOperationException("Selecciona el Account ID que quieres asignar al grupo.");
+            }
+
+            var schema = await EnsureSchemaAsync();
+            var clienteNombre = await GetClienteNombreAsync(clienteId);
+            var enterprise = await GetEnterpriseContextAsync(clienteId, clienteNombre, schema);
+            var groupName = !string.IsNullOrWhiteSpace(input.GrupoEmpresarialNombre)
+                ? input.GrupoEmpresarialNombre.Trim()
+                : enterprise.GrupoEmpresarialNombre;
+            if (string.IsNullOrWhiteSpace(groupName))
+            {
+                throw new InvalidOperationException("Primero define el nombre del grupo empresarial.");
+            }
+
+            var accountRow = await GetAccountIdRowAsync(input.AccountIdRowId, schema);
+            if (accountRow == null)
+            {
+                throw new InvalidOperationException("No encontré el Account ID seleccionado.");
+            }
+
+            var groupId = NormalizeGroupId(input.GrupoEmpresarialId, enterprise.GrupoEmpresarialId);
+            var rowsToUpdate = new List<Guid> { accountRow.Id };
+            if (string.IsNullOrWhiteSpace(enterprise.GrupoEmpresarialId))
+            {
+                rowsToUpdate.AddRange(enterprise.AccountRows.Select(r => r.Id));
+            }
+
+            await UpdateAccountRowsGroupAsync(rowsToUpdate, groupId, groupName, schema);
+            return clienteId;
+        }
+
+        public async Task<Guid> QuitarAccountIdDelGrupoAsync(IReadOnlyList<string> candidateEmails, QuitarAccountIdGrupoVm input)
+        {
+            EnsureCanEditStructure(candidateEmails);
+            var clienteId = await ResolveAuthorizedClientIdAsync(candidateEmails, input.ClienteId, null);
+            if (clienteId == Guid.Empty)
+            {
+                throw new UnauthorizedAccessException("No hay cliente base para modificar el grupo.");
+            }
+
+            if (input.AccountIdRowId == Guid.Empty)
+            {
+                throw new InvalidOperationException("Selecciona el Account ID que quieres quitar del grupo.");
+            }
+
+            var schema = await EnsureSchemaAsync();
+            var entity = new Entity(AccountIdEntity, input.AccountIdRowId);
+            if (schema.AccountIdGrupoEmpresarialIdReady)
+            {
+                entity[AccountIdGrupoEmpresarialId] = null;
+            }
+
+            if (schema.AccountIdGrupoEmpresarialNameReady)
+            {
+                entity[AccountIdGrupoEmpresarialName] = null;
+            }
+
+            await _svc.UpdateAsync(entity);
             return clienteId;
         }
 
@@ -530,6 +726,7 @@ namespace DigitalTechClientPortal.Services
                 TieneGrupoEmpresarial = !string.IsNullOrWhiteSpace(groupId)
                     || !string.IsNullOrWhiteSpace(anchorRow?.GrupoEmpresarialName)
                     || children.Count > 1,
+                AccountRows = rows,
                 Children = children,
                 ChildrenById = children.ToDictionary(c => c.ClienteId)
             };
@@ -554,6 +751,66 @@ namespace DigitalTechClientPortal.Services
 
             var result = await _svc.RetrieveMultipleAsync(query);
             return result.Entities.Select(e => ToAccountIdRowDto(e, schema)).Where(r => r.ClienteId != Guid.Empty).ToList();
+        }
+
+        private async Task<List<AccountIdRowDto>> GetAllAccountIdRowsAsync(LicenciamientoSchemaStatus schema)
+        {
+            var query = new QueryExpression(AccountIdEntity)
+            {
+                ColumnSet = new ColumnSet(GetAccountIdColumns(schema).ToArray()),
+                Criteria =
+                {
+                    Conditions =
+                    {
+                        new ConditionExpression("statecode", ConditionOperator.Equal, 0)
+                    }
+                }
+            };
+            query.AddOrder(AccountIdName, OrderType.Ascending);
+
+            var result = await _svc.RetrieveMultipleAsync(query);
+            var rows = result.Entities.Select(e => ToAccountIdRowDto(e, schema)).Where(r => r.ClienteId != Guid.Empty).ToList();
+            return await HydrateAccountRowsAsync(rows, Guid.Empty, string.Empty);
+        }
+
+        private async Task<AccountIdRowDto?> GetAccountIdRowAsync(Guid accountIdRowId, LicenciamientoSchemaStatus schema)
+        {
+            try
+            {
+                var entity = await _svc.RetrieveAsync(AccountIdEntity, accountIdRowId, new ColumnSet(GetAccountIdColumns(schema).ToArray()));
+                var rows = await HydrateAccountRowsAsync(new List<AccountIdRowDto> { ToAccountIdRowDto(entity, schema) }, Guid.Empty, string.Empty);
+                return rows.FirstOrDefault(r => r.ClienteId != Guid.Empty);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "No se pudo leer el Account ID {AccountIdRowId}", accountIdRowId);
+                return null;
+            }
+        }
+
+        private async Task UpdateAccountRowsGroupAsync(IEnumerable<Guid> accountRowIds, string groupId, string groupName, LicenciamientoSchemaStatus schema)
+        {
+            var ids = accountRowIds.Where(id => id != Guid.Empty).Distinct().ToList();
+            if (ids.Count == 0)
+            {
+                return;
+            }
+
+            foreach (var id in ids)
+            {
+                var entity = new Entity(AccountIdEntity, id);
+                if (schema.AccountIdGrupoEmpresarialIdReady)
+                {
+                    entity[AccountIdGrupoEmpresarialId] = groupId;
+                }
+
+                if (schema.AccountIdGrupoEmpresarialNameReady)
+                {
+                    entity[AccountIdGrupoEmpresarialName] = groupName;
+                }
+
+                await _svc.UpdateAsync(entity);
+            }
         }
 
         private async Task<List<AccountIdRowDto>> GetAccountIdRowsByGroupAsync(
@@ -659,6 +916,19 @@ namespace DigitalTechClientPortal.Services
                 entity.GetAttributeValue<string>(AccountIdName) ?? string.Empty,
                 schema.AccountIdGrupoEmpresarialIdReady ? entity.GetAttributeValue<string>(AccountIdGrupoEmpresarialId) ?? string.Empty : string.Empty,
                 schema.AccountIdGrupoEmpresarialNameReady ? entity.GetAttributeValue<string>(AccountIdGrupoEmpresarialName) ?? string.Empty : string.Empty);
+        }
+
+        private static AccountIdLicenciamientoVm ToAccountIdLicenciamientoVm(AccountIdRowDto row)
+        {
+            return new AccountIdLicenciamientoVm
+            {
+                Id = row.Id,
+                AccountId = row.AccountId,
+                ClienteId = row.ClienteId,
+                ClienteNombre = row.ClienteNombre,
+                GrupoEmpresarialId = row.GrupoEmpresarialId,
+                GrupoEmpresarialNombre = row.GrupoEmpresarialName
+            };
         }
 
         private async Task<List<ProductoCloudDto>> GetProductosCloudAsync(
@@ -1362,6 +1632,14 @@ namespace DigitalTechClientPortal.Services
                 email.Equals(AdminLicenciamientoEmail, StringComparison.OrdinalIgnoreCase));
         }
 
+        private static void EnsureCanEditStructure(IReadOnlyList<string> candidateEmails)
+        {
+            if (!IsAdminLicenciamiento(candidateEmails))
+            {
+                throw new UnauthorizedAccessException("Solo sruiz@digitaltechcolombia.com puede asignar hijos o modificar relaciones de grupo empresarial.");
+            }
+        }
+
         private static bool IsSolicitudFacturable(int estado)
         {
             return estado is SolicitudEstadoAprovisionado or SolicitudEstadoAprobado;
@@ -1385,6 +1663,27 @@ namespace DigitalTechClientPortal.Services
             }
 
             return (producto.Nombre ?? string.Empty).Trim().ToUpperInvariant();
+        }
+
+        private static bool IsSameProductAndPrice(ProductoCloudDto left, ProductoCloudDto right)
+        {
+            return string.Equals(GetProductGroupKey(left), GetProductGroupKey(right), StringComparison.OrdinalIgnoreCase)
+                && left.PrecioUnitarioUsd == right.PrecioUnitarioUsd;
+        }
+
+        private static string NormalizeGroupId(string? requestedGroupId, string? currentGroupId)
+        {
+            if (!string.IsNullOrWhiteSpace(requestedGroupId))
+            {
+                return requestedGroupId.Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(currentGroupId))
+            {
+                return currentGroupId.Trim();
+            }
+
+            return Guid.NewGuid().ToString("N");
         }
 
         private static string BuildSolicitudDetalle(
@@ -1471,6 +1770,7 @@ namespace DigitalTechClientPortal.Services
             public string GrupoEmpresarialId { get; set; } = string.Empty;
             public string GrupoEmpresarialNombre { get; set; } = string.Empty;
             public bool TieneGrupoEmpresarial { get; set; }
+            public List<AccountIdRowDto> AccountRows { get; set; } = new();
             public List<ChildClienteDto> Children { get; set; } = new();
             public Dictionary<Guid, ChildClienteDto> ChildrenById { get; set; } = new();
         }

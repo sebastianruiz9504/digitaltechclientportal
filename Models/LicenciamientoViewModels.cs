@@ -19,10 +19,13 @@ namespace DigitalTechClientPortal.Web.Models
         public int DiasMes { get; set; } = 30;
         public bool PuedeCambiarCliente { get; set; }
         public bool PuedeEditarEstructura { get; set; }
+        public bool PuedeMoverCantidades { get; set; }
         public Guid? ClienteSeleccionadoId { get; set; }
         public string? Mensaje { get; set; }
         public string? Error { get; set; }
         public List<ClienteLookupVm> ClientesDisponibles { get; set; } = new();
+        public List<AccountIdLicenciamientoVm> AccountIdsDisponibles { get; set; } = new();
+        public List<AccountIdLicenciamientoVm> AccountIdsGrupoActual { get; set; } = new();
         public List<LicenciaProductoResumenVm> ProductosRazonPadre { get; set; } = new();
         public List<ClienteLicenciamientoVm> ClientesHijos { get; set; } = new();
         public List<SolicitudLicenciaVm> HistoricoSolicitudes { get; set; } = new();
@@ -43,6 +46,20 @@ namespace DigitalTechClientPortal.Web.Models
     {
         public Guid Id { get; set; }
         public string Nombre { get; set; } = string.Empty;
+    }
+
+    public sealed class AccountIdLicenciamientoVm
+    {
+        public Guid Id { get; set; }
+        public string AccountId { get; set; } = string.Empty;
+        public Guid ClienteId { get; set; }
+        public string ClienteNombre { get; set; } = string.Empty;
+        public string GrupoEmpresarialId { get; set; } = string.Empty;
+        public string GrupoEmpresarialNombre { get; set; } = string.Empty;
+
+        public string Display => string.IsNullOrWhiteSpace(AccountId)
+            ? ClienteNombre
+            : $"{AccountId} - {ClienteNombre}";
     }
 
     public sealed class LicenciaProductoResumenVm
@@ -151,6 +168,51 @@ namespace DigitalTechClientPortal.Web.Models
 
         [Range(1, 1000000, ErrorMessage = "Solo puedes solicitar aumentos de una licencia o más.")]
         public int Cantidad { get; set; }
+    }
+
+    public sealed class MoverLicenciasVm
+    {
+        public Guid ClienteId { get; set; }
+        public Guid OrigenClienteId { get; set; }
+        public Guid DestinoClienteId { get; set; }
+        public Guid OrigenSalesRecordId { get; set; }
+        public int Mes { get; set; }
+        public int Anio { get; set; }
+
+        [Range(1, 1000000, ErrorMessage = "La cantidad a mover debe ser mayor a cero.")]
+        public int Cantidad { get; set; }
+    }
+
+    public sealed class ActualizarGrupoEmpresarialVm
+    {
+        public Guid ClienteId { get; set; }
+        public int Mes { get; set; }
+        public int Anio { get; set; }
+
+        [StringLength(100)]
+        public string GrupoEmpresarialId { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Escribe el nombre del grupo empresarial.")]
+        [StringLength(200)]
+        public string GrupoEmpresarialNombre { get; set; } = string.Empty;
+    }
+
+    public sealed class AsignarAccountIdGrupoVm
+    {
+        public Guid ClienteId { get; set; }
+        public Guid AccountIdRowId { get; set; }
+        public int Mes { get; set; }
+        public int Anio { get; set; }
+        public string GrupoEmpresarialId { get; set; } = string.Empty;
+        public string GrupoEmpresarialNombre { get; set; } = string.Empty;
+    }
+
+    public sealed class QuitarAccountIdGrupoVm
+    {
+        public Guid ClienteId { get; set; }
+        public Guid AccountIdRowId { get; set; }
+        public int Mes { get; set; }
+        public int Anio { get; set; }
     }
 
     public sealed class ActualizarFechaCorteLicenciamientoVm

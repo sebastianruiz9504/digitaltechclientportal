@@ -129,6 +129,98 @@ namespace DigitalTechClientPortal.Web.Controllers
             }
         }
 
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> MoverLicencias(MoverLicenciasVm input)
+        {
+            if (!ModelState.IsValid)
+            {
+                TempData["LicenciamientoError"] = FirstModelError();
+                return RedirectToIndex(input.ClienteId, input.Mes, input.Anio);
+            }
+
+            try
+            {
+                var clienteId = await _licenciamientoService.MoverLicenciasAsync(UserEmailResolver.GetCandidateEmails(User), input);
+                TempData["LicenciamientoMensaje"] = "Licencias movidas entre clientes hijos sin cambiar el total del grupo.";
+                return RedirectToIndex(clienteId, input.Mes, input.Anio);
+            }
+            catch (Exception ex)
+            {
+                TempData["LicenciamientoError"] = ex.Message;
+                return RedirectToIndex(input.ClienteId, input.Mes, input.Anio);
+            }
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ActualizarGrupoEmpresarial(ActualizarGrupoEmpresarialVm input)
+        {
+            if (!ModelState.IsValid)
+            {
+                TempData["LicenciamientoError"] = FirstModelError();
+                return RedirectToIndex(input.ClienteId, input.Mes, input.Anio);
+            }
+
+            try
+            {
+                var clienteId = await _licenciamientoService.ActualizarGrupoEmpresarialAsync(UserEmailResolver.GetCandidateEmails(User), input);
+                TempData["LicenciamientoMensaje"] = "Grupo empresarial actualizado.";
+                return RedirectToIndex(clienteId, input.Mes, input.Anio);
+            }
+            catch (Exception ex)
+            {
+                TempData["LicenciamientoError"] = ex.Message;
+                return RedirectToIndex(input.ClienteId, input.Mes, input.Anio);
+            }
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> AsignarAccountIdGrupo(AsignarAccountIdGrupoVm input)
+        {
+            if (!ModelState.IsValid)
+            {
+                TempData["LicenciamientoError"] = FirstModelError();
+                return RedirectToIndex(input.ClienteId, input.Mes, input.Anio);
+            }
+
+            try
+            {
+                var clienteId = await _licenciamientoService.AsignarAccountIdAGrupoAsync(UserEmailResolver.GetCandidateEmails(User), input);
+                TempData["LicenciamientoMensaje"] = "Account ID asignado al grupo empresarial.";
+                return RedirectToIndex(clienteId, input.Mes, input.Anio);
+            }
+            catch (Exception ex)
+            {
+                TempData["LicenciamientoError"] = ex.Message;
+                return RedirectToIndex(input.ClienteId, input.Mes, input.Anio);
+            }
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> QuitarAccountIdGrupo(QuitarAccountIdGrupoVm input)
+        {
+            if (!ModelState.IsValid)
+            {
+                TempData["LicenciamientoError"] = FirstModelError();
+                return RedirectToIndex(input.ClienteId, input.Mes, input.Anio);
+            }
+
+            try
+            {
+                var clienteId = await _licenciamientoService.QuitarAccountIdDelGrupoAsync(UserEmailResolver.GetCandidateEmails(User), input);
+                TempData["LicenciamientoMensaje"] = "Account ID retirado del grupo empresarial.";
+                return RedirectToIndex(clienteId, input.Mes, input.Anio);
+            }
+            catch (Exception ex)
+            {
+                TempData["LicenciamientoError"] = ex.Message;
+                return RedirectToIndex(input.ClienteId, input.Mes, input.Anio);
+            }
+        }
+
         private RedirectToActionResult RedirectToIndex(Guid clienteId, int mes, int anio)
         {
             return RedirectToAction(nameof(Index), new { clienteId, mes, anio });

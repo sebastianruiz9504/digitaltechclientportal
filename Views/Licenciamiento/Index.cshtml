@@ -1,672 +1,513 @@
 @model DigitalTechClientPortal.Web.Models.LicenciamientoViewModel
 @{
-    Layout = null;
     ViewData["Title"] = "Licenciamiento";
     var cultura = new System.Globalization.CultureInfo("es-CO");
     var meses = cultura.DateTimeFormat.MonthNames.Take(12).Select((nombre, index) => new { Nombre = cultura.TextInfo.ToTitleCase(nombre), Numero = index + 1 }).ToList();
     Func<decimal, string> usd = value => $"USD {value.ToString("N2", cultura)}";
-    var maxClienteLicencias = Math.Max(1, Model.ClientesHijos.Select(c => c.TotalLicencias).DefaultIfEmpty(0).Max());
+    var accountIdsAsignables = Model.AccountIdsDisponibles
+        .Where(a => Model.AccountIdsGrupoActual.All(g => g.Id != a.Id))
+        .ToList();
 }
-<!doctype html>
-<html lang="es">
-<head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Licenciamiento</title>
-    <style>
-        :root {
-            --bg: #02071f;
-            --rail: #030817;
-            --panel: #0a102b;
-            --panel-2: #0d1535;
-            --line: rgba(166, 184, 255, .14);
-            --muted: #7f8bae;
-            --text: #eef3ff;
-            --soft: #dff2ff;
-            --soft-2: #e9efff;
-            --accent: #aeb7ff;
-            --good: #9ee8ba;
-            --warn: #ffd875;
-            --bad: #ff9a9a;
-        }
-        * { box-sizing: border-box; }
-        html, body { min-height: 100%; }
-        body {
-            margin: 0;
-            background: var(--bg);
-            color: var(--text);
-            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-            font-size: 14px;
-            letter-spacing: 0;
-        }
-        button, input, select { font: inherit; }
-        .shell {
-            min-height: 100vh;
-            display: grid;
-            grid-template-columns: 186px minmax(0, 1fr) 248px;
-        }
-        .side, .right {
-            background: var(--rail);
-            border-color: var(--line);
-            position: sticky;
-            top: 0;
-            height: 100vh;
-            overflow: auto;
-        }
-        .side {
-            border-right: 1px solid var(--line);
-            padding: 18px 12px;
-            display: flex;
-            flex-direction: column;
-            gap: 22px;
-        }
-        .brand { display: flex; align-items: center; gap: 9px; font-weight: 700; }
-        .brand-mark {
-            width: 18px;
-            height: 18px;
-            border-radius: 50%;
-            background: conic-gradient(from 210deg, #ffffff, #9db1ff, #8df0c2, #ffffff);
-        }
-        .nav-group { display: grid; gap: 8px; }
-        .nav-title { color: var(--muted); font-size: 12px; }
-        .nav-item {
-            height: 30px;
-            border-radius: 8px;
-            padding: 0 10px;
-            color: #b9c1db;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            text-decoration: none;
-        }
-        .nav-item.active { color: #fff; background: rgba(255,255,255,.10); }
-        .nav-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; opacity: .85; }
-        .side-foot { margin-top: auto; color: var(--muted); font-size: 12px; }
-        .main { min-width: 0; }
-        .top {
-            height: 56px;
-            border-bottom: 1px solid var(--line);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 16px;
-            padding: 0 24px;
-        }
-        .crumbs { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 13px; }
-        .crumbs strong { color: var(--text); font-weight: 600; }
-        .top-actions { display: flex; align-items: center; gap: 8px; min-width: 0; }
-        .select, .input {
-            height: 30px;
-            border: 1px solid var(--line);
-            border-radius: 8px;
-            background: rgba(255,255,255,.07);
-            color: var(--text);
-            padding: 0 10px;
-            outline: none;
-        }
-        .select option { color: #101426; }
-        .input.narrow { width: 78px; }
-        .icon-btn, .primary-btn, .ghost-btn {
-            height: 30px;
-            border: 0;
-            border-radius: 8px;
-            cursor: pointer;
-            color: var(--text);
-        }
-        .icon-btn {
-            width: 30px;
-            display: inline-grid;
-            place-items: center;
-            background: rgba(255,255,255,.08);
-        }
-        .primary-btn {
-            padding: 0 12px;
-            background: #c4ccff;
-            color: #111735;
-            font-weight: 700;
-        }
-        .ghost-btn {
-            padding: 0 12px;
-            background: rgba(255,255,255,.08);
-        }
-        .content { padding: 24px; display: grid; gap: 18px; }
-        .hero {
-            display: flex;
-            align-items: end;
-            justify-content: space-between;
-            gap: 16px;
-            min-width: 0;
-        }
-        .hero h1 { margin: 0; font-size: 18px; line-height: 1.1; font-weight: 700; }
-        .hero p { margin: 7px 0 0; color: var(--muted); }
-        .hero-meta { text-align: right; color: var(--muted); display: grid; gap: 4px; }
-        .hero-meta strong { color: var(--text); }
-        .notice {
-            border: 1px solid var(--line);
-            border-radius: 8px;
-            padding: 10px 12px;
-            background: rgba(255,255,255,.06);
-        }
-        .notice.ok { color: var(--good); }
-        .notice.warn { color: var(--warn); }
-        .stats {
-            display: grid;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
-            gap: 18px;
-        }
-        .metric {
-            min-height: 82px;
-            border-radius: 12px;
-            padding: 16px;
-            background: var(--soft);
-            color: #111827;
-            display: grid;
-            gap: 8px;
-        }
-        .metric:nth-child(even) { background: var(--soft-2); }
-        .metric span { font-size: 12px; font-weight: 700; }
-        .metric strong { font-size: 24px; line-height: 1; }
-        .grid {
-            display: grid;
-            grid-template-columns: minmax(0, 1.25fr) minmax(320px, .75fr);
-            gap: 18px;
-            align-items: start;
-        }
-        .panel {
-            border-radius: 12px;
-            background: rgba(255,255,255,.08);
-            border: 1px solid var(--line);
-            min-width: 0;
-            overflow: hidden;
-        }
-        .panel-head {
-            min-height: 54px;
-            padding: 14px 18px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 12px;
-            border-bottom: 1px solid var(--line);
-        }
-        .panel-head h2 { margin: 0; font-size: 14px; }
-        .panel-head span { color: var(--muted); font-size: 12px; }
-        .table-wrap { overflow: auto; }
-        table { width: 100%; border-collapse: collapse; min-width: 640px; }
-        th, td { padding: 12px 18px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
-        th { color: var(--muted); font-size: 12px; font-weight: 500; }
-        td { color: #e8ecfb; }
-        .muted { color: var(--muted); }
-        .chip {
-            display: inline-flex;
-            min-height: 22px;
-            align-items: center;
-            justify-content: center;
-            border-radius: 999px;
-            padding: 0 8px;
-            background: rgba(174,183,255,.16);
-            color: #cdd4ff;
-            font-size: 12px;
-            white-space: nowrap;
-        }
-        .client-list { display: grid; gap: 14px; padding: 14px; }
-        .client-card {
-            border-radius: 12px;
-            background: rgba(255,255,255,.06);
-            border: 1px solid var(--line);
-            overflow: hidden;
-        }
-        .client-head {
-            padding: 14px 16px;
-            display: flex;
-            justify-content: space-between;
-            gap: 12px;
-            border-bottom: 1px solid var(--line);
-        }
-        .client-head h3 { margin: 0; font-size: 14px; }
-        .client-head small { color: var(--muted); display: block; margin-top: 5px; }
-        .mini-table { min-width: 560px; }
-        .request-btn { width: auto; padding: 0 10px; background: rgba(158,232,186,.17); color: var(--good); }
-        .bars { padding: 18px; display: grid; gap: 14px; }
-        .bar-row { display: grid; gap: 7px; }
-        .bar-top { display: flex; justify-content: space-between; gap: 10px; color: #dfe6ff; font-size: 12px; }
-        .bar {
-            height: 8px;
-            border-radius: 999px;
-            background: rgba(255,255,255,.10);
-            overflow: hidden;
-        }
-        .bar span { display: block; height: 100%; border-radius: inherit; background: #a8c9ff; }
-        .right {
-            border-left: 1px solid var(--line);
-            padding: 18px;
-            display: grid;
-            gap: 22px;
-            align-content: start;
-        }
-        .right h2 { margin: 0 0 12px; font-size: 13px; }
-        .feed { display: grid; gap: 12px; }
-        .feed-item { display: grid; gap: 3px; color: #dfe6ff; font-size: 12px; }
-        .feed-item span { color: var(--muted); }
-        .empty { padding: 18px; color: var(--muted); }
-        .modal {
-            position: fixed;
-            inset: 0;
-            display: none;
-            place-items: center;
-            background: rgba(0,0,0,.56);
-            padding: 20px;
-            z-index: 20;
-        }
-        .modal.open { display: grid; }
-        .modal-card {
-            width: min(440px, 100%);
-            border: 1px solid var(--line);
-            border-radius: 12px;
-            background: #07102d;
-            box-shadow: 0 28px 80px rgba(0,0,0,.42);
-            padding: 18px;
-            display: grid;
-            gap: 14px;
-        }
-        .modal-card h2 { margin: 0; font-size: 16px; }
-        .modal-card p { margin: 0; color: var(--muted); }
-        .modal-grid { display: grid; gap: 8px; }
-        .modal-grid label { display: grid; gap: 6px; color: var(--muted); font-size: 12px; }
-        .modal-grid input { width: 100%; height: 36px; }
-        .modal-actions { display: flex; justify-content: end; gap: 8px; }
-        @@media (max-width: 1180px) {
-            .shell { grid-template-columns: 74px minmax(0, 1fr); }
-            .side { align-items: center; }
-            .brand span, .nav-title, .nav-item span, .side-foot { display: none; }
-            .nav-item { justify-content: center; width: 38px; padding: 0; }
-            .right { display: none; }
-        }
-        @@media (max-width: 860px) {
-            .top { height: auto; min-height: 56px; align-items: stretch; flex-direction: column; padding: 12px; }
-            .top-actions { flex-wrap: wrap; }
-            .content { padding: 16px; }
-            .hero { display: grid; }
-            .hero-meta { text-align: left; }
-            .stats, .grid { grid-template-columns: 1fr; }
-        }
-        @@media (max-width: 560px) {
-            .shell { grid-template-columns: 1fr; }
-            .side { display: none; }
-            .top-actions .select { width: 100%; }
-            .input.narrow, .icon-btn, .primary-btn, .ghost-btn { width: 100%; }
-            .panel-head, .client-head { align-items: start; flex-direction: column; }
-        }
-    </style>
-</head>
-<body>
-    <div class="shell">
-        <aside class="side">
-            <div class="brand"><span class="brand-mark"></span><span>DigitalTech</span></div>
-            <nav class="nav-group">
-                <div class="nav-title">Dashboards</div>
-                <a class="nav-item active" href="@Url.Action("Index", "Licenciamiento")"><span class="nav-dot"></span><span>Licenciamiento</span></a>
-                <a class="nav-item" href="@Url.Action("Index", "Home")"><span class="nav-dot"></span><span>Portal</span></a>
-                <a class="nav-item" href="@Url.Action("Index", "Soporte")"><span class="nav-dot"></span><span>Soporte</span></a>
-            </nav>
-            <nav class="nav-group">
-                <div class="nav-title">Licencias</div>
-                <a class="nav-item active" href="#"><span class="nav-dot"></span><span>Grupo</span></a>
-                <a class="nav-item" href="#clientes"><span class="nav-dot"></span><span>Clientes hijos</span></a>
-                <a class="nav-item" href="#historico"><span class="nav-dot"></span><span>Histórico</span></a>
-            </nav>
-            <div class="side-foot">Licenciamiento Cloud</div>
-        </aside>
 
-        <main class="main">
-            <header class="top">
-                <div class="crumbs">
-                    <span>Dashboards</span>
-                    <span>/</span>
-                    <strong>Licenciamiento</strong>
+<div class="lic-page">
+    <section class="lic-head">
+        <div>
+            <span class="lic-kicker">Microsoft 365 / Cloud</span>
+            <h1>Licenciamiento</h1>
+            <p>@Model.RazonPadreNombre</p>
+        </div>
+        <div class="lic-head__meta">
+            <span>Cliente base: @Model.ClienteNombre</span>
+            <strong>Corte @Model.FechaCorte.ToString("dd MMM yyyy", cultura)</strong>
+        </div>
+    </section>
+
+    @if (!string.IsNullOrWhiteSpace(Model.Mensaje))
+    {
+        <div class="lic-alert ok">@Model.Mensaje</div>
+    }
+    @if (!string.IsNullOrWhiteSpace(Model.Error))
+    {
+        <div class="lic-alert warn">@Model.Error</div>
+    }
+
+    <section class="lic-toolbar">
+        <form method="get" asp-action="Index" class="lic-filter">
+            @if (Model.PuedeCambiarCliente)
+            {
+                <label>
+                    <span>Cliente</span>
+                    <select name="clienteId" onchange="this.form.submit()">
+                        @foreach (var c in Model.ClientesDisponibles)
+                        {
+                            <option value="@c.Id" selected="@(c.Id == Model.ClienteSeleccionadoId)">@c.Nombre</option>
+                        }
+                    </select>
+                </label>
+            }
+            else
+            {
+                <input type="hidden" name="clienteId" value="@Model.ClienteId" />
+            }
+
+            <label>
+                <span>Mes</span>
+                <select name="mes" onchange="this.form.submit()">
+                    @foreach (var mes in meses)
+                    {
+                        <option value="@mes.Numero" selected="@(mes.Numero == Model.MesSeleccionado)">@mes.Nombre</option>
+                    }
+                </select>
+            </label>
+
+            <label>
+                <span>Año</span>
+                <input name="anio" value="@Model.AnioSeleccionado" inputmode="numeric" />
+            </label>
+
+            <button type="submit" class="lic-icon-btn" title="Aplicar filtros" aria-label="Aplicar filtros">
+                <i class="ti ti-filter"></i>
+            </button>
+        </form>
+
+        @if (Model.PuedeEditarEstructura)
+        {
+            <form method="post" asp-action="ActualizarFechaCorte" class="lic-filter compact">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="ClienteId" value="@Model.ClienteId" />
+                <input type="hidden" name="Mes" value="@Model.MesSeleccionado" />
+                <input type="hidden" name="Anio" value="@Model.AnioSeleccionado" />
+                <label>
+                    <span>Día facturación</span>
+                    <input name="DiaCorte" value="@Model.DiaCorte" inputmode="numeric" min="1" max="31" />
+                </label>
+                <button type="submit" class="lic-icon-btn" title="Guardar día de facturación" aria-label="Guardar día de facturación">
+                    <i class="ti ti-device-floppy"></i>
+                </button>
+            </form>
+        }
+        else
+        {
+            <div class="lic-filter compact readonly">
+                <label>
+                    <span>Día facturación</span>
+                    <strong>@Model.DiaCorte</strong>
+                </label>
+            </div>
+        }
+    </section>
+
+    <section class="lic-stats">
+        <article><span>Licencias grupo</span><strong>@Model.TotalLicenciasPadre</strong></article>
+        <article><span>Clientes hijos</span><strong>@Model.TotalClientesHijos</strong></article>
+        <article><span>Account IDs</span><strong>@Model.TotalAccountIds</strong></article>
+        <article><span>Prefactura</span><strong>@usd(Model.TotalPrefactura)</strong></article>
+    </section>
+
+    @if (Model.PuedeEditarEstructura)
+    {
+        <section class="lic-panel admin">
+            <div class="lic-panel__head">
+                <div>
+                    <h2>Administrar Grupo Empresarial</h2>
+                    <span>Solo visible para sruiz@digitaltechcolombia.com</span>
                 </div>
-                <div class="top-actions">
-                    <form method="get" asp-action="Index" class="top-actions">
-                        @if (Model.PuedeCambiarCliente)
-                        {
-                            <select class="select" name="clienteId" onchange="this.form.submit()" aria-label="Cliente">
-                                @foreach (var c in Model.ClientesDisponibles)
-                                {
-                                    <option value="@c.Id" selected="@(c.Id == Model.ClienteSeleccionadoId)">@c.Nombre</option>
-                                }
-                            </select>
-                        }
-                        else
-                        {
-                            <input type="hidden" name="clienteId" value="@Model.ClienteId" />
-                        }
-                        <select class="select" name="mes" onchange="this.form.submit()" aria-label="Mes">
-                            @foreach (var mes in meses)
+                <span>@Model.AccountIdsGrupoActual.Count account IDs vinculados</span>
+            </div>
+
+            <div class="lic-admin-grid">
+                <form method="post" asp-action="ActualizarGrupoEmpresarial" class="lic-card-form">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="ClienteId" value="@Model.ClienteId" />
+                    <input type="hidden" name="Mes" value="@Model.MesSeleccionado" />
+                    <input type="hidden" name="Anio" value="@Model.AnioSeleccionado" />
+                    <label>
+                        <span>GrupoempresarialID</span>
+                        <input name="GrupoEmpresarialId" value="@Model.GrupoEmpresarialId" maxlength="100" placeholder="Se genera si lo dejas vacío" />
+                    </label>
+                    <label>
+                        <span>grupoempresarialname</span>
+                        <input name="GrupoEmpresarialNombre" value="@Model.RazonPadreNombre" maxlength="200" required />
+                    </label>
+                    <button type="submit" class="lic-primary">Guardar relación</button>
+                </form>
+
+                <form method="post" asp-action="AsignarAccountIdGrupo" class="lic-card-form">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="ClienteId" value="@Model.ClienteId" />
+                    <input type="hidden" name="Mes" value="@Model.MesSeleccionado" />
+                    <input type="hidden" name="Anio" value="@Model.AnioSeleccionado" />
+                    <input type="hidden" name="GrupoEmpresarialId" value="@Model.GrupoEmpresarialId" />
+                    <input type="hidden" name="GrupoEmpresarialNombre" value="@Model.RazonPadreNombre" />
+                    <label>
+                        <span>Agregar Account ID / cliente hijo</span>
+                        <select name="AccountIdRowId" required>
+                            <option value="">Seleccionar...</option>
+                            @foreach (var account in accountIdsAsignables)
                             {
-                                <option value="@mes.Numero" selected="@(mes.Numero == Model.MesSeleccionado)">@mes.Nombre</option>
+                                var grupo = string.IsNullOrWhiteSpace(account.GrupoEmpresarialNombre)
+                                    ? "sin grupo"
+                                    : account.GrupoEmpresarialNombre;
+                                <option value="@account.Id">@account.Display (@grupo)</option>
                             }
                         </select>
-                        <input class="input narrow" name="anio" value="@Model.AnioSeleccionado" inputmode="numeric" aria-label="Año" />
-                        <button class="icon-btn" type="submit" title="Aplicar filtros" aria-label="Aplicar filtros">⌕</button>
-                    </form>
-                    <form method="post" asp-action="ActualizarFechaCorte" class="top-actions">
-                        @Html.AntiForgeryToken()
-                        <input type="hidden" name="ClienteId" value="@Model.ClienteId" />
-                        <input type="hidden" name="Mes" value="@Model.MesSeleccionado" />
-                        <input type="hidden" name="Anio" value="@Model.AnioSeleccionado" />
-                        <input class="input narrow" name="DiaCorte" value="@Model.DiaCorte" inputmode="numeric" min="1" max="31" aria-label="Día de facturación" />
-                        <button class="icon-btn" type="submit" title="Guardar día de facturación" aria-label="Guardar día de facturación">✓</button>
-                    </form>
+                    </label>
+                    <button type="submit" class="lic-primary">Asignar al grupo</button>
+                </form>
+            </div>
+
+            <div class="lic-table-wrap">
+                <table class="lic-table">
+                    <thead>
+                        <tr>
+                            <th>Account ID</th>
+                            <th>Cliente hijo</th>
+                            <th>Grupo</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var account in Model.AccountIdsGrupoActual)
+                        {
+                            <tr>
+                                <td>@account.AccountId</td>
+                                <td>@account.ClienteNombre</td>
+                                <td>@account.GrupoEmpresarialNombre</td>
+                                <td class="lic-actions-cell">
+                                    <form method="post" asp-action="QuitarAccountIdGrupo">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="ClienteId" value="@Model.ClienteId" />
+                                        <input type="hidden" name="AccountIdRowId" value="@account.Id" />
+                                        <input type="hidden" name="Mes" value="@Model.MesSeleccionado" />
+                                        <input type="hidden" name="Anio" value="@Model.AnioSeleccionado" />
+                                        <button type="submit" class="lic-link-btn">Quitar</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        }
+                        @if (Model.AccountIdsGrupoActual.Count == 0)
+                        {
+                            <tr><td colspan="4">No hay Account IDs vinculados a este grupo.</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    }
+
+    <section class="lic-grid">
+        <article class="lic-panel">
+            <div class="lic-panel__head">
+                <div>
+                    <h2>Razón Padre</h2>
+                    <span>Productos agrupados por SKU/nombre y precio unitario</span>
                 </div>
-            </header>
+                <span>@Model.ProductosRazonPadre.Count líneas</span>
+            </div>
+            <div class="lic-table-wrap">
+                <table class="lic-table">
+                    <thead>
+                        <tr>
+                            <th>Producto</th>
+                            <th>Total</th>
+                            <th>USD unitario</th>
+                            <th>Clientes</th>
+                            <th>Account IDs</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var p in Model.ProductosRazonPadre)
+                        {
+                            <tr>
+                                <td>@p.Producto</td>
+                                <td><span class="lic-pill">@p.CantidadTotal</span></td>
+                                <td>@usd(p.PrecioUnitarioUsd)</td>
+                                <td>@string.Join(", ", p.ClientesConProducto)</td>
+                                <td class="muted">@string.Join(", ", p.AccountIds)</td>
+                            </tr>
+                        }
+                        @if (Model.ProductosRazonPadre.Count == 0)
+                        {
+                            <tr><td colspan="5">No hay productos cloud activos para este grupo.</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </article>
 
-            <section class="content">
-                <div class="hero">
-                    <div>
-                        <h1>@Model.RazonPadreNombre</h1>
-                        <p>
-                            Razón padre desde grupo empresarial.
-                            @if (!string.IsNullOrWhiteSpace(Model.GrupoEmpresarialId))
-                            {
-                                <span>ID @Model.GrupoEmpresarialId</span>
-                            }
-                        </p>
-                    </div>
-                    <div class="hero-meta">
-                        <span>Cliente autenticado / base: @Model.ClienteNombre</span>
-                        <strong>Corte @Model.FechaCorte.ToString("dd MMM yyyy", cultura)</strong>
-                    </div>
+        <article class="lic-panel">
+            <div class="lic-panel__head">
+                <div>
+                    <h2>Clientes Hijos</h2>
+                    <span>Aprovisionamientos y movimientos sobre relaciones existentes</span>
                 </div>
-
-                @if (!string.IsNullOrWhiteSpace(Model.Mensaje))
+                <span>@Model.ClientesHijos.Count clientes</span>
+            </div>
+            <div class="lic-child-list">
+                @foreach (var cliente in Model.ClientesHijos)
                 {
-                    <div class="notice ok">@Model.Mensaje</div>
-                }
-                @if (!string.IsNullOrWhiteSpace(Model.Error))
-                {
-                    <div class="notice warn">@Model.Error</div>
-                }
-
-                <section class="stats">
-                    <article class="metric"><span>Licencias totales</span><strong>@Model.TotalLicenciasPadre</strong></article>
-                    <article class="metric"><span>Clientes hijos</span><strong>@Model.TotalClientesHijos</strong></article>
-                    <article class="metric"><span>Account IDs</span><strong>@Model.TotalAccountIds</strong></article>
-                    <article class="metric"><span>Prefactura</span><strong>@usd(Model.TotalPrefactura)</strong></article>
-                </section>
-
-                <section class="grid">
-                    <article class="panel">
-                        <div class="panel-head">
+                    <article class="lic-child">
+                        <div class="lic-child__head">
                             <div>
-                                <h2>Razón Padre</h2>
-                                <span>Productos agrupados por nombre/SKU y precio unitario</span>
+                                <h3>@cliente.ClienteNombre</h3>
+                                <span>Account IDs: @(cliente.AccountIds.Count == 0 ? "Sin account ID registrado" : string.Join(", ", cliente.AccountIds))</span>
                             </div>
-                            <span>@Model.ProductosRazonPadre.Count líneas</span>
+                            <strong>@cliente.TotalLicencias licencias · @usd(cliente.TotalPrefactura)</strong>
                         </div>
-                        <div class="table-wrap">
-                            <table>
+
+                        <div class="lic-table-wrap slim">
+                            <table class="lic-table">
                                 <thead>
                                     <tr>
                                         <th>Producto</th>
                                         <th>Cantidad</th>
+                                        <th>Días</th>
                                         <th>USD unitario</th>
-                                        <th>Clientes</th>
-                                        <th>Account IDs</th>
+                                        <th>Total</th>
+                                        <th>Aprovisionar</th>
+                                        <th>Mover</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @foreach (var p in Model.ProductosRazonPadre)
+                                    @foreach (var c in cliente.Consumo.OrderBy(x => x.Producto).ThenBy(x => x.EsProrrateoSolicitud))
                                     {
                                         <tr>
-                                            <td>@p.Producto</td>
-                                            <td><span class="chip">@p.CantidadTotal</span></td>
-                                            <td>@usd(p.PrecioUnitarioUsd)</td>
-                                            <td>@string.Join(", ", p.ClientesConProducto)</td>
-                                            <td class="muted">@string.Join(", ", p.AccountIds)</td>
+                                            <td>
+                                                @c.Producto
+                                                @if (c.EsProrrateoSolicitud)
+                                                {
+                                                    <span class="lic-tag">prorrateo</span>
+                                                }
+                                            </td>
+                                            <td>@c.Cantidad</td>
+                                            <td>@c.DiasConsumo / @c.DiasMes</td>
+                                            <td>@usd(c.PrecioUnitarioUsd)</td>
+                                            <td>@usd(c.TotalProrrateadoUsd)</td>
+                                            <td>
+                                                @if (!c.EsProrrateoSolicitud)
+                                                {
+                                                    <button type="button"
+                                                            class="lic-icon-btn request-btn"
+                                                            title="Solicitar aumento"
+                                                            aria-label="Solicitar aumento"
+                                                            data-cliente-id="@cliente.ClienteId"
+                                                            data-sales-id="@c.SalesRecordId"
+                                                            data-producto="@c.Producto"
+                                                            data-cliente="@cliente.ClienteNombre"
+                                                            data-precio="@usd(c.PrecioUnitarioUsd)">
+                                                        <i class="ti ti-plus"></i>
+                                                    </button>
+                                                }
+                                            </td>
+                                            <td>
+                                                @if (!c.EsProrrateoSolicitud && Model.PuedeMoverCantidades)
+                                                {
+                                                    <form method="post" asp-action="MoverLicencias" class="lic-move-form">
+                                                        @Html.AntiForgeryToken()
+                                                        <input type="hidden" name="ClienteId" value="@Model.ClienteId" />
+                                                        <input type="hidden" name="OrigenClienteId" value="@cliente.ClienteId" />
+                                                        <input type="hidden" name="OrigenSalesRecordId" value="@c.SalesRecordId" />
+                                                        <input type="hidden" name="Mes" value="@Model.MesSeleccionado" />
+                                                        <input type="hidden" name="Anio" value="@Model.AnioSeleccionado" />
+                                                        <select name="DestinoClienteId" required aria-label="Cliente destino">
+                                                            <option value="">Destino</option>
+                                                            @foreach (var destino in Model.ClientesHijos.Where(h => h.ClienteId != cliente.ClienteId))
+                                                            {
+                                                                <option value="@destino.ClienteId">@destino.ClienteNombre</option>
+                                                            }
+                                                        </select>
+                                                        <input name="Cantidad" type="number" min="1" max="@c.Cantidad" value="1" aria-label="Cantidad a mover" />
+                                                        <button type="submit" class="lic-icon-btn" title="Mover cantidad" aria-label="Mover cantidad">
+                                                            <i class="ti ti-arrows-exchange"></i>
+                                                        </button>
+                                                    </form>
+                                                }
+                                            </td>
                                         </tr>
                                     }
-                                    @if (Model.ProductosRazonPadre.Count == 0)
+                                    @if (cliente.Consumo.Count == 0)
                                     {
-                                        <tr><td colspan="5" class="empty">No hay productos cloud activos para este grupo.</td></tr>
+                                        <tr><td colspan="7">Sin productos cloud activos.</td></tr>
                                     }
                                 </tbody>
                             </table>
                         </div>
                     </article>
+                }
+            </div>
+        </article>
+    </section>
 
-                    <article class="panel">
-                        <div class="panel-head">
-                            <div>
-                                <h2>Distribución</h2>
-                                <span>Licencias base por cliente hijo</span>
-                            </div>
-                        </div>
-                        <div class="bars">
-                            @foreach (var cliente in Model.ClientesHijos)
-                            {
-                                var width = Math.Max(2, (int)Math.Round(cliente.TotalLicencias * 100m / maxClienteLicencias));
-                                <div class="bar-row">
-                                    <div class="bar-top"><span>@cliente.ClienteNombre</span><strong>@cliente.TotalLicencias</strong></div>
-                                    <div class="bar"><span style="width:@width%"></span></div>
-                                </div>
-                            }
-                            @if (Model.ClientesHijos.Count == 0)
-                            {
-                                <div class="empty">Sin clientes hijos asociados.</div>
-                            }
-                        </div>
-                    </article>
-                </section>
-
-                <section class="panel" id="clientes">
-                    <div class="panel-head">
-                        <div>
-                            <h2>Clientes Hijos</h2>
-                            <span>Las solicitudes se asocian al cliente hijo real para calcular prorrateo</span>
-                        </div>
-                        <span>@Model.ClientesHijos.Count clientes</span>
-                    </div>
-                    <div class="client-list">
-                        @foreach (var cliente in Model.ClientesHijos)
-                        {
-                            <article class="client-card">
-                                <div class="client-head">
-                                    <div>
-                                        <h3>@cliente.ClienteNombre</h3>
-                                        <small>Account IDs: @(cliente.AccountIds.Count == 0 ? "Sin account ID registrado" : string.Join(", ", cliente.AccountIds))</small>
-                                    </div>
-                                    <div>
-                                        <span class="chip">@cliente.TotalLicencias licencias</span>
-                                        <span class="chip">@usd(cliente.TotalPrefactura)</span>
-                                    </div>
-                                </div>
-                                <div class="table-wrap">
-                                    <table class="mini-table">
-                                        <thead>
-                                            <tr>
-                                                <th>Producto</th>
-                                                <th>Cantidad</th>
-                                                <th>Días</th>
-                                                <th>USD unitario</th>
-                                                <th>Total</th>
-                                                <th>Acción</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            @foreach (var c in cliente.Consumo.OrderBy(x => x.Producto).ThenBy(x => x.EsProrrateoSolicitud))
-                                            {
-                                                <tr>
-                                                    <td>
-                                                        @c.Producto
-                                                        @if (c.EsProrrateoSolicitud)
-                                                        {
-                                                            <span class="chip">prorrateo</span>
-                                                        }
-                                                    </td>
-                                                    <td>@c.Cantidad</td>
-                                                    <td>@c.DiasConsumo / @c.DiasMes</td>
-                                                    <td>@usd(c.PrecioUnitarioUsd)</td>
-                                                    <td>@usd(c.TotalProrrateadoUsd)</td>
-                                                    <td>
-                                                        @if (!c.EsProrrateoSolicitud)
-                                                        {
-                                                            <button type="button"
-                                                                    class="icon-btn request-btn"
-                                                                    data-cliente-id="@cliente.ClienteId"
-                                                                    data-sales-id="@c.SalesRecordId"
-                                                                    data-producto="@c.Producto"
-                                                                    data-cliente="@cliente.ClienteNombre"
-                                                                    data-precio="@usd(c.PrecioUnitarioUsd)">
-                                                                +
-                                                            </button>
-                                                        }
-                                                    </td>
-                                                </tr>
-                                            }
-                                            @if (cliente.Consumo.Count == 0)
-                                            {
-                                                <tr><td colspan="6" class="empty">Sin productos cloud activos.</td></tr>
-                                            }
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </article>
-                        }
-                    </div>
-                </section>
-
-                <section class="panel" id="historico">
-                    <div class="panel-head">
-                        <div>
-                            <h2>Histórico De Solicitudes</h2>
-                            <span>Base para prorrateo mensual y prefactura</span>
-                        </div>
-                        <span>@Model.HistoricoSolicitudes.Count registros</span>
-                    </div>
-                    <div class="table-wrap">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Fecha</th>
-                                    <th>Solicitante</th>
-                                    <th>Cliente hijo</th>
-                                    <th>Producto</th>
-                                    <th>Cantidad</th>
-                                    <th>USD unitario</th>
-                                    <th>Estado</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var h in Model.HistoricoSolicitudes)
-                                {
-                                    <tr>
-                                        <td>@(h.FechaSolicitud?.ToString("dd/MM/yyyy") ?? "-")</td>
-                                        <td>@h.SolicitadoPor</td>
-                                        <td>@h.ClienteHijo</td>
-                                        <td>@h.Producto</td>
-                                        <td>+@h.CantidadNueva</td>
-                                        <td>@usd(h.PrecioUnitarioUsd)</td>
-                                        <td><span class="chip">@h.Estado</span></td>
-                                    </tr>
-                                }
-                                @if (Model.HistoricoSolicitudes.Count == 0)
-                                {
-                                    <tr><td colspan="7" class="empty">Sin solicitudes registradas.</td></tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                </section>
-            </section>
-        </main>
-
-        <aside class="right">
-            <section>
-                <h2>Resumen</h2>
-                <div class="feed">
-                    <div class="feed-item"><strong>@Model.RazonPadreNombre</strong><span>Razón padre visible</span></div>
-                    <div class="feed-item"><strong>@Model.TotalLicenciasPadre</strong><span>Licencias agrupadas</span></div>
-                    <div class="feed-item"><strong>@usd(Model.TotalPrefactura)</strong><span>Prefactura del mes</span></div>
-                </div>
-            </section>
-            <section>
-                <h2>Solicitudes</h2>
-                <div class="feed">
-                    @foreach (var h in Model.HistoricoSolicitudes.Take(5))
+    <section class="lic-panel">
+        <div class="lic-panel__head">
+            <div>
+                <h2>Histórico De Solicitudes</h2>
+                <span>Las solicitudes quedan asociadas al cliente hijo para prorrateo</span>
+            </div>
+            <span>@Model.HistoricoSolicitudes.Count registros</span>
+        </div>
+        <div class="lic-table-wrap">
+            <table class="lic-table">
+                <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Solicitante</th>
+                        <th>Cliente hijo</th>
+                        <th>Producto</th>
+                        <th>Cantidad</th>
+                        <th>USD unitario</th>
+                        <th>Estado</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var h in Model.HistoricoSolicitudes)
                     {
-                        <div class="feed-item">
-                            <strong>@h.ClienteHijo</strong>
-                            <span>+@h.CantidadNueva @h.Producto · @h.Estado</span>
-                        </div>
+                        <tr>
+                            <td>@(h.FechaSolicitud?.ToString("dd/MM/yyyy") ?? "-")</td>
+                            <td>@h.SolicitadoPor</td>
+                            <td>@h.ClienteHijo</td>
+                            <td>@h.Producto</td>
+                            <td>+@h.CantidadNueva</td>
+                            <td>@usd(h.PrecioUnitarioUsd)</td>
+                            <td><span class="lic-status">@h.Estado</span></td>
+                        </tr>
                     }
                     @if (Model.HistoricoSolicitudes.Count == 0)
                     {
-                        <div class="feed-item"><strong>Sin histórico</strong><span>No hay solicitudes registradas</span></div>
+                        <tr><td colspan="7">Sin solicitudes registradas.</td></tr>
                     }
-                </div>
-            </section>
-            <section>
-                <h2>Clientes</h2>
-                <div class="feed">
-                    @foreach (var cliente in Model.ClientesHijos.Take(7))
-                    {
-                        <div class="feed-item"><strong>@cliente.ClienteNombre</strong><span>@cliente.TotalLicencias licencias</span></div>
-                    }
-                </div>
-            </section>
-        </aside>
-    </div>
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
 
-    <div class="modal" id="licenseModal" aria-hidden="true">
-        <form method="post" asp-action="SolicitarLicencias" class="modal-card">
-            @Html.AntiForgeryToken()
-            <input type="hidden" name="ClienteId" value="@Model.ClienteId" />
-            <input type="hidden" name="ClienteHijoId" id="modalClienteHijoId" />
-            <input type="hidden" name="SalesRecordId" id="modalSalesRecordId" />
-            <input type="hidden" name="Mes" value="@Model.MesSeleccionado" />
-            <input type="hidden" name="Anio" value="@Model.AnioSeleccionado" />
-            <div>
-                <h2>Solicitar licencias</h2>
-                <p id="modalSummary"></p>
-            </div>
-            <div class="modal-grid">
-                <label>
-                    Cantidad a subir
-                    <input class="input" name="Cantidad" type="number" min="1" value="1" required />
-                </label>
-            </div>
-            <div class="modal-actions">
-                <button class="ghost-btn" type="button" id="closeModal">Cancelar</button>
-                <button class="primary-btn" type="submit">Crear solicitud</button>
-            </div>
-        </form>
-    </div>
+<div class="lic-modal" id="licenseModal" aria-hidden="true">
+    <form method="post" asp-action="SolicitarLicencias" class="lic-modal__card">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="ClienteId" value="@Model.ClienteId" />
+        <input type="hidden" name="ClienteHijoId" id="modalClienteHijoId" />
+        <input type="hidden" name="SalesRecordId" id="modalSalesRecordId" />
+        <input type="hidden" name="Mes" value="@Model.MesSeleccionado" />
+        <input type="hidden" name="Anio" value="@Model.AnioSeleccionado" />
+        <div>
+            <h2>Solicitar licencias</h2>
+            <p id="modalSummary"></p>
+        </div>
+        <label>
+            <span>Cantidad a subir</span>
+            <input name="Cantidad" type="number" min="1" value="1" required />
+        </label>
+        <div class="lic-modal__actions">
+            <button type="button" class="lic-secondary" id="closeModal">Cancelar</button>
+            <button type="submit" class="lic-primary">Crear solicitud</button>
+        </div>
+    </form>
+</div>
 
-    <script>
-        (() => {
-            const modal = document.getElementById('licenseModal');
-            const close = document.getElementById('closeModal');
-            const child = document.getElementById('modalClienteHijoId');
-            const record = document.getElementById('modalSalesRecordId');
-            const summary = document.getElementById('modalSummary');
-            document.querySelectorAll('.request-btn').forEach((button) => {
-                button.addEventListener('click', () => {
-                    child.value = button.dataset.clienteId || '';
-                    record.value = button.dataset.salesId || '';
-                    summary.textContent = `${button.dataset.cliente || ''} · ${button.dataset.producto || ''} · ${button.dataset.precio || ''}`;
-                    modal.classList.add('open');
-                    modal.setAttribute('aria-hidden', 'false');
-                });
+<style>
+.lic-page{display:grid;gap:16px;color:#17202a}
+.lic-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;padding:22px 24px;border-radius:8px;background:#12343b;color:#fff}
+.lic-head h1{font-size:2rem;line-height:1;margin:4px 0 0;letter-spacing:0}
+.lic-head p{margin:8px 0 0;color:#d9e6e8}
+.lic-kicker{display:block;font-size:.78rem;text-transform:uppercase;letter-spacing:.08em;color:#a7f3d0}
+.lic-head__meta{text-align:right;display:grid;gap:4px}
+.lic-head__meta span{color:#d9e6e8}
+.lic-alert{border-radius:8px;padding:12px 14px;border:1px solid}
+.lic-alert.ok{background:#ecfdf5;border-color:#a7f3d0;color:#065f46}
+.lic-alert.warn{background:#fff7ed;border-color:#fed7aa;color:#9a3412}
+.lic-toolbar{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap}
+.lic-filter{display:flex;gap:10px;align-items:end;flex-wrap:wrap;background:#fff;border:1px solid #dbe3ea;border-radius:8px;padding:10px}
+.lic-filter.compact{margin-left:auto}
+.lic-filter.readonly strong{display:flex;align-items:center;height:38px;color:#111827}
+.lic-filter label,.lic-card-form label,.lic-modal__card label{display:grid;gap:4px;font-size:.8rem;color:#52616b}
+.lic-filter select,.lic-filter input,.lic-card-form select,.lic-card-form input,.lic-modal__card input,.lic-move-form select,.lic-move-form input{height:38px;border:1px solid #cbd5df;border-radius:6px;padding:0 10px;background:#fff;color:#17202a;min-width:110px}
+.lic-filter select{min-width:240px}
+.lic-filter input{width:92px}
+.lic-icon-btn{height:38px;width:38px;display:inline-grid;place-items:center;border:0;border-radius:6px;background:#0f766e;color:#fff;cursor:pointer}
+.lic-primary,.lic-secondary,.lic-link-btn{height:38px;border:0;border-radius:6px;padding:0 12px;cursor:pointer}
+.lic-primary{background:#0f766e;color:#fff}
+.lic-secondary{background:#e2e8f0;color:#17202a}
+.lic-link-btn{background:transparent;color:#0f766e;padding:0}
+.lic-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.lic-stats article{background:#fff;border:1px solid #dbe3ea;border-radius:8px;padding:14px}
+.lic-stats span{display:block;font-size:.78rem;color:#64748b}
+.lic-stats strong{font-size:1.35rem;color:#111827}
+.lic-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start}
+.lic-panel{background:#fff;border:1px solid #dbe3ea;border-radius:8px;padding:16px;box-shadow:0 8px 22px rgba(15,23,42,.04)}
+.lic-panel.admin{border-color:#c7d2fe;background:#f8faff}
+.lic-panel__head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:12px}
+.lic-panel__head h2,.lic-child h3{margin:0;letter-spacing:0}
+.lic-panel__head h2{font-size:1.05rem}
+.lic-panel__head span,.lic-child__head span{color:#64748b;font-size:.82rem}
+.lic-admin-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:14px}
+.lic-card-form{display:grid;gap:10px;border:1px solid #dbe3ea;border-radius:8px;padding:12px;background:#fff}
+.lic-card-form input,.lic-card-form select{width:100%;min-width:0}
+.lic-table-wrap{overflow:auto}
+.lic-table{width:100%;border-collapse:collapse;font-size:.9rem}
+.lic-table th,.lic-table td{padding:10px;border-bottom:1px solid #e8eef3;text-align:left;vertical-align:middle}
+.lic-table th{font-size:.72rem;text-transform:uppercase;color:#64748b;background:#f8fafc}
+.lic-pill,.lic-status,.lic-tag{display:inline-flex;align-items:center;justify-content:center;min-height:24px;border-radius:999px;padding:0 8px;font-size:.78rem;font-weight:700}
+.lic-pill{background:#dcfce7;color:#166534}
+.lic-status{background:#eef2ff;color:#3730a3}
+.lic-tag{background:#fff7ed;color:#9a3412;margin-left:6px}
+.muted{color:#64748b}
+.lic-child-list{display:grid;gap:12px}
+.lic-child{border:1px solid #dbe3ea;border-radius:8px;padding:12px;background:#fcfdff}
+.lic-child__head{display:flex;justify-content:space-between;gap:12px;align-items:start;margin-bottom:10px}
+.lic-child__head strong{color:#0f766e;text-align:right}
+.lic-table-wrap.slim{max-height:460px}
+.lic-actions-cell{text-align:right}
+.lic-move-form{display:grid;grid-template-columns:minmax(150px,1fr) 74px 38px;gap:6px;align-items:center;min-width:270px}
+.lic-move-form select,.lic-move-form input{min-width:0;width:100%}
+.lic-modal{position:fixed;inset:0;display:none;place-items:center;background:rgba(15,23,42,.48);padding:20px;z-index:1050}
+.lic-modal.open{display:grid}
+.lic-modal__card{width:min(430px,100%);background:#fff;border:1px solid #dbe3ea;border-radius:8px;box-shadow:0 24px 70px rgba(15,23,42,.24);padding:18px;display:grid;gap:14px}
+.lic-modal__card h2{margin:0;font-size:1.15rem}
+.lic-modal__card p{margin:6px 0 0;color:#64748b}
+.lic-modal__card input{width:100%}
+.lic-modal__actions{display:flex;justify-content:flex-end;gap:8px}
+@@media (max-width: 980px){
+  .lic-head,.lic-toolbar{align-items:stretch}
+  .lic-head{display:grid}
+  .lic-head__meta{text-align:left}
+  .lic-stats,.lic-admin-grid{grid-template-columns:1fr}
+  .lic-filter,.lic-filter.compact{width:100%;margin-left:0}
+}
+@@media (max-width: 680px){
+  .lic-panel,.lic-head{padding:14px}
+  .lic-filter label,.lic-filter select,.lic-filter input{width:100%;min-width:0}
+  .lic-icon-btn{width:100%}
+  .lic-child__head,.lic-panel__head{display:grid}
+  .lic-child__head strong{text-align:left}
+  .lic-move-form{grid-template-columns:1fr}
+}
+</style>
+
+<script>
+    (() => {
+        const modal = document.getElementById('licenseModal');
+        const close = document.getElementById('closeModal');
+        const child = document.getElementById('modalClienteHijoId');
+        const record = document.getElementById('modalSalesRecordId');
+        const summary = document.getElementById('modalSummary');
+        document.querySelectorAll('.request-btn').forEach((button) => {
+            button.addEventListener('click', () => {
+                child.value = button.dataset.clienteId || '';
+                record.value = button.dataset.salesId || '';
+                summary.textContent = `${button.dataset.cliente || ''} · ${button.dataset.producto || ''} · ${button.dataset.precio || ''}`;
+                modal.classList.add('open');
+                modal.setAttribute('aria-hidden', 'false');
             });
-            close.addEventListener('click', () => {
-                modal.classList.remove('open');
-                modal.setAttribute('aria-hidden', 'true');
-            });
-            modal.addEventListener('click', (event) => {
-                if (event.target === modal) {
-                    close.click();
-                }
-            });
-        })();
-    </script>
-</body>
-</html>
+        });
+        close.addEventListener('click', () => {
+            modal.classList.remove('open');
+            modal.setAttribute('aria-hidden', 'true');
+        });
+        modal.addEventListener('click', (event) => {
+            if (event.target === modal) {
+                close.click();
+            }
+        });
+    })();
+</script>
