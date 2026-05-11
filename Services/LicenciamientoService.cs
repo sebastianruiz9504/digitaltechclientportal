@@ -38,26 +38,29 @@ namespace DigitalTechClientPortal.Services
         private const string ProductoCloudPrecioMoney = "cr07a_unitsalevalueusd";
         private const string ProductoCloudDiaFacturacion = "cr07a_billingday";
 
-        private const string SolicitudEntity = "cr07a_solicitudaprovisionamiento";
+        private const string SolicitudEntity = "cr07a_solicitudesclientes";
+        private const string SolicitudEntitySchemaName = "cr07a_SolicitudesClientes";
         private const string SolicitudCliente = "cr07a_cliente";
         private const string SolicitudProducto = "cr07a_producto";
         private const string SolicitudCantidad = "cr07a_cantidad";
         private const string SolicitudEstado = "cr07a_estado";
-        private const string SolicitudFecha = "cr07a_fechadeaprovisionamiento";
-        private const string SolicitudFechaProrrateo = "cr07a_fechaprorateosiaplica";
+        private const string SolicitudFecha = "cr07a_fechaaprovisionamiento";
         private const string SolicitudNombre = "cr07a_name";
-        private const string SolicitudDetalle = "cr07a_productoycantidades";
+        private const string SolicitudDetalle = "cr07a_detalle";
         private const string SolicitudValorUnitario = "cr07a_valorunitario";
         private const string SolicitudRegistroProductoCloud = "cr07a_registroproductocloud";
         private const string SolicitudSolicitadoPor = "cr07a_solicitadopor";
+        private const string SolicitudSolicitadoPorCorreo = "cr07a_solicitadoporcorreo";
         private const string SolicitudGrupoEmpresarialId = "cr07a_grupoempresarialid";
         private const string SolicitudGrupoEmpresarialName = "cr07a_grupoempresarialname";
         private const string SolicitudClienteHijoName = "cr07a_clientehijoname";
         private const string SolicitudAccountIds = "cr07a_accountids";
+        private const string SolicitudAprobadoPor = "cr07a_aprobadopor";
+        private const string SolicitudFechaAprobacion = "cr07a_fechaaprobacion";
 
         private const int SolicitudEstadoPendiente = 645250000;
         private const int SolicitudEstadoAprovisionado = 645250001;
-        private const int SolicitudEstadoAprobado = 645250002;
+        private const int SolicitudEstadoRechazado = 645250002;
         private const int LabelLanguage = 3082;
 
         private static readonly SemaphoreSlim SchemaLock = new(1, 1);
@@ -172,7 +175,7 @@ namespace DigitalTechClientPortal.Services
                     continue;
                 }
 
-                var fechaBase = (solicitud.FechaProrrateo ?? solicitud.FechaSolicitud ?? new DateTime(selectedYear, selectedMonth, 1)).Date;
+                var fechaBase = (solicitud.FechaAprovisionamiento ?? solicitud.FechaSolicitud ?? new DateTime(selectedYear, selectedMonth, 1)).Date;
                 if (fechaBase.Year != selectedYear || fechaBase.Month != selectedMonth)
                 {
                     continue;
@@ -242,6 +245,20 @@ namespace DigitalTechClientPortal.Services
                 .ThenBy(p => p.PrecioUnitarioUsd)
                 .ToList();
 
+            var productosSolicitud = productos
+                .OrderBy(p => p.ClienteNombre, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(p => p.Nombre, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(p => p.PrecioUnitarioUsd)
+                .Select(p => new ProductoSolicitudVm
+                {
+                    SalesRecordId = p.SalesRecordId,
+                    ClienteId = p.ClienteId,
+                    ClienteNombre = p.ClienteNombre,
+                    Producto = p.Nombre,
+                    PrecioUnitarioUsd = p.PrecioUnitarioUsd
+                })
+                .ToList();
+
             var diaCorte = productos.FirstOrDefault(p => p.DiaFacturacion.HasValue)?.DiaFacturacion ?? 15;
             var fechaCorte = new DateTime(selectedYear, selectedMonth, Math.Min(diaCorte, diasMes));
             var accountIdsGrupoActual = enterprise.AccountRows
@@ -278,13 +295,15 @@ namespace DigitalTechClientPortal.Services
                 AccountIdsDisponibles = accountIdsDisponibles,
                 AccountIdsGrupoActual = accountIdsGrupoActual,
                 ProductosRazonPadre = productosRazonPadre,
+                ProductosSolicitud = productosSolicitud,
                 ClientesHijos = clientesHijos,
                 HistoricoSolicitudes = solicitudes
                     .Select(s => new SolicitudLicenciaVm
                     {
                         Id = s.Id,
                         FechaSolicitud = s.FechaSolicitud,
-                        FechaProrrateo = s.FechaProrrateo,
+                        FechaAprovisionamiento = s.FechaAprovisionamiento,
+                        FechaProrrateo = s.FechaAprovisionamiento,
                         SolicitadoPor = s.SolicitadoPor,
                         ClienteHijo = s.ClienteNombre,
                         SubRazon = s.ClienteNombre,
@@ -315,6 +334,26 @@ namespace DigitalTechClientPortal.Services
             SolicitarLicenciasVm input,
             string solicitante)
         {
+            return await CrearSolicitudClienteAsync(
+                candidateEmails,
+                new CrearSolicitudClienteVm
+                {
+                    ClienteId = input.ClienteId,
+                    ClienteHijoId = input.ClienteHijoId,
+                    SalesRecordId = input.SalesRecordId,
+                    Cantidad = input.Cantidad,
+                    FechaAprovisionamiento = DateTime.Today,
+                    Mes = input.Mes,
+                    Anio = input.Anio
+                },
+                solicitante);
+        }
+
+        public async Task<Guid> CrearSolicitudClienteAsync(
+            IReadOnlyList<string> candidateEmails,
+            CrearSolicitudClienteVm input,
+            string solicitante)
+        {
             var clienteId = await ResolveAuthorizedClientIdAsync(candidateEmails, input.ClienteId, null);
             if (clienteId == Guid.Empty)
             {
@@ -326,10 +365,15 @@ namespace DigitalTechClientPortal.Services
                 throw new InvalidOperationException("Solo se permiten solicitudes para subir licencias.");
             }
 
+            if (input.FechaAprovisionamiento == default)
+            {
+                throw new InvalidOperationException("Selecciona la fecha de aprovisionamiento.");
+            }
+
             var schema = await EnsureSchemaAsync();
             if (!schema.SolicitudEntityReady || !schema.SolicitudClienteLookupReady)
             {
-                throw new InvalidOperationException("La tabla de solicitudes de aprovisionamiento no está lista en Dataverse.");
+                throw new InvalidOperationException("La tabla solicitudesclientes no está lista en Dataverse.");
             }
 
             var clienteNombre = await GetClienteNombreAsync(clienteId);
@@ -340,32 +384,38 @@ namespace DigitalTechClientPortal.Services
                 throw new InvalidOperationException("El cliente hijo seleccionado no pertenece al grupo empresarial visible para este usuario.");
             }
 
-            var producto = await GetProductoCloudAsync(input.SalesRecordId, clienteHijoId, enterprise.ChildrenById);
-            if (producto == null)
+            ProductoCloudDto? producto = null;
+            var salesRecordId = input.SalesRecordId.GetValueOrDefault();
+            if (salesRecordId != Guid.Empty)
             {
-                throw new InvalidOperationException("El producto seleccionado no pertenece al cliente hijo seleccionado.");
+                producto = await GetProductoCloudAsync(salesRecordId, clienteHijoId, enterprise.ChildrenById);
+                if (producto == null)
+                {
+                    throw new InvalidOperationException("El producto seleccionado no pertenece al cliente hijo seleccionado.");
+                }
             }
 
-            var nowUtc = DateTime.UtcNow;
-            var detalle = BuildSolicitudDetalle(enterprise, clienteHijo, producto, solicitante, input.Cantidad);
+            var productoNombre = producto?.Nombre ?? (input.ProductoManual ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(productoNombre))
+            {
+                throw new InvalidOperationException("Selecciona un producto existente o escribe el producto en la opción Otro.");
+            }
+
+            var fechaAprovisionamiento = DateTime.SpecifyKind(input.FechaAprovisionamiento.Date, DateTimeKind.Unspecified);
+            var detalle = BuildSolicitudDetalle(enterprise, clienteHijo, producto, productoNombre, solicitante, input.Cantidad, fechaAprovisionamiento);
             var solicitud = new Entity(SolicitudEntity)
             {
-                [SolicitudNombre] = $"Aumento licencias - {producto.Nombre}",
+                [SolicitudNombre] = $"{clienteHijo.ClienteNombre} - {productoNombre} - {input.Cantidad}",
                 [SolicitudCliente] = new EntityReference(ClienteEntity, clienteHijo.ClienteId),
+                [SolicitudProducto] = productoNombre,
                 [SolicitudCantidad] = input.Cantidad,
                 [SolicitudEstado] = new OptionSetValue(SolicitudEstadoPendiente),
-                [SolicitudFecha] = nowUtc,
-                [SolicitudFechaProrrateo] = nowUtc.Date,
+                [SolicitudFecha] = fechaAprovisionamiento,
                 [SolicitudDetalle] = detalle,
-                [SolicitudValorUnitario] = producto.PrecioUnitarioUsd
+                [SolicitudValorUnitario] = producto?.PrecioUnitarioUsd ?? 0m
             };
 
-            if (schema.SolicitudProductoLookupReady && producto.ProductoReference != null)
-            {
-                solicitud[SolicitudProducto] = producto.ProductoReference;
-            }
-
-            if (schema.SolicitudRegistroProductoCloudLookupReady)
+            if (schema.SolicitudRegistroProductoCloudLookupReady && producto != null)
             {
                 solicitud[SolicitudRegistroProductoCloud] = new EntityReference(ProductoCloudEntity, producto.SalesRecordId);
             }
@@ -373,6 +423,11 @@ namespace DigitalTechClientPortal.Services
             if (schema.SolicitadoPorReady)
             {
                 solicitud[SolicitudSolicitadoPor] = solicitante;
+            }
+
+            if (schema.SolicitadoPorCorreoReady)
+            {
+                solicitud[SolicitudSolicitadoPorCorreo] = solicitante;
             }
 
             if (schema.SolicitudGrupoEmpresarialIdReady)
@@ -1061,13 +1116,12 @@ namespace DigitalTechClientPortal.Services
                 SolicitudCantidad,
                 SolicitudEstado,
                 SolicitudFecha,
-                SolicitudFechaProrrateo,
                 SolicitudDetalle,
                 SolicitudValorUnitario,
                 "createdon"
             };
 
-            if (schema.SolicitudProductoLookupReady)
+            if (schema.SolicitudProductoReady)
             {
                 columns.Add(SolicitudProducto);
             }
@@ -1080,6 +1134,11 @@ namespace DigitalTechClientPortal.Services
             if (schema.SolicitadoPorReady)
             {
                 columns.Add(SolicitudSolicitadoPor);
+            }
+
+            if (schema.SolicitadoPorCorreoReady)
+            {
+                columns.Add(SolicitudSolicitadoPorCorreo);
             }
 
             if (schema.SolicitudGrupoEmpresarialNameReady)
@@ -1123,17 +1182,21 @@ namespace DigitalTechClientPortal.Services
                 var salesRecordId = registroRef?.Id ?? TryReadGuid(detalle, "SalesRecordId");
                 productosPorId.TryGetValue(salesRecordId, out var producto);
 
-                var productoRef = schema.SolicitudProductoLookupReady
-                    ? e.GetAttributeValue<EntityReference>(SolicitudProducto)
+                var productoTexto = schema.SolicitudProductoReady
+                    ? e.GetAttributeValue<string>(SolicitudProducto)
                     : null;
                 var productoNombre = producto?.Nombre
+                    ?? productoTexto
                     ?? TryReadValue(detalle, "Producto")
-                    ?? productoRef?.Name
                     ?? e.GetAttributeValue<string>(SolicitudNombre)
                     ?? "Producto";
 
                 var solicitadoPor = schema.SolicitadoPorReady
                     ? e.GetAttributeValue<string>(SolicitudSolicitadoPor)
+                    : null;
+
+                var solicitadoPorCorreo = schema.SolicitadoPorCorreoReady
+                    ? e.GetAttributeValue<string>(SolicitudSolicitadoPorCorreo)
                     : null;
 
                 var clienteNombre = schema.SolicitudClienteHijoNameReady
@@ -1153,10 +1216,10 @@ namespace DigitalTechClientPortal.Services
                     productoNombre,
                     e.GetAttributeValue<int?>(SolicitudCantidad) ?? 0,
                     e.GetAttributeValue<decimal?>(SolicitudValorUnitario) ?? producto?.PrecioUnitarioUsd ?? 0m,
-                    e.GetAttributeValue<DateTime?>(SolicitudFecha) ?? e.GetAttributeValue<DateTime?>("createdon"),
-                    e.GetAttributeValue<DateTime?>(SolicitudFechaProrrateo),
+                    e.GetAttributeValue<DateTime?>("createdon"),
+                    e.GetAttributeValue<DateTime?>(SolicitudFecha),
                     e.GetAttributeValue<OptionSetValue>(SolicitudEstado)?.Value ?? SolicitudEstadoPendiente,
-                    solicitadoPor ?? TryReadValue(detalle, "SolicitadoPor") ?? string.Empty);
+                    solicitadoPor ?? solicitadoPorCorreo ?? TryReadValue(detalle, "SolicitadoPor") ?? string.Empty);
             }).ToList();
         }
 
@@ -1198,7 +1261,13 @@ namespace DigitalTechClientPortal.Services
                         SolicitudCliente,
                         "Cliente hijo",
                         ClienteEntity,
-                        "cr07a_cliente_solicitudaprovisionamiento");
+                        "cr07a_cliente_solicitudesclientes");
+
+                    status.SolicitudProductoReady = await EnsureStringAttributeAsync(
+                        SolicitudEntity,
+                        SolicitudProducto,
+                        "Producto",
+                        250);
 
                     status.SolicitudCantidadReady = await EnsureIntegerAttributeAsync(
                         SolicitudEntity,
@@ -1217,15 +1286,10 @@ namespace DigitalTechClientPortal.Services
                         SolicitudFecha,
                         "Fecha de aprovisionamiento");
 
-                    status.SolicitudFechaProrrateoReady = await EnsureDateTimeAttributeAsync(
-                        SolicitudEntity,
-                        SolicitudFechaProrrateo,
-                        "Fecha prorrateo si aplica");
-
                     status.SolicitudDetalleReady = await EnsureMemoAttributeAsync(
                         SolicitudEntity,
                         SolicitudDetalle,
-                        "Producto y cantidades",
+                        "Detalle",
                         4000);
 
                     status.SolicitudValorUnitarioReady = await EnsureDecimalAttributeAsync(
@@ -1236,18 +1300,23 @@ namespace DigitalTechClientPortal.Services
                         100000000m,
                         2);
 
-                    status.SolicitudProductoLookupReady = await AttributeExistsAsync(SolicitudEntity, SolicitudProducto);
                     status.SolicitudRegistroProductoCloudLookupReady = await EnsureLookupAttributeAsync(
                         SolicitudEntity,
                         SolicitudRegistroProductoCloud,
                         "Registro producto cloud",
                         ProductoCloudEntity,
-                        "cr07a_solicitudaprovisionamiento_registroproductocloud");
+                        "cr07a_solicitudesclientes_registroproductocloud");
 
                     status.SolicitadoPorReady = await EnsureStringAttributeAsync(
                         SolicitudEntity,
                         SolicitudSolicitadoPor,
                         "Solicitado por",
+                        200);
+
+                    status.SolicitadoPorCorreoReady = await EnsureStringAttributeAsync(
+                        SolicitudEntity,
+                        SolicitudSolicitadoPorCorreo,
+                        "Solicitado por correo",
                         200);
 
                     status.SolicitudGrupoEmpresarialIdReady = await EnsureStringAttributeAsync(
@@ -1273,6 +1342,17 @@ namespace DigitalTechClientPortal.Services
                         SolicitudAccountIds,
                         "Account IDs",
                         500);
+
+                    status.SolicitudAprobadoPorReady = await EnsureStringAttributeAsync(
+                        SolicitudEntity,
+                        SolicitudAprobadoPor,
+                        "Aprobado por",
+                        200);
+
+                    status.SolicitudFechaAprobacionReady = await EnsureDateTimeAttributeAsync(
+                        SolicitudEntity,
+                        SolicitudFechaAprobacion,
+                        "Fecha aprobación");
                 }
                 catch (Exception ex)
                 {
@@ -1282,13 +1362,16 @@ namespace DigitalTechClientPortal.Services
                     status.AccountIdGrupoEmpresarialNameReady = await AttributeExistsAsync(AccountIdEntity, AccountIdGrupoEmpresarialName);
                     status.SolicitudEntityReady = await EntityExistsAsync(SolicitudEntity);
                     status.SolicitudClienteLookupReady = await AttributeExistsAsync(SolicitudEntity, SolicitudCliente);
-                    status.SolicitudProductoLookupReady = await AttributeExistsAsync(SolicitudEntity, SolicitudProducto);
+                    status.SolicitudProductoReady = await AttributeExistsAsync(SolicitudEntity, SolicitudProducto);
                     status.SolicitudRegistroProductoCloudLookupReady = await AttributeExistsAsync(SolicitudEntity, SolicitudRegistroProductoCloud);
                     status.SolicitadoPorReady = await AttributeExistsAsync(SolicitudEntity, SolicitudSolicitadoPor);
+                    status.SolicitadoPorCorreoReady = await AttributeExistsAsync(SolicitudEntity, SolicitudSolicitadoPorCorreo);
                     status.SolicitudGrupoEmpresarialIdReady = await AttributeExistsAsync(SolicitudEntity, SolicitudGrupoEmpresarialId);
                     status.SolicitudGrupoEmpresarialNameReady = await AttributeExistsAsync(SolicitudEntity, SolicitudGrupoEmpresarialName);
                     status.SolicitudClienteHijoNameReady = await AttributeExistsAsync(SolicitudEntity, SolicitudClienteHijoName);
                     status.SolicitudAccountIdsReady = await AttributeExistsAsync(SolicitudEntity, SolicitudAccountIds);
+                    status.SolicitudAprobadoPorReady = await AttributeExistsAsync(SolicitudEntity, SolicitudAprobadoPor);
+                    status.SolicitudFechaAprobacionReady = await AttributeExistsAsync(SolicitudEntity, SolicitudFechaAprobacion);
                 }
 
                 if (MetadataTouchedDuringEnsure)
@@ -1316,10 +1399,10 @@ namespace DigitalTechClientPortal.Services
             {
                 Entity = new EntityMetadata
                 {
-                    SchemaName = "cr07a_SolicitudAprovisionamiento",
-                    DisplayName = Label("Solicitud de aprovisionamiento"),
-                    DisplayCollectionName = Label("Solicitudes de aprovisionamiento"),
-                    Description = Label("Solicitudes de aumento de licencias asociadas al cliente hijo para prorrateo mensual."),
+                    SchemaName = SolicitudEntitySchemaName,
+                    DisplayName = Label("solicitudesclientes"),
+                    DisplayCollectionName = Label("solicitudesclientes"),
+                    Description = Label("Solicitudes de aprovisionamiento de licencias asociadas al cliente hijo para prorrateo mensual."),
                     OwnershipType = OwnershipTypes.UserOwned,
                     IsActivity = false
                 },
@@ -1486,7 +1569,7 @@ namespace DigitalTechClientPortal.Services
                         {
                             new OptionMetadata(Label("Pendiente"), SolicitudEstadoPendiente),
                             new OptionMetadata(Label("Aprovisionado"), SolicitudEstadoAprovisionado),
-                            new OptionMetadata(Label("Aprobado para aprovisionar"), SolicitudEstadoAprobado)
+                            new OptionMetadata(Label("Rechazado"), SolicitudEstadoRechazado)
                         }
                     }
                 }
@@ -1642,7 +1725,7 @@ namespace DigitalTechClientPortal.Services
 
         private static bool IsSolicitudFacturable(int estado)
         {
-            return estado is SolicitudEstadoAprovisionado or SolicitudEstadoAprobado;
+            return estado == SolicitudEstadoAprovisionado;
         }
 
         private static string EstadoSolicitudLabel(int estado)
@@ -1650,7 +1733,7 @@ namespace DigitalTechClientPortal.Services
             return estado switch
             {
                 SolicitudEstadoAprovisionado => "Aprovisionado",
-                SolicitudEstadoAprobado => "Aprobado para aprovisionar",
+                SolicitudEstadoRechazado => "Rechazado",
                 _ => "Pendiente"
             };
         }
@@ -1689,10 +1772,13 @@ namespace DigitalTechClientPortal.Services
         private static string BuildSolicitudDetalle(
             EnterpriseContextDto enterprise,
             ChildClienteDto clienteHijo,
-            ProductoCloudDto producto,
+            ProductoCloudDto? producto,
+            string productoNombre,
             string solicitante,
-            int cantidad)
+            int cantidad,
+            DateTime fechaAprovisionamiento)
         {
+            var salesRecordId = producto?.SalesRecordId.ToString("D") ?? string.Empty;
             return string.Join(";",
                 "PortalLicenciamiento",
                 $"GrupoEmpresarialId={EscapeDetail(enterprise.GrupoEmpresarialId)}",
@@ -1700,9 +1786,10 @@ namespace DigitalTechClientPortal.Services
                 $"ClienteHijoId={clienteHijo.ClienteId:D}",
                 $"ClienteHijo={EscapeDetail(clienteHijo.ClienteNombre)}",
                 $"AccountIds={EscapeDetail(string.Join(",", clienteHijo.AccountIds))}",
-                $"SalesRecordId={producto.SalesRecordId:D}",
-                $"Producto={EscapeDetail(producto.Nombre)}",
+                $"SalesRecordId={salesRecordId}",
+                $"Producto={EscapeDetail(productoNombre)}",
                 $"SolicitadoPor={EscapeDetail(solicitante)}",
+                $"FechaAprovisionamiento={fechaAprovisionamiento:yyyy-MM-dd}",
                 $"Cantidad={cantidad.ToString(CultureInfo.InvariantCulture)}");
         }
 
@@ -1761,7 +1848,7 @@ namespace DigitalTechClientPortal.Services
             int Cantidad,
             decimal PrecioUnitarioUsd,
             DateTime? FechaSolicitud,
-            DateTime? FechaProrrateo,
+            DateTime? FechaAprovisionamiento,
             int EstadoValor,
             string SolicitadoPor);
 
@@ -1781,19 +1868,21 @@ namespace DigitalTechClientPortal.Services
             public bool AccountIdGrupoEmpresarialNameReady { get; set; }
             public bool SolicitudEntityReady { get; set; }
             public bool SolicitudClienteLookupReady { get; set; }
-            public bool SolicitudProductoLookupReady { get; set; }
+            public bool SolicitudProductoReady { get; set; }
             public bool SolicitudCantidadReady { get; set; }
             public bool SolicitudEstadoReady { get; set; }
             public bool SolicitudFechaReady { get; set; }
-            public bool SolicitudFechaProrrateoReady { get; set; }
             public bool SolicitudDetalleReady { get; set; }
             public bool SolicitudValorUnitarioReady { get; set; }
             public bool SolicitudRegistroProductoCloudLookupReady { get; set; }
             public bool SolicitadoPorReady { get; set; }
+            public bool SolicitadoPorCorreoReady { get; set; }
             public bool SolicitudGrupoEmpresarialIdReady { get; set; }
             public bool SolicitudGrupoEmpresarialNameReady { get; set; }
             public bool SolicitudClienteHijoNameReady { get; set; }
             public bool SolicitudAccountIdsReady { get; set; }
+            public bool SolicitudAprobadoPorReady { get; set; }
+            public bool SolicitudFechaAprobacionReady { get; set; }
             public string? SetupError { get; set; }
         }
     }

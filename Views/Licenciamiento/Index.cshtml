@@ -7,6 +7,7 @@
     var accountIdsAsignables = Model.AccountIdsDisponibles
         .Where(a => Model.AccountIdsGrupoActual.All(g => g.Id != a.Id))
         .ToList();
+    var fechaHoy = DateTime.Today.ToString("yyyy-MM-dd");
 }
 
 <div class="lic-page">
@@ -95,6 +96,11 @@
                 </label>
             </div>
         }
+
+        <button type="button" class="lic-primary lic-new-request" id="openNewRequest">
+            <i class="ti ti-plus"></i>
+            Nueva solicitud
+        </button>
     </section>
 
     <section class="lic-stats">
@@ -106,14 +112,14 @@
 
     @if (Model.PuedeEditarEstructura)
     {
-        <section class="lic-panel admin">
-            <div class="lic-panel__head">
+        <details class="lic-panel admin lic-collapse">
+            <summary class="lic-collapse__summary">
                 <div>
                     <h2>Administrar Grupo Empresarial</h2>
                     <span>Solo visible para sruiz@digitaltechcolombia.com</span>
                 </div>
                 <span>@Model.AccountIdsGrupoActual.Count account IDs vinculados</span>
-            </div>
+            </summary>
 
             <div class="lic-admin-grid">
                 <form method="post" asp-action="ActualizarGrupoEmpresarial" class="lic-card-form">
@@ -192,18 +198,18 @@
                     </tbody>
                 </table>
             </div>
-        </section>
+        </details>
     }
 
     <section class="lic-grid">
-        <article class="lic-panel">
-            <div class="lic-panel__head">
+        <details class="lic-panel lic-collapse">
+            <summary class="lic-collapse__summary">
                 <div>
                     <h2>Razón Padre</h2>
                     <span>Productos agrupados por SKU/nombre y precio unitario</span>
                 </div>
-                <span>@Model.ProductosRazonPadre.Count líneas</span>
-            </div>
+                <span>@Model.ProductosRazonPadre.Count líneas · @Model.TotalLicenciasPadre licencias</span>
+            </summary>
             <div class="lic-table-wrap">
                 <table class="lic-table">
                     <thead>
@@ -233,27 +239,27 @@
                     </tbody>
                 </table>
             </div>
-        </article>
+        </details>
 
-        <article class="lic-panel">
-            <div class="lic-panel__head">
+        <details class="lic-panel lic-collapse">
+            <summary class="lic-collapse__summary">
                 <div>
                     <h2>Clientes Hijos</h2>
-                    <span>Aprovisionamientos y movimientos sobre relaciones existentes</span>
+                    <span>Consulta de productos y prorrateos asociados a cada cliente hijo</span>
                 </div>
-                <span>@Model.ClientesHijos.Count clientes</span>
-            </div>
+                <span>@Model.ClientesHijos.Count clientes · @usd(Model.TotalPrefactura)</span>
+            </summary>
             <div class="lic-child-list">
                 @foreach (var cliente in Model.ClientesHijos)
                 {
-                    <article class="lic-child">
-                        <div class="lic-child__head">
+                    <details class="lic-child">
+                        <summary class="lic-child__head">
                             <div>
                                 <h3>@cliente.ClienteNombre</h3>
                                 <span>Account IDs: @(cliente.AccountIds.Count == 0 ? "Sin account ID registrado" : string.Join(", ", cliente.AccountIds))</span>
                             </div>
                             <strong>@cliente.TotalLicencias licencias · @usd(cliente.TotalPrefactura)</strong>
-                        </div>
+                        </summary>
 
                         <div class="lic-table-wrap slim">
                             <table class="lic-table">
@@ -264,8 +270,6 @@
                                         <th>Días</th>
                                         <th>USD unitario</th>
                                         <th>Total</th>
-                                        <th>Aprovisionar</th>
-                                        <th>Mover</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -283,59 +287,23 @@
                                             <td>@c.DiasConsumo / @c.DiasMes</td>
                                             <td>@usd(c.PrecioUnitarioUsd)</td>
                                             <td>@usd(c.TotalProrrateadoUsd)</td>
-                                            <td>
-                                                @if (!c.EsProrrateoSolicitud)
-                                                {
-                                                    <button type="button"
-                                                            class="lic-icon-btn request-btn"
-                                                            title="Solicitar aumento"
-                                                            aria-label="Solicitar aumento"
-                                                            data-cliente-id="@cliente.ClienteId"
-                                                            data-sales-id="@c.SalesRecordId"
-                                                            data-producto="@c.Producto"
-                                                            data-cliente="@cliente.ClienteNombre"
-                                                            data-precio="@usd(c.PrecioUnitarioUsd)">
-                                                        <i class="ti ti-plus"></i>
-                                                    </button>
-                                                }
-                                            </td>
-                                            <td>
-                                                @if (!c.EsProrrateoSolicitud && Model.PuedeMoverCantidades)
-                                                {
-                                                    <form method="post" asp-action="MoverLicencias" class="lic-move-form">
-                                                        @Html.AntiForgeryToken()
-                                                        <input type="hidden" name="ClienteId" value="@Model.ClienteId" />
-                                                        <input type="hidden" name="OrigenClienteId" value="@cliente.ClienteId" />
-                                                        <input type="hidden" name="OrigenSalesRecordId" value="@c.SalesRecordId" />
-                                                        <input type="hidden" name="Mes" value="@Model.MesSeleccionado" />
-                                                        <input type="hidden" name="Anio" value="@Model.AnioSeleccionado" />
-                                                        <select name="DestinoClienteId" required aria-label="Cliente destino">
-                                                            <option value="">Destino</option>
-                                                            @foreach (var destino in Model.ClientesHijos.Where(h => h.ClienteId != cliente.ClienteId))
-                                                            {
-                                                                <option value="@destino.ClienteId">@destino.ClienteNombre</option>
-                                                            }
-                                                        </select>
-                                                        <input name="Cantidad" type="number" min="1" max="@c.Cantidad" value="1" aria-label="Cantidad a mover" />
-                                                        <button type="submit" class="lic-icon-btn" title="Mover cantidad" aria-label="Mover cantidad">
-                                                            <i class="ti ti-arrows-exchange"></i>
-                                                        </button>
-                                                    </form>
-                                                }
-                                            </td>
                                         </tr>
                                     }
                                     @if (cliente.Consumo.Count == 0)
                                     {
-                                        <tr><td colspan="7">Sin productos cloud activos.</td></tr>
+                                        <tr><td colspan="5">Sin productos cloud activos.</td></tr>
                                     }
                                 </tbody>
                             </table>
                         </div>
-                    </article>
+                    </details>
+                }
+                @if (Model.ClientesHijos.Count == 0)
+                {
+                    <div class="lic-empty">No hay clientes hijos vinculados a este grupo empresarial.</div>
                 }
             </div>
-        </article>
+        </details>
     </section>
 
     <section class="lic-panel">
@@ -350,7 +318,8 @@
             <table class="lic-table">
                 <thead>
                     <tr>
-                        <th>Fecha</th>
+                        <th>Creada</th>
+                        <th>Aprovisionamiento</th>
                         <th>Solicitante</th>
                         <th>Cliente hijo</th>
                         <th>Producto</th>
@@ -364,6 +333,7 @@
                     {
                         <tr>
                             <td>@(h.FechaSolicitud?.ToString("dd/MM/yyyy") ?? "-")</td>
+                            <td>@(h.FechaAprovisionamiento?.ToString("dd/MM/yyyy") ?? "-")</td>
                             <td>@h.SolicitadoPor</td>
                             <td>@h.ClienteHijo</td>
                             <td>@h.Producto</td>
@@ -374,7 +344,7 @@
                     }
                     @if (Model.HistoricoSolicitudes.Count == 0)
                     {
-                        <tr><td colspan="7">Sin solicitudes registradas.</td></tr>
+                        <tr><td colspan="8">Sin solicitudes registradas.</td></tr>
                     }
                 </tbody>
             </table>
@@ -383,24 +353,54 @@
 </div>
 
 <div class="lic-modal" id="licenseModal" aria-hidden="true">
-    <form method="post" asp-action="SolicitarLicencias" class="lic-modal__card">
+    <form method="post" asp-action="CrearSolicitudCliente" class="lic-modal__card">
         @Html.AntiForgeryToken()
         <input type="hidden" name="ClienteId" value="@Model.ClienteId" />
-        <input type="hidden" name="ClienteHijoId" id="modalClienteHijoId" />
-        <input type="hidden" name="SalesRecordId" id="modalSalesRecordId" />
+        <input type="hidden" name="SalesRecordId" id="requestSalesRecordId" />
         <input type="hidden" name="Mes" value="@Model.MesSeleccionado" />
         <input type="hidden" name="Anio" value="@Model.AnioSeleccionado" />
         <div>
-            <h2>Solicitar licencias</h2>
-            <p id="modalSummary"></p>
+            <h2>Nueva solicitud</h2>
+            <p>Estado inicial: Pendiente</p>
         </div>
         <label>
-            <span>Cantidad a subir</span>
+            <span>Hijo</span>
+            <select name="ClienteHijoId" id="requestChild" required>
+                <option value="">Seleccionar hijo...</option>
+                @foreach (var cliente in Model.ClientesHijos)
+                {
+                    <option value="@cliente.ClienteId">@cliente.ClienteNombre</option>
+                }
+            </select>
+        </label>
+        <label>
+            <span>Producto</span>
+            <select id="requestProduct" required>
+                <option value="">Seleccionar producto...</option>
+                @foreach (var producto in Model.ProductosSolicitud)
+                {
+                    <option value="@producto.SalesRecordId" data-child="@producto.ClienteId">
+                        @producto.Producto · @producto.ClienteNombre · @usd(producto.PrecioUnitarioUsd)
+                    </option>
+                }
+                <option value="__otro" data-child="">Otro</option>
+            </select>
+        </label>
+        <label class="lic-manual-product" id="manualProductWrap">
+            <span>Producto otro</span>
+            <input name="ProductoManual" id="manualProduct" maxlength="250" placeholder="Escribe el producto" />
+        </label>
+        <label>
+            <span>Cantidad</span>
             <input name="Cantidad" type="number" min="1" value="1" required />
+        </label>
+        <label>
+            <span>Fecha de aprovisionamiento</span>
+            <input name="FechaAprovisionamiento" type="date" value="@fechaHoy" required />
         </label>
         <div class="lic-modal__actions">
             <button type="button" class="lic-secondary" id="closeModal">Cancelar</button>
-            <button type="submit" class="lic-primary">Crear solicitud</button>
+            <button type="submit" class="lic-primary">Enviar</button>
         </div>
     </form>
 </div>
@@ -421,14 +421,15 @@
 .lic-filter.compact{margin-left:auto}
 .lic-filter.readonly strong{display:flex;align-items:center;height:38px;color:#111827}
 .lic-filter label,.lic-card-form label,.lic-modal__card label{display:grid;gap:4px;font-size:.8rem;color:#52616b}
-.lic-filter select,.lic-filter input,.lic-card-form select,.lic-card-form input,.lic-modal__card input,.lic-move-form select,.lic-move-form input{height:38px;border:1px solid #cbd5df;border-radius:6px;padding:0 10px;background:#fff;color:#17202a;min-width:110px}
+.lic-filter select,.lic-filter input,.lic-card-form select,.lic-card-form input,.lic-modal__card input,.lic-modal__card select,.lic-move-form select,.lic-move-form input{height:38px;border:1px solid #cbd5df;border-radius:6px;padding:0 10px;background:#fff;color:#17202a;min-width:110px}
 .lic-filter select{min-width:240px}
 .lic-filter input{width:92px}
 .lic-icon-btn{height:38px;width:38px;display:inline-grid;place-items:center;border:0;border-radius:6px;background:#0f766e;color:#fff;cursor:pointer}
 .lic-primary,.lic-secondary,.lic-link-btn{height:38px;border:0;border-radius:6px;padding:0 12px;cursor:pointer}
-.lic-primary{background:#0f766e;color:#fff}
+.lic-primary{background:#0f766e;color:#fff;display:inline-flex;align-items:center;justify-content:center;gap:6px}
 .lic-secondary{background:#e2e8f0;color:#17202a}
 .lic-link-btn{background:transparent;color:#0f766e;padding:0}
+.lic-new-request{white-space:nowrap}
 .lic-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
 .lic-stats article{background:#fff;border:1px solid #dbe3ea;border-radius:8px;padding:14px}
 .lic-stats span{display:block;font-size:.78rem;color:#64748b}
@@ -437,9 +438,14 @@
 .lic-panel{background:#fff;border:1px solid #dbe3ea;border-radius:8px;padding:16px;box-shadow:0 8px 22px rgba(15,23,42,.04)}
 .lic-panel.admin{border-color:#c7d2fe;background:#f8faff}
 .lic-panel__head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:12px}
-.lic-panel__head h2,.lic-child h3{margin:0;letter-spacing:0}
-.lic-panel__head h2{font-size:1.05rem}
-.lic-panel__head span,.lic-child__head span{color:#64748b;font-size:.82rem}
+.lic-collapse__summary{display:flex;justify-content:space-between;gap:12px;align-items:center;cursor:pointer;list-style:none}
+.lic-collapse__summary::-webkit-details-marker,.lic-child__head::-webkit-details-marker{display:none}
+.lic-collapse__summary::after,.lic-child__head::after{content:"+";width:28px;height:28px;display:inline-grid;place-items:center;border-radius:6px;background:#e2e8f0;color:#0f172a;font-weight:700;flex:0 0 auto}
+.lic-collapse[open]>.lic-collapse__summary{margin-bottom:12px}
+.lic-collapse[open]>.lic-collapse__summary::after,.lic-child[open]>.lic-child__head::after{content:"-"}
+.lic-panel__head h2,.lic-collapse__summary h2,.lic-child h3{margin:0;letter-spacing:0}
+.lic-panel__head h2,.lic-collapse__summary h2{font-size:1.05rem}
+.lic-panel__head span,.lic-collapse__summary span,.lic-child__head span{color:#64748b;font-size:.82rem}
 .lic-admin-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:14px}
 .lic-card-form{display:grid;gap:10px;border:1px solid #dbe3ea;border-radius:8px;padding:12px;background:#fff}
 .lic-card-form input,.lic-card-form select{width:100%;min-width:0}
@@ -454,8 +460,10 @@
 .muted{color:#64748b}
 .lic-child-list{display:grid;gap:12px}
 .lic-child{border:1px solid #dbe3ea;border-radius:8px;padding:12px;background:#fcfdff}
-.lic-child__head{display:flex;justify-content:space-between;gap:12px;align-items:start;margin-bottom:10px}
+.lic-child__head{display:flex;justify-content:space-between;gap:12px;align-items:start;cursor:pointer;list-style:none}
+.lic-child[open]>.lic-child__head{margin-bottom:10px}
 .lic-child__head strong{color:#0f766e;text-align:right}
+.lic-empty{border:1px dashed #cbd5df;border-radius:8px;padding:14px;color:#64748b;background:#f8fafc}
 .lic-table-wrap.slim{max-height:460px}
 .lic-actions-cell{text-align:right}
 .lic-move-form{display:grid;grid-template-columns:minmax(150px,1fr) 74px 38px;gap:6px;align-items:center;min-width:270px}
@@ -465,7 +473,9 @@
 .lic-modal__card{width:min(430px,100%);background:#fff;border:1px solid #dbe3ea;border-radius:8px;box-shadow:0 24px 70px rgba(15,23,42,.24);padding:18px;display:grid;gap:14px}
 .lic-modal__card h2{margin:0;font-size:1.15rem}
 .lic-modal__card p{margin:6px 0 0;color:#64748b}
-.lic-modal__card input{width:100%}
+.lic-modal__card input,.lic-modal__card select{width:100%}
+.lic-manual-product{display:none}
+.lic-manual-product.visible{display:grid}
 .lic-modal__actions{display:flex;justify-content:flex-end;gap:8px}
 @@media (max-width: 980px){
   .lic-head,.lic-toolbar{align-items:stretch}
@@ -473,12 +483,13 @@
   .lic-head__meta{text-align:left}
   .lic-stats,.lic-admin-grid{grid-template-columns:1fr}
   .lic-filter,.lic-filter.compact{width:100%;margin-left:0}
+  .lic-new-request{width:100%}
 }
 @@media (max-width: 680px){
   .lic-panel,.lic-head{padding:14px}
   .lic-filter label,.lic-filter select,.lic-filter input{width:100%;min-width:0}
   .lic-icon-btn{width:100%}
-  .lic-child__head,.lic-panel__head{display:grid}
+  .lic-child__head,.lic-panel__head,.lic-collapse__summary{display:grid}
   .lic-child__head strong{text-align:left}
   .lic-move-form{grid-template-columns:1fr}
 }
@@ -488,18 +499,48 @@
     (() => {
         const modal = document.getElementById('licenseModal');
         const close = document.getElementById('closeModal');
-        const child = document.getElementById('modalClienteHijoId');
-        const record = document.getElementById('modalSalesRecordId');
-        const summary = document.getElementById('modalSummary');
-        document.querySelectorAll('.request-btn').forEach((button) => {
-            button.addEventListener('click', () => {
-                child.value = button.dataset.clienteId || '';
-                record.value = button.dataset.salesId || '';
-                summary.textContent = `${button.dataset.cliente || ''} · ${button.dataset.producto || ''} · ${button.dataset.precio || ''}`;
-                modal.classList.add('open');
-                modal.setAttribute('aria-hidden', 'false');
+        const open = document.getElementById('openNewRequest');
+        const child = document.getElementById('requestChild');
+        const product = document.getElementById('requestProduct');
+        const record = document.getElementById('requestSalesRecordId');
+        const manualWrap = document.getElementById('manualProductWrap');
+        const manual = document.getElementById('manualProduct');
+
+        const syncProduct = () => {
+            const isOther = product.value === '__otro';
+            record.value = isOther ? '' : product.value;
+            manualWrap.classList.toggle('visible', isOther);
+            manual.required = isOther;
+            if (!isOther) {
+                manual.value = '';
+            }
+        };
+
+        const syncProductsByChild = () => {
+            const selectedChild = child.value;
+            Array.from(product.options).forEach((option) => {
+                const isPlaceholder = option.value === '';
+                const isOther = option.value === '__otro';
+                const belongs = !selectedChild || option.dataset.child === selectedChild;
+                const visible = isPlaceholder || isOther || belongs;
+                option.hidden = !visible;
+                option.disabled = !visible;
             });
+
+            if (product.selectedOptions.length && product.selectedOptions[0].disabled) {
+                product.value = '';
+            }
+
+            syncProduct();
+        };
+
+        open.addEventListener('click', () => {
+            modal.classList.add('open');
+            modal.setAttribute('aria-hidden', 'false');
+            syncProductsByChild();
         });
+        child.addEventListener('change', syncProductsByChild);
+        product.addEventListener('change', syncProduct);
         close.addEventListener('click', () => {
             modal.classList.remove('open');
             modal.setAttribute('aria-hidden', 'true');

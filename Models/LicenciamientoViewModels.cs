@@ -27,6 +27,7 @@ namespace DigitalTechClientPortal.Web.Models
         public List<AccountIdLicenciamientoVm> AccountIdsDisponibles { get; set; } = new();
         public List<AccountIdLicenciamientoVm> AccountIdsGrupoActual { get; set; } = new();
         public List<LicenciaProductoResumenVm> ProductosRazonPadre { get; set; } = new();
+        public List<ProductoSolicitudVm> ProductosSolicitud { get; set; } = new();
         public List<ClienteLicenciamientoVm> ClientesHijos { get; set; } = new();
         public List<SolicitudLicenciaVm> HistoricoSolicitudes { get; set; } = new();
 
@@ -77,6 +78,15 @@ namespace DigitalTechClientPortal.Web.Models
         public List<string> AccountIds { get; set; } = new();
     }
 
+    public sealed class ProductoSolicitudVm
+    {
+        public Guid SalesRecordId { get; set; }
+        public Guid ClienteId { get; set; }
+        public string ClienteNombre { get; set; } = string.Empty;
+        public string Producto { get; set; } = string.Empty;
+        public decimal PrecioUnitarioUsd { get; set; }
+    }
+
     public sealed class ClienteLicenciamientoVm
     {
         public Guid ClienteId { get; set; }
@@ -123,6 +133,7 @@ namespace DigitalTechClientPortal.Web.Models
     {
         public Guid Id { get; set; }
         public DateTime? FechaSolicitud { get; set; }
+        public DateTime? FechaAprovisionamiento { get; set; }
         public DateTime? FechaProrrateo { get; set; }
         public string SolicitadoPor { get; set; } = string.Empty;
         public string ClienteHijo { get; set; } = string.Empty;
@@ -132,6 +143,28 @@ namespace DigitalTechClientPortal.Web.Models
         public int CantidadNueva { get; set; }
         public decimal PrecioUnitarioUsd { get; set; }
         public string Estado { get; set; } = "Pendiente";
+    }
+
+    public sealed class CrearSolicitudClienteVm
+    {
+        public Guid ClienteId { get; set; }
+
+        [Required(ErrorMessage = "Selecciona el cliente hijo.")]
+        public Guid ClienteHijoId { get; set; }
+
+        public Guid? SalesRecordId { get; set; }
+
+        [StringLength(250)]
+        public string ProductoManual { get; set; } = string.Empty;
+
+        [Range(1, 1000000, ErrorMessage = "Solo puedes solicitar aumentos de una licencia o más.")]
+        public int Cantidad { get; set; }
+
+        [Required(ErrorMessage = "Selecciona la fecha de aprovisionamiento.")]
+        public DateTime FechaAprovisionamiento { get; set; }
+
+        public int Mes { get; set; }
+        public int Anio { get; set; }
     }
 
     public sealed class CrearSubRazonLicenciamientoVm

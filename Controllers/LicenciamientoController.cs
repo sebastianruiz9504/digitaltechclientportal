@@ -108,6 +108,34 @@ namespace DigitalTechClientPortal.Web.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
+        public async Task<IActionResult> CrearSolicitudCliente(CrearSolicitudClienteVm input)
+        {
+            if (!ModelState.IsValid)
+            {
+                TempData["LicenciamientoError"] = FirstModelError();
+                return RedirectToIndex(input.ClienteId, input.Mes, input.Anio);
+            }
+
+            try
+            {
+                var solicitante = UserEmailResolver.GetCurrentEmail(User) ?? string.Empty;
+                var clienteId = await _licenciamientoService.CrearSolicitudClienteAsync(
+                    UserEmailResolver.GetCandidateEmails(User),
+                    input,
+                    solicitante);
+
+                TempData["LicenciamientoMensaje"] = "Solicitud cargada en solicitudesclientes con estado Pendiente.";
+                return RedirectToIndex(clienteId, input.Mes, input.Anio);
+            }
+            catch (Exception ex)
+            {
+                TempData["LicenciamientoError"] = ex.Message;
+                return RedirectToIndex(input.ClienteId, input.Mes, input.Anio);
+            }
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
         public async Task<IActionResult> ActualizarFechaCorte(ActualizarFechaCorteLicenciamientoVm input)
         {
             if (!ModelState.IsValid)
