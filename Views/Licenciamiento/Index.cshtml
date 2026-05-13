@@ -31,6 +31,10 @@
     {
         <div class="lic-alert warn">@Model.Error</div>
     }
+    @if (Model.TotalLicenciasSinAsignar > 0)
+    {
+        <div class="lic-alert warn">@Model.TotalLicenciasSinAsignar licencias siguen facturando al grupo y están pendientes por asignar a una razón hija.</div>
+    }
 
     <section class="lic-toolbar">
         <form method="get" asp-action="Index" class="lic-filter">
@@ -107,6 +111,7 @@
         <article><span>Licencias grupo</span><strong>@Model.TotalLicenciasPadre</strong></article>
         <article><span>Clientes hijos</span><strong>@Model.TotalClientesHijos</strong></article>
         <article><span>Account IDs</span><strong>@Model.TotalAccountIds</strong></article>
+        <article><span>Sin asignar</span><strong>@Model.TotalLicenciasSinAsignar</strong></article>
         <article><span>Prefactura</span><strong>@usd(Model.TotalPrefactura)</strong></article>
     </section>
 
@@ -216,6 +221,8 @@
                         <tr>
                             <th>Producto</th>
                             <th>Total</th>
+                            <th>Asignadas</th>
+                            <th>Sin asignar</th>
                             <th>USD unitario</th>
                             <th>Clientes</th>
                             <th>Account IDs</th>
@@ -227,6 +234,8 @@
                             <tr>
                                 <td>@p.Producto</td>
                                 <td><span class="lic-pill">@p.CantidadTotal</span></td>
+                                <td>@p.CantidadAsignada</td>
+                                <td>@p.CantidadSinAsignar</td>
                                 <td>@usd(p.PrecioUnitarioUsd)</td>
                                 <td>@string.Join(", ", p.ClientesConProducto)</td>
                                 <td class="muted">@string.Join(", ", p.AccountIds)</td>
@@ -234,7 +243,7 @@
                         }
                         @if (Model.ProductosRazonPadre.Count == 0)
                         {
-                            <tr><td colspan="5">No hay productos cloud activos para este grupo.</td></tr>
+                            <tr><td colspan="7">No hay productos cloud activos para este grupo.</td></tr>
                         }
                     </tbody>
                 </table>
@@ -309,6 +318,69 @@
     <section class="lic-panel">
         <div class="lic-panel__head">
             <div>
+                <h2>Licencias Sin Asignar</h2>
+                <span>Siguen sumando al total facturable de la razón padre</span>
+            </div>
+            <span>@Model.TotalLicenciasSinAsignar licencias</span>
+        </div>
+        <div class="lic-table-wrap">
+            <table class="lic-table">
+                <thead>
+                    <tr>
+                        <th>Producto</th>
+                        <th>Cantidad</th>
+                        <th>USD unitario</th>
+                        <th>Total mensual</th>
+                        <th>Asignar a hijo</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var libre in Model.LicenciasSinAsignar)
+                    {
+                        <tr>
+                            <td>@libre.Producto</td>
+                            <td><span class="lic-pill">@libre.Cantidad</span></td>
+                            <td>@usd(libre.PrecioUnitarioUsd)</td>
+                            <td>@usd(libre.TotalMensualUsd)</td>
+                            <td>
+                                <form method="post" asp-action="AsignarLicenciasSinAsignar" class="lic-assign-free-form">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="ClienteId" value="@Model.ClienteId" />
+                                    <input type="hidden" name="Mes" value="@Model.MesSeleccionado" />
+                                    <input type="hidden" name="Anio" value="@Model.AnioSeleccionado" />
+                                    <input type="hidden" name="ProductoKey" value="@libre.ProductoKey" />
+                                    <input type="hidden" name="Producto" value="@libre.Producto" />
+                                    <input type="hidden" name="ProductoId" value="@(libre.ProductoId?.ToString() ?? string.Empty)" />
+                                    <input type="hidden" name="ProductoLogicalName" value="@libre.ProductoLogicalName" />
+                                    <input type="hidden" name="PrecioUnitarioUsd" value="@libre.PrecioUnitarioUsd.ToString(System.Globalization.CultureInfo.InvariantCulture)" />
+                                    <input type="hidden" name="DiaFacturacion" value="@(libre.DiaFacturacion?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty)" />
+                                    <select name="DestinoClienteId" required>
+                                        <option value="">Destino...</option>
+                                        @foreach (var cliente in Model.ClientesHijos)
+                                        {
+                                            <option value="@cliente.ClienteId">@cliente.ClienteNombre</option>
+                                        }
+                                    </select>
+                                    <input name="Cantidad" type="number" min="1" max="@libre.Cantidad" value="@libre.Cantidad" required />
+                                    <button type="submit" class="lic-icon-btn" title="Asignar licencias" aria-label="Asignar licencias">
+                                        <i class="ti ti-arrow-right"></i>
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                    @if (Model.LicenciasSinAsignar.Count == 0)
+                    {
+                        <tr><td colspan="5">No hay licencias pendientes por asignar.</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="lic-panel">
+        <div class="lic-panel__head">
+            <div>
                 <h2>Histórico De Solicitudes</h2>
                 <span>Las solicitudes quedan asociadas al cliente hijo para prorrateo</span>
             </div>
@@ -322,6 +394,7 @@
                         <th>Aprovisionamiento</th>
                         <th>Solicitante</th>
                         <th>Cliente hijo</th>
+                        <th>Tipo</th>
                         <th>Producto</th>
                         <th>Cantidad</th>
                         <th>USD unitario</th>
@@ -336,15 +409,16 @@
                             <td>@(h.FechaAprovisionamiento?.ToString("dd/MM/yyyy") ?? "-")</td>
                             <td>@h.SolicitadoPor</td>
                             <td>@h.ClienteHijo</td>
+                            <td>@h.TipoMovimiento</td>
                             <td>@h.Producto</td>
-                            <td>+@h.CantidadNueva</td>
+                            <td>@(h.TipoMovimiento == "Desasignacion" ? "-" : "+")@h.CantidadNueva</td>
                             <td>@usd(h.PrecioUnitarioUsd)</td>
                             <td><span class="lic-status">@h.Estado</span></td>
                         </tr>
                     }
                     @if (Model.HistoricoSolicitudes.Count == 0)
                     {
-                        <tr><td colspan="8">Sin solicitudes registradas.</td></tr>
+                        <tr><td colspan="9">Sin solicitudes registradas.</td></tr>
                     }
                 </tbody>
             </table>
@@ -361,10 +435,17 @@
         <input type="hidden" name="Anio" value="@Model.AnioSeleccionado" />
         <div>
             <h2>Nueva solicitud</h2>
-            <p>Estado inicial: Pendiente</p>
+            <p id="requestModeHint">Estado inicial: Pendiente</p>
         </div>
         <label>
-            <span>Hijo</span>
+            <span>Modo</span>
+            <select name="Modo" id="requestMode" required>
+                <option value="NuevaLicencia">Solicitar nuevas licencias</option>
+                <option value="Desasignacion">Desasignar licencias</option>
+            </select>
+        </label>
+        <label>
+            <span id="requestChildLabel">Hijo</span>
             <select name="ClienteHijoId" id="requestChild" required>
                 <option value="">Seleccionar hijo...</option>
                 @foreach (var cliente in Model.ClientesHijos)
@@ -374,13 +455,13 @@
             </select>
         </label>
         <label>
-            <span>Producto</span>
+            <span id="requestProductLabel">Producto</span>
             <select id="requestProduct" required>
                 <option value="">Seleccionar producto...</option>
                 @foreach (var producto in Model.ProductosSolicitud)
                 {
                     <option value="@producto.SalesRecordId" data-child="@producto.ClienteId">
-                        @producto.Producto · @producto.ClienteNombre · @usd(producto.PrecioUnitarioUsd)
+                        @producto.Producto · @producto.ClienteNombre · @producto.Cantidad lic. · @usd(producto.PrecioUnitarioUsd)
                     </option>
                 }
                 <option value="__otro" data-child="">Otro</option>
@@ -395,7 +476,7 @@
             <input name="Cantidad" type="number" min="1" value="1" required />
         </label>
         <label>
-            <span>Fecha de aprovisionamiento</span>
+            <span id="requestDateLabel">Fecha de aprovisionamiento</span>
             <input name="FechaAprovisionamiento" type="date" value="@fechaHoy" required />
         </label>
         <div class="lic-modal__actions">
@@ -421,7 +502,7 @@
 .lic-filter.compact{margin-left:auto}
 .lic-filter.readonly strong{display:flex;align-items:center;height:38px;color:#111827}
 .lic-filter label,.lic-card-form label,.lic-modal__card label{display:grid;gap:4px;font-size:.8rem;color:#52616b}
-.lic-filter select,.lic-filter input,.lic-card-form select,.lic-card-form input,.lic-modal__card input,.lic-modal__card select,.lic-move-form select,.lic-move-form input{height:38px;border:1px solid #cbd5df;border-radius:6px;padding:0 10px;background:#fff;color:#17202a;min-width:110px}
+.lic-filter select,.lic-filter input,.lic-card-form select,.lic-card-form input,.lic-modal__card input,.lic-modal__card select,.lic-move-form select,.lic-move-form input,.lic-assign-free-form select,.lic-assign-free-form input{height:38px;border:1px solid #cbd5df;border-radius:6px;padding:0 10px;background:#fff;color:#17202a;min-width:110px}
 .lic-filter select{min-width:240px}
 .lic-filter input{width:92px}
 .lic-icon-btn{height:38px;width:38px;display:inline-grid;place-items:center;border:0;border-radius:6px;background:#0f766e;color:#fff;cursor:pointer}
@@ -430,7 +511,7 @@
 .lic-secondary{background:#e2e8f0;color:#17202a}
 .lic-link-btn{background:transparent;color:#0f766e;padding:0}
 .lic-new-request{white-space:nowrap}
-.lic-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.lic-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
 .lic-stats article{background:#fff;border:1px solid #dbe3ea;border-radius:8px;padding:14px}
 .lic-stats span{display:block;font-size:.78rem;color:#64748b}
 .lic-stats strong{font-size:1.35rem;color:#111827}
@@ -468,6 +549,8 @@
 .lic-actions-cell{text-align:right}
 .lic-move-form{display:grid;grid-template-columns:minmax(150px,1fr) 74px 38px;gap:6px;align-items:center;min-width:270px}
 .lic-move-form select,.lic-move-form input{min-width:0;width:100%}
+.lic-assign-free-form{display:grid;grid-template-columns:minmax(160px,1fr) 82px 38px;gap:6px;align-items:center;min-width:300px}
+.lic-assign-free-form select,.lic-assign-free-form input{min-width:0;width:100%}
 .lic-modal{position:fixed;inset:0;display:none;place-items:center;background:rgba(15,23,42,.48);padding:20px;z-index:1050}
 .lic-modal.open{display:grid}
 .lic-modal__card{width:min(430px,100%);background:#fff;border:1px solid #dbe3ea;border-radius:8px;box-shadow:0 24px 70px rgba(15,23,42,.24);padding:18px;display:grid;gap:14px}
@@ -491,7 +574,7 @@
   .lic-icon-btn{width:100%}
   .lic-child__head,.lic-panel__head,.lic-collapse__summary{display:grid}
   .lic-child__head strong{text-align:left}
-  .lic-move-form{grid-template-columns:1fr}
+  .lic-move-form,.lic-assign-free-form{grid-template-columns:1fr}
 }
 </style>
 
@@ -500,14 +583,20 @@
         const modal = document.getElementById('licenseModal');
         const close = document.getElementById('closeModal');
         const open = document.getElementById('openNewRequest');
+        const mode = document.getElementById('requestMode');
+        const modeHint = document.getElementById('requestModeHint');
         const child = document.getElementById('requestChild');
+        const childLabel = document.getElementById('requestChildLabel');
         const product = document.getElementById('requestProduct');
+        const productLabel = document.getElementById('requestProductLabel');
         const record = document.getElementById('requestSalesRecordId');
         const manualWrap = document.getElementById('manualProductWrap');
         const manual = document.getElementById('manualProduct');
+        const dateLabel = document.getElementById('requestDateLabel');
 
         const syncProduct = () => {
-            const isOther = product.value === '__otro';
+            const isUnassign = mode.value === 'Desasignacion';
+            const isOther = !isUnassign && product.value === '__otro';
             record.value = isOther ? '' : product.value;
             manualWrap.classList.toggle('visible', isOther);
             manual.required = isOther;
@@ -518,11 +607,17 @@
 
         const syncProductsByChild = () => {
             const selectedChild = child.value;
+            const isUnassign = mode.value === 'Desasignacion';
+            modeHint.textContent = isUnassign ? 'Movimiento aplicado: queda en licencias sin asignar' : 'Estado inicial: Pendiente';
+            childLabel.textContent = isUnassign ? 'Hijo origen' : 'Hijo';
+            productLabel.textContent = isUnassign ? 'Producto a desasignar' : 'Producto';
+            dateLabel.textContent = isUnassign ? 'Fecha de movimiento' : 'Fecha de aprovisionamiento';
+
             Array.from(product.options).forEach((option) => {
                 const isPlaceholder = option.value === '';
                 const isOther = option.value === '__otro';
                 const belongs = !selectedChild || option.dataset.child === selectedChild;
-                const visible = isPlaceholder || isOther || belongs;
+                const visible = isPlaceholder || (!isUnassign && isOther) || (!isOther && belongs);
                 option.hidden = !visible;
                 option.disabled = !visible;
             });
@@ -540,6 +635,10 @@
             syncProductsByChild();
         });
         child.addEventListener('change', syncProductsByChild);
+        mode.addEventListener('change', () => {
+            product.value = '';
+            syncProductsByChild();
+        });
         product.addEventListener('change', syncProduct);
         close.addEventListener('click', () => {
             modal.classList.remove('open');

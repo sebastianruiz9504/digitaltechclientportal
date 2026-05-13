@@ -57,11 +57,17 @@ namespace DigitalTechClientPortal.Services
         private const string SolicitudAccountIds = "cr07a_accountids";
         private const string SolicitudAprobadoPor = "cr07a_aprobadopor";
         private const string SolicitudFechaAprobacion = "cr07a_fechaaprobacion";
+        private const string SolicitudTipoMovimiento = "cr07a_tipomovimiento";
+        private const string ProductoCloudPrimaryName = "cr07a_name";
 
         private const int SolicitudEstadoPendiente = 645250000;
         private const int SolicitudEstadoAprovisionado = 645250001;
         private const int SolicitudEstadoRechazado = 645250002;
         private const int LabelLanguage = 3082;
+
+        private const string MovimientoNuevaLicencia = "NuevaLicencia";
+        private const string MovimientoDesasignacion = "Desasignacion";
+        private const string MovimientoAsignacionDisponible = "AsignacionDisponible";
 
         private static readonly SemaphoreSlim SchemaLock = new(1, 1);
         private static LicenciamientoSchemaStatus? CachedSchemaStatus;
@@ -136,6 +142,7 @@ namespace DigitalTechClientPortal.Services
                 productosPorId,
                 enterprise.ChildrenById,
                 enterprise.GrupoEmpresarialNombre);
+            var licenciasSinAsignar = BuildLicenciasSinAsignar(solicitudes);
 
             var clientesHijos = enterprise.Children
                 .OrderBy(c => c.ClienteNombre, StringComparer.OrdinalIgnoreCase)
@@ -167,7 +174,7 @@ namespace DigitalTechClientPortal.Services
                 })
                 .ToList();
 
-            foreach (var solicitud in solicitudes.Where(s => IsSolicitudFacturable(s.EstadoValor)))
+            foreach (var solicitud in solicitudes.Where(s => IsSolicitudFacturable(s.EstadoValor) && IsNuevaLicencia(s.TipoMovimiento)))
             {
                 if (!solicitud.SalesRecordId.HasValue ||
                     !productosPorId.TryGetValue(solicitud.SalesRecordId.Value, out var producto))
@@ -227,6 +234,7 @@ namespace DigitalTechClientPortal.Services
                         SalesRecordId = first.SalesRecordId,
                         ProductoId = first.ProductoReference?.Id,
                         ProductoLogicalName = first.ProductoReference?.LogicalName ?? string.Empty,
+                        ProductoKey = GetProductGroupKey(first),
                         Producto = first.Nombre,
                         CantidadTotal = g.Sum(p => p.Cantidad),
                         CantidadAsignada = g.Sum(p => p.Cantidad),
@@ -245,6 +253,34 @@ namespace DigitalTechClientPortal.Services
                 .ThenBy(p => p.PrecioUnitarioUsd)
                 .ToList();
 
+            foreach (var libre in licenciasSinAsignar)
+            {
+                var resumen = productosRazonPadre.FirstOrDefault(p =>
+                    string.Equals(p.ProductoKey, libre.ProductoKey, StringComparison.OrdinalIgnoreCase) &&
+                    p.PrecioUnitarioUsd == libre.PrecioUnitarioUsd);
+
+                if (resumen == null)
+                {
+                    resumen = new LicenciaProductoResumenVm
+                    {
+                        ProductoId = libre.ProductoId,
+                        ProductoLogicalName = libre.ProductoLogicalName,
+                        ProductoKey = libre.ProductoKey,
+                        Producto = libre.Producto,
+                        PrecioUnitarioUsd = libre.PrecioUnitarioUsd,
+                        DiaFacturacion = libre.DiaFacturacion
+                    };
+                    productosRazonPadre.Add(resumen);
+                }
+
+                resumen.CantidadTotal += libre.Cantidad;
+            }
+
+            productosRazonPadre = productosRazonPadre
+                .OrderBy(p => p.Producto, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(p => p.PrecioUnitarioUsd)
+                .ToList();
+
             var productosSolicitud = productos
                 .OrderBy(p => p.ClienteNombre, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(p => p.Nombre, StringComparer.OrdinalIgnoreCase)
@@ -255,6 +291,7 @@ namespace DigitalTechClientPortal.Services
                     ClienteId = p.ClienteId,
                     ClienteNombre = p.ClienteNombre,
                     Producto = p.Nombre,
+                    Cantidad = p.Cantidad,
                     PrecioUnitarioUsd = p.PrecioUnitarioUsd
                 })
                 .ToList();
@@ -296,6 +333,7 @@ namespace DigitalTechClientPortal.Services
                 AccountIdsGrupoActual = accountIdsGrupoActual,
                 ProductosRazonPadre = productosRazonPadre,
                 ProductosSolicitud = productosSolicitud,
+                LicenciasSinAsignar = licenciasSinAsignar,
                 ClientesHijos = clientesHijos,
                 HistoricoSolicitudes = solicitudes
                     .Select(s => new SolicitudLicenciaVm
@@ -311,6 +349,7 @@ namespace DigitalTechClientPortal.Services
                         Producto = s.ProductoNombre,
                         CantidadNueva = s.Cantidad,
                         PrecioUnitarioUsd = s.PrecioUnitarioUsd,
+                        TipoMovimiento = TipoMovimientoLabel(s.TipoMovimiento),
                         Estado = EstadoSolicitudLabel(s.EstadoValor)
                     })
                     .ToList(),
@@ -339,6 +378,7 @@ namespace DigitalTechClientPortal.Services
                 new CrearSolicitudClienteVm
                 {
                     ClienteId = input.ClienteId,
+                    Modo = MovimientoNuevaLicencia,
                     ClienteHijoId = input.ClienteHijoId,
                     SalesRecordId = input.SalesRecordId,
                     Cantidad = input.Cantidad,
@@ -354,6 +394,12 @@ namespace DigitalTechClientPortal.Services
             CrearSolicitudClienteVm input,
             string solicitante)
         {
+            var tipoMovimiento = NormalizeTipoMovimiento(input.Modo);
+            if (IsDesasignacion(tipoMovimiento))
+            {
+                return await DesasignarLicenciasAsync(candidateEmails, input, solicitante);
+            }
+
             var clienteId = await ResolveAuthorizedClientIdAsync(candidateEmails, input.ClienteId, null);
             if (clienteId == Guid.Empty)
             {
@@ -402,7 +448,15 @@ namespace DigitalTechClientPortal.Services
             }
 
             var fechaAprovisionamiento = DateTime.SpecifyKind(input.FechaAprovisionamiento.Date, DateTimeKind.Unspecified);
-            var detalle = BuildSolicitudDetalle(enterprise, clienteHijo, producto, productoNombre, solicitante, input.Cantidad, fechaAprovisionamiento);
+            var detalle = BuildSolicitudDetalle(
+                enterprise,
+                clienteHijo,
+                producto,
+                productoNombre,
+                solicitante,
+                input.Cantidad,
+                fechaAprovisionamiento,
+                MovimientoNuevaLicencia);
             var solicitud = new Entity(SolicitudEntity)
             {
                 [SolicitudNombre] = $"{clienteHijo.ClienteNombre} - {productoNombre} - {input.Cantidad}",
@@ -414,6 +468,11 @@ namespace DigitalTechClientPortal.Services
                 [SolicitudDetalle] = detalle,
                 [SolicitudValorUnitario] = producto?.PrecioUnitarioUsd ?? 0m
             };
+
+            if (schema.SolicitudTipoMovimientoReady)
+            {
+                solicitud[SolicitudTipoMovimiento] = MovimientoNuevaLicencia;
+            }
 
             if (schema.SolicitudRegistroProductoCloudLookupReady && producto != null)
             {
@@ -451,6 +510,333 @@ namespace DigitalTechClientPortal.Services
             }
 
             await _svc.CreateAsync(solicitud);
+            return clienteId;
+        }
+
+        private async Task<Guid> DesasignarLicenciasAsync(
+            IReadOnlyList<string> candidateEmails,
+            CrearSolicitudClienteVm input,
+            string solicitante)
+        {
+            var clienteId = await ResolveAuthorizedClientIdAsync(candidateEmails, input.ClienteId, null);
+            if (clienteId == Guid.Empty)
+            {
+                throw new UnauthorizedAccessException("No tienes un cliente asociado para desasignar licencias.");
+            }
+
+            if (input.Cantidad <= 0)
+            {
+                throw new InvalidOperationException("La cantidad a desasignar debe ser mayor a cero.");
+            }
+
+            if (!input.SalesRecordId.HasValue || input.SalesRecordId.Value == Guid.Empty)
+            {
+                throw new InvalidOperationException("Selecciona el producto que quieres desasignar.");
+            }
+
+            if (input.FechaAprovisionamiento == default)
+            {
+                input.FechaAprovisionamiento = DateTime.Today;
+            }
+
+            var schema = await EnsureSchemaAsync();
+            if (!schema.SolicitudEntityReady || !schema.SolicitudClienteLookupReady)
+            {
+                throw new InvalidOperationException("La tabla solicitudesclientes no está lista en Dataverse.");
+            }
+
+            var clienteNombre = await GetClienteNombreAsync(clienteId);
+            var enterprise = await GetEnterpriseContextAsync(clienteId, clienteNombre, schema);
+            var clienteHijoId = input.ClienteHijoId != Guid.Empty ? input.ClienteHijoId : clienteId;
+            if (!enterprise.ChildrenById.TryGetValue(clienteHijoId, out var clienteHijo))
+            {
+                throw new InvalidOperationException("El cliente hijo seleccionado no pertenece al grupo empresarial visible para este usuario.");
+            }
+
+            var producto = await GetProductoCloudAsync(input.SalesRecordId.Value, clienteHijoId, enterprise.ChildrenById);
+            if (producto == null)
+            {
+                throw new InvalidOperationException("El producto seleccionado no pertenece al cliente hijo seleccionado.");
+            }
+
+            if (producto.Cantidad < input.Cantidad)
+            {
+                throw new InvalidOperationException($"No puedes desasignar {input.Cantidad} licencias; {producto.ClienteNombre} solo tiene {producto.Cantidad} disponibles en {producto.Nombre}.");
+            }
+
+            var fechaMovimiento = DateTime.SpecifyKind(input.FechaAprovisionamiento.Date, DateTimeKind.Unspecified);
+            var detalle = BuildSolicitudDetalle(
+                enterprise,
+                clienteHijo,
+                producto,
+                producto.Nombre,
+                solicitante,
+                input.Cantidad,
+                fechaMovimiento,
+                MovimientoDesasignacion);
+
+            var solicitud = new Entity(SolicitudEntity)
+            {
+                [SolicitudNombre] = $"{clienteHijo.ClienteNombre} - Desasignacion - {producto.Nombre} - {input.Cantidad}",
+                [SolicitudCliente] = new EntityReference(ClienteEntity, clienteHijo.ClienteId),
+                [SolicitudProducto] = producto.Nombre,
+                [SolicitudCantidad] = input.Cantidad,
+                [SolicitudEstado] = new OptionSetValue(SolicitudEstadoAprovisionado),
+                [SolicitudFecha] = fechaMovimiento,
+                [SolicitudDetalle] = detalle,
+                [SolicitudValorUnitario] = producto.PrecioUnitarioUsd
+            };
+
+            if (schema.SolicitudTipoMovimientoReady)
+            {
+                solicitud[SolicitudTipoMovimiento] = MovimientoDesasignacion;
+            }
+
+            if (schema.SolicitudRegistroProductoCloudLookupReady)
+            {
+                solicitud[SolicitudRegistroProductoCloud] = new EntityReference(ProductoCloudEntity, producto.SalesRecordId);
+            }
+
+            if (schema.SolicitadoPorReady)
+            {
+                solicitud[SolicitudSolicitadoPor] = solicitante;
+            }
+
+            if (schema.SolicitadoPorCorreoReady)
+            {
+                solicitud[SolicitudSolicitadoPorCorreo] = solicitante;
+            }
+
+            if (schema.SolicitudGrupoEmpresarialIdReady)
+            {
+                solicitud[SolicitudGrupoEmpresarialId] = enterprise.GrupoEmpresarialId;
+            }
+
+            if (schema.SolicitudGrupoEmpresarialNameReady)
+            {
+                solicitud[SolicitudGrupoEmpresarialName] = enterprise.GrupoEmpresarialNombre;
+            }
+
+            if (schema.SolicitudClienteHijoNameReady)
+            {
+                solicitud[SolicitudClienteHijoName] = clienteHijo.ClienteNombre;
+            }
+
+            if (schema.SolicitudAccountIdsReady)
+            {
+                solicitud[SolicitudAccountIds] = string.Join(", ", clienteHijo.AccountIds);
+            }
+
+            var request = new ExecuteTransactionRequest
+            {
+                ReturnResponses = false,
+                Requests = new OrganizationRequestCollection
+                {
+                    new UpdateRequest
+                    {
+                        Target = new Entity(ProductoCloudEntity, producto.SalesRecordId)
+                        {
+                            [ProductoCloudCantidad] = producto.Cantidad - input.Cantidad
+                        }
+                    },
+                    new CreateRequest
+                    {
+                        Target = solicitud
+                    }
+                }
+            };
+
+            await _svc.ExecuteAsync(request);
+            return clienteId;
+        }
+
+        public async Task<Guid> AsignarLicenciasSinAsignarAsync(
+            IReadOnlyList<string> candidateEmails,
+            AsignarLicenciasSinAsignarVm input,
+            string solicitante)
+        {
+            var clienteId = await ResolveAuthorizedClientIdAsync(candidateEmails, input.ClienteId, null);
+            if (clienteId == Guid.Empty)
+            {
+                throw new UnauthorizedAccessException("No tienes un cliente asociado para asignar licencias.");
+            }
+
+            if (input.Cantidad <= 0)
+            {
+                throw new InvalidOperationException("La cantidad a asignar debe ser mayor a cero.");
+            }
+
+            var productoKey = NormalizeProductGroupKey(input.ProductoKey, input.ProductoLogicalName, input.ProductoId, input.Producto);
+            if (string.IsNullOrWhiteSpace(productoKey))
+            {
+                throw new InvalidOperationException("No se pudo identificar el producto a asignar.");
+            }
+
+            var schema = await EnsureSchemaAsync();
+            if (!schema.SolicitudEntityReady || !schema.SolicitudClienteLookupReady)
+            {
+                throw new InvalidOperationException("La tabla solicitudesclientes no está lista en Dataverse.");
+            }
+
+            var clienteNombre = await GetClienteNombreAsync(clienteId);
+            var enterprise = await GetEnterpriseContextAsync(clienteId, clienteNombre, schema);
+            if (!enterprise.ChildrenById.TryGetValue(input.DestinoClienteId, out var clienteDestino))
+            {
+                throw new InvalidOperationException("El cliente destino no pertenece al grupo empresarial visible para este usuario.");
+            }
+
+            var productos = await GetProductosCloudAsync(enterprise.ChildrenById.Keys.ToList(), enterprise.ChildrenById, includeZero: true);
+            var productosPorId = productos.ToDictionary(p => p.SalesRecordId);
+            var solicitudes = await GetSolicitudesAsync(
+                enterprise.ChildrenById.Keys.ToList(),
+                schema,
+                productosPorId,
+                enterprise.ChildrenById,
+                enterprise.GrupoEmpresarialNombre);
+            var licenciasSinAsignar = BuildLicenciasSinAsignar(solicitudes);
+            var licenciaLibre = licenciasSinAsignar.FirstOrDefault(l =>
+                string.Equals(l.ProductoKey, productoKey, StringComparison.OrdinalIgnoreCase) &&
+                l.PrecioUnitarioUsd == input.PrecioUnitarioUsd);
+
+            if (licenciaLibre == null || licenciaLibre.Cantidad < input.Cantidad)
+            {
+                var disponibles = licenciaLibre?.Cantidad ?? 0;
+                throw new InvalidOperationException($"No puedes asignar {input.Cantidad} licencias; solo hay {disponibles} sin asignar para {input.Producto}.");
+            }
+
+            var productoDestino = productos.FirstOrDefault(p =>
+                p.ClienteId == clienteDestino.ClienteId &&
+                string.Equals(GetProductGroupKey(p), productoKey, StringComparison.OrdinalIgnoreCase) &&
+                p.PrecioUnitarioUsd == input.PrecioUnitarioUsd);
+
+            var productoNombre = !string.IsNullOrWhiteSpace(licenciaLibre.Producto)
+                ? licenciaLibre.Producto
+                : input.Producto.Trim();
+            var productoLogicalName = !string.IsNullOrWhiteSpace(licenciaLibre.ProductoLogicalName)
+                ? licenciaLibre.ProductoLogicalName
+                : input.ProductoLogicalName;
+            var productoId = licenciaLibre.ProductoId ?? input.ProductoId;
+            var diaFacturacion = licenciaLibre.DiaFacturacion ?? input.DiaFacturacion;
+            var productoReference = productoId.HasValue && !string.IsNullOrWhiteSpace(productoLogicalName)
+                ? new EntityReference(productoLogicalName, productoId.Value)
+                : null;
+
+            var fechaMovimiento = DateTime.SpecifyKind(DateTime.Today, DateTimeKind.Unspecified);
+            var productoMovimiento = productoDestino ?? new ProductoCloudDto(
+                Guid.NewGuid(),
+                clienteDestino.ClienteId,
+                clienteDestino.ClienteNombre,
+                clienteDestino.AccountIds,
+                productoNombre,
+                0,
+                input.PrecioUnitarioUsd,
+                diaFacturacion,
+                productoReference);
+
+            var detalle = BuildSolicitudDetalle(
+                enterprise,
+                clienteDestino,
+                productoMovimiento,
+                productoNombre,
+                solicitante,
+                input.Cantidad,
+                fechaMovimiento,
+                MovimientoAsignacionDisponible);
+
+            var solicitud = new Entity(SolicitudEntity)
+            {
+                [SolicitudNombre] = $"{clienteDestino.ClienteNombre} - Asignacion - {productoNombre} - {input.Cantidad}",
+                [SolicitudCliente] = new EntityReference(ClienteEntity, clienteDestino.ClienteId),
+                [SolicitudProducto] = productoNombre,
+                [SolicitudCantidad] = input.Cantidad,
+                [SolicitudEstado] = new OptionSetValue(SolicitudEstadoAprovisionado),
+                [SolicitudFecha] = fechaMovimiento,
+                [SolicitudDetalle] = detalle,
+                [SolicitudValorUnitario] = input.PrecioUnitarioUsd
+            };
+
+            if (schema.SolicitudTipoMovimientoReady)
+            {
+                solicitud[SolicitudTipoMovimiento] = MovimientoAsignacionDisponible;
+            }
+
+            if (schema.SolicitudRegistroProductoCloudLookupReady)
+            {
+                solicitud[SolicitudRegistroProductoCloud] = new EntityReference(ProductoCloudEntity, productoMovimiento.SalesRecordId);
+            }
+
+            if (schema.SolicitadoPorReady)
+            {
+                solicitud[SolicitudSolicitadoPor] = solicitante;
+            }
+
+            if (schema.SolicitadoPorCorreoReady)
+            {
+                solicitud[SolicitudSolicitadoPorCorreo] = solicitante;
+            }
+
+            if (schema.SolicitudGrupoEmpresarialIdReady)
+            {
+                solicitud[SolicitudGrupoEmpresarialId] = enterprise.GrupoEmpresarialId;
+            }
+
+            if (schema.SolicitudGrupoEmpresarialNameReady)
+            {
+                solicitud[SolicitudGrupoEmpresarialName] = enterprise.GrupoEmpresarialNombre;
+            }
+
+            if (schema.SolicitudClienteHijoNameReady)
+            {
+                solicitud[SolicitudClienteHijoName] = clienteDestino.ClienteNombre;
+            }
+
+            if (schema.SolicitudAccountIdsReady)
+            {
+                solicitud[SolicitudAccountIds] = string.Join(", ", clienteDestino.AccountIds);
+            }
+
+            var request = new ExecuteTransactionRequest
+            {
+                ReturnResponses = false,
+                Requests = new OrganizationRequestCollection()
+            };
+
+            if (productoDestino == null)
+            {
+                var productoNuevo = new Entity(ProductoCloudEntity, productoMovimiento.SalesRecordId)
+                {
+                    [ProductoCloudPrimaryName] = $"{clienteDestino.ClienteNombre} - {productoNombre}",
+                    [ProductoCloudCliente] = new EntityReference(ClienteEntity, clienteDestino.ClienteId),
+                    [ProductoCloudNombre] = productoNombre,
+                    [ProductoCloudCantidad] = input.Cantidad,
+                    [ProductoCloudPrecioDecimal] = input.PrecioUnitarioUsd
+                };
+
+                if (productoReference != null)
+                {
+                    productoNuevo[ProductoCloudProducto] = productoReference;
+                }
+
+                if (diaFacturacion.HasValue)
+                {
+                    productoNuevo[ProductoCloudDiaFacturacion] = diaFacturacion.Value;
+                }
+
+                request.Requests.Add(new CreateRequest { Target = productoNuevo });
+            }
+            else
+            {
+                request.Requests.Add(new UpdateRequest
+                {
+                    Target = new Entity(ProductoCloudEntity, productoDestino.SalesRecordId)
+                    {
+                        [ProductoCloudCantidad] = productoDestino.Cantidad + input.Cantidad
+                    }
+                });
+            }
+
+            request.Requests.Add(new CreateRequest { Target = solicitud });
+            await _svc.ExecuteAsync(request);
             return clienteId;
         }
 
@@ -988,7 +1374,8 @@ namespace DigitalTechClientPortal.Services
 
         private async Task<List<ProductoCloudDto>> GetProductosCloudAsync(
             IReadOnlyCollection<Guid> clienteIds,
-            IReadOnlyDictionary<Guid, ChildClienteDto> childrenById)
+            IReadOnlyDictionary<Guid, ChildClienteDto> childrenById,
+            bool includeZero = false)
         {
             if (clienteIds.Count == 0)
             {
@@ -1024,7 +1411,7 @@ namespace DigitalTechClientPortal.Services
             var result = await _svc.RetrieveMultipleAsync(query);
             return result.Entities
                 .Select(e => ToProductoCloudDto(e, childrenById))
-                .Where(p => p.SalesRecordId != Guid.Empty && p.ClienteId != Guid.Empty && p.Cantidad > 0)
+                .Where(p => p.SalesRecordId != Guid.Empty && p.ClienteId != Guid.Empty && (includeZero || p.Cantidad > 0))
                 .ToList();
         }
 
@@ -1151,10 +1538,14 @@ namespace DigitalTechClientPortal.Services
                 columns.Add(SolicitudClienteHijoName);
             }
 
+            if (schema.SolicitudTipoMovimientoReady)
+            {
+                columns.Add(SolicitudTipoMovimiento);
+            }
+
             var query = new QueryExpression(SolicitudEntity)
             {
-                ColumnSet = new ColumnSet(columns.ToArray()),
-                TopCount = 300
+                ColumnSet = new ColumnSet(columns.ToArray())
             };
 
             if (clienteIds.Count == 1)
@@ -1181,6 +1572,16 @@ namespace DigitalTechClientPortal.Services
                     : null;
                 var salesRecordId = registroRef?.Id ?? TryReadGuid(detalle, "SalesRecordId");
                 productosPorId.TryGetValue(salesRecordId, out var producto);
+                var productoLogicalName = producto?.ProductoReference?.LogicalName ?? TryReadValue(detalle, "ProductoLogicalName") ?? string.Empty;
+                var productoId = producto?.ProductoReference?.Id ?? TryReadGuid(detalle, "ProductoId");
+                var productKey = producto != null
+                    ? GetProductGroupKey(producto)
+                    : NormalizeProductGroupKey(
+                        TryReadValue(detalle, "ProductoKey"),
+                        productoLogicalName,
+                        productoId == Guid.Empty ? null : productoId,
+                        TryReadValue(detalle, "Producto"));
+                var diaFacturacion = producto?.DiaFacturacion ?? TryReadInt(detalle, "DiaFacturacion");
 
                 var productoTexto = schema.SolicitudProductoReady
                     ? e.GetAttributeValue<string>(SolicitudProducto)
@@ -1206,6 +1607,9 @@ namespace DigitalTechClientPortal.Services
                 var grupoNombre = schema.SolicitudGrupoEmpresarialNameReady
                     ? e.GetAttributeValue<string>(SolicitudGrupoEmpresarialName)
                     : null;
+                var tipoMovimiento = schema.SolicitudTipoMovimientoReady
+                    ? e.GetAttributeValue<string>(SolicitudTipoMovimiento)
+                    : null;
 
                 return new SolicitudDto(
                     e.Id,
@@ -1219,7 +1623,12 @@ namespace DigitalTechClientPortal.Services
                     e.GetAttributeValue<DateTime?>("createdon"),
                     e.GetAttributeValue<DateTime?>(SolicitudFecha),
                     e.GetAttributeValue<OptionSetValue>(SolicitudEstado)?.Value ?? SolicitudEstadoPendiente,
-                    solicitadoPor ?? solicitadoPorCorreo ?? TryReadValue(detalle, "SolicitadoPor") ?? string.Empty);
+                    solicitadoPor ?? solicitadoPorCorreo ?? TryReadValue(detalle, "SolicitadoPor") ?? string.Empty,
+                    NormalizeTipoMovimiento(tipoMovimiento ?? TryReadValue(detalle, "TipoMovimiento")),
+                    productKey,
+                    productoLogicalName,
+                    productoId == Guid.Empty ? null : productoId,
+                    diaFacturacion);
             }).ToList();
         }
 
@@ -1353,6 +1762,12 @@ namespace DigitalTechClientPortal.Services
                         SolicitudEntity,
                         SolicitudFechaAprobacion,
                         "Fecha aprobación");
+
+                    status.SolicitudTipoMovimientoReady = await EnsureStringAttributeAsync(
+                        SolicitudEntity,
+                        SolicitudTipoMovimiento,
+                        "Tipo movimiento",
+                        80);
                 }
                 catch (Exception ex)
                 {
@@ -1372,6 +1787,7 @@ namespace DigitalTechClientPortal.Services
                     status.SolicitudAccountIdsReady = await AttributeExistsAsync(SolicitudEntity, SolicitudAccountIds);
                     status.SolicitudAprobadoPorReady = await AttributeExistsAsync(SolicitudEntity, SolicitudAprobadoPor);
                     status.SolicitudFechaAprobacionReady = await AttributeExistsAsync(SolicitudEntity, SolicitudFechaAprobacion);
+                    status.SolicitudTipoMovimientoReady = await AttributeExistsAsync(SolicitudEntity, SolicitudTipoMovimiento);
                 }
 
                 if (MetadataTouchedDuringEnsure)
@@ -1738,6 +2154,40 @@ namespace DigitalTechClientPortal.Services
             };
         }
 
+        private static string NormalizeTipoMovimiento(string? tipo)
+        {
+            if (string.Equals(tipo, MovimientoDesasignacion, StringComparison.OrdinalIgnoreCase))
+            {
+                return MovimientoDesasignacion;
+            }
+
+            if (string.Equals(tipo, MovimientoAsignacionDisponible, StringComparison.OrdinalIgnoreCase))
+            {
+                return MovimientoAsignacionDisponible;
+            }
+
+            return MovimientoNuevaLicencia;
+        }
+
+        private static bool IsNuevaLicencia(string? tipo)
+            => string.Equals(NormalizeTipoMovimiento(tipo), MovimientoNuevaLicencia, StringComparison.OrdinalIgnoreCase);
+
+        private static bool IsDesasignacion(string? tipo)
+            => string.Equals(NormalizeTipoMovimiento(tipo), MovimientoDesasignacion, StringComparison.OrdinalIgnoreCase);
+
+        private static bool IsAsignacionDisponible(string? tipo)
+            => string.Equals(NormalizeTipoMovimiento(tipo), MovimientoAsignacionDisponible, StringComparison.OrdinalIgnoreCase);
+
+        private static string TipoMovimientoLabel(string? tipo)
+        {
+            return NormalizeTipoMovimiento(tipo) switch
+            {
+                MovimientoDesasignacion => "Desasignacion",
+                MovimientoAsignacionDisponible => "Asignacion libre",
+                _ => "Solicitud nueva"
+            };
+        }
+
         private static string GetProductGroupKey(ProductoCloudDto producto)
         {
             if (producto.ProductoReference != null)
@@ -1746,6 +2196,21 @@ namespace DigitalTechClientPortal.Services
             }
 
             return (producto.Nombre ?? string.Empty).Trim().ToUpperInvariant();
+        }
+
+        private static string NormalizeProductGroupKey(string? requestedKey, string? logicalName, Guid? productoId, string? productoNombre)
+        {
+            if (!string.IsNullOrWhiteSpace(requestedKey))
+            {
+                return requestedKey.Trim();
+            }
+
+            if (productoId.HasValue && productoId.Value != Guid.Empty && !string.IsNullOrWhiteSpace(logicalName))
+            {
+                return $"{logicalName}:{productoId.Value:D}";
+            }
+
+            return (productoNombre ?? string.Empty).Trim().ToUpperInvariant();
         }
 
         private static bool IsSameProductAndPrice(ProductoCloudDto left, ProductoCloudDto right)
@@ -1776,18 +2241,31 @@ namespace DigitalTechClientPortal.Services
             string productoNombre,
             string solicitante,
             int cantidad,
-            DateTime fechaAprovisionamiento)
+            DateTime fechaAprovisionamiento,
+            string tipoMovimiento)
         {
             var salesRecordId = producto?.SalesRecordId.ToString("D") ?? string.Empty;
+            var productoReference = producto?.ProductoReference;
+            var productoId = productoReference?.Id.ToString("D") ?? string.Empty;
+            var productoLogicalName = productoReference?.LogicalName ?? string.Empty;
+            var productoKey = producto != null
+                ? GetProductGroupKey(producto)
+                : NormalizeProductGroupKey(null, productoLogicalName, productoReference?.Id, productoNombre);
             return string.Join(";",
                 "PortalLicenciamiento",
+                $"TipoMovimiento={EscapeDetail(NormalizeTipoMovimiento(tipoMovimiento))}",
                 $"GrupoEmpresarialId={EscapeDetail(enterprise.GrupoEmpresarialId)}",
                 $"GrupoEmpresarial={EscapeDetail(enterprise.GrupoEmpresarialNombre)}",
                 $"ClienteHijoId={clienteHijo.ClienteId:D}",
                 $"ClienteHijo={EscapeDetail(clienteHijo.ClienteNombre)}",
                 $"AccountIds={EscapeDetail(string.Join(",", clienteHijo.AccountIds))}",
                 $"SalesRecordId={salesRecordId}",
+                $"ProductoKey={EscapeDetail(productoKey)}",
+                $"ProductoLogicalName={EscapeDetail(productoLogicalName)}",
+                $"ProductoId={productoId}",
                 $"Producto={EscapeDetail(productoNombre)}",
+                $"PrecioUnitarioUsd={(producto?.PrecioUnitarioUsd ?? 0m).ToString(CultureInfo.InvariantCulture)}",
+                $"DiaFacturacion={(producto?.DiaFacturacion?.ToString(CultureInfo.InvariantCulture) ?? string.Empty)}",
                 $"SolicitadoPor={EscapeDetail(solicitante)}",
                 $"FechaAprovisionamiento={fechaAprovisionamiento:yyyy-MM-dd}",
                 $"Cantidad={cantidad.ToString(CultureInfo.InvariantCulture)}");
@@ -1815,6 +2293,78 @@ namespace DigitalTechClientPortal.Services
         {
             var raw = TryReadValue(detail, key);
             return Guid.TryParse(raw, out var value) ? value : Guid.Empty;
+        }
+
+        private static int? TryReadInt(string detail, string key)
+        {
+            var raw = TryReadValue(detail, key);
+            return int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) ? value : null;
+        }
+
+        private static List<LicenciaSinAsignarVm> BuildLicenciasSinAsignar(IEnumerable<SolicitudDto> solicitudes)
+        {
+            var libres = new Dictionary<string, LicenciaSinAsignarVm>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var solicitud in solicitudes.Where(s => IsSolicitudFacturable(s.EstadoValor)))
+            {
+                if (!IsDesasignacion(solicitud.TipoMovimiento) && !IsAsignacionDisponible(solicitud.TipoMovimiento))
+                {
+                    continue;
+                }
+
+                var productKey = NormalizeProductGroupKey(
+                    solicitud.ProductoKey,
+                    solicitud.ProductoLogicalName,
+                    solicitud.ProductoId,
+                    solicitud.ProductoNombre);
+                if (string.IsNullOrWhiteSpace(productKey))
+                {
+                    continue;
+                }
+
+                var key = $"{productKey}|{solicitud.PrecioUnitarioUsd.ToString(CultureInfo.InvariantCulture)}";
+                if (!libres.TryGetValue(key, out var libre))
+                {
+                    libre = new LicenciaSinAsignarVm
+                    {
+                        ProductoKey = productKey,
+                        ProductoId = solicitud.ProductoId,
+                        ProductoLogicalName = solicitud.ProductoLogicalName,
+                        Producto = solicitud.ProductoNombre,
+                        PrecioUnitarioUsd = solicitud.PrecioUnitarioUsd,
+                        DiaFacturacion = solicitud.DiaFacturacion
+                    };
+                    libres[key] = libre;
+                }
+
+                if (IsDesasignacion(solicitud.TipoMovimiento))
+                {
+                    libre.Cantidad += solicitud.Cantidad;
+                }
+                else
+                {
+                    libre.Cantidad -= solicitud.Cantidad;
+                }
+
+                if (string.IsNullOrWhiteSpace(libre.Producto) && !string.IsNullOrWhiteSpace(solicitud.ProductoNombre))
+                {
+                    libre.Producto = solicitud.ProductoNombre;
+                }
+
+                if (!libre.ProductoId.HasValue && solicitud.ProductoId.HasValue)
+                {
+                    libre.ProductoId = solicitud.ProductoId;
+                    libre.ProductoLogicalName = solicitud.ProductoLogicalName;
+                }
+
+                libre.DiaFacturacion ??= solicitud.DiaFacturacion;
+            }
+
+            return libres.Values
+                .Where(l => l.Cantidad > 0)
+                .OrderBy(l => l.Producto, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(l => l.PrecioUnitarioUsd)
+                .ToList();
         }
 
         private sealed record AccountIdRowDto(
@@ -1850,7 +2400,12 @@ namespace DigitalTechClientPortal.Services
             DateTime? FechaSolicitud,
             DateTime? FechaAprovisionamiento,
             int EstadoValor,
-            string SolicitadoPor);
+            string SolicitadoPor,
+            string TipoMovimiento,
+            string ProductoKey,
+            string ProductoLogicalName,
+            Guid? ProductoId,
+            int? DiaFacturacion);
 
         private sealed class EnterpriseContextDto
         {
@@ -1883,6 +2438,7 @@ namespace DigitalTechClientPortal.Services
             public bool SolicitudAccountIdsReady { get; set; }
             public bool SolicitudAprobadoPorReady { get; set; }
             public bool SolicitudFechaAprobacionReady { get; set; }
+            public bool SolicitudTipoMovimientoReady { get; set; }
             public string? SetupError { get; set; }
         }
     }

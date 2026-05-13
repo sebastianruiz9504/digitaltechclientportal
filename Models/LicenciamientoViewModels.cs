@@ -28,6 +28,7 @@ namespace DigitalTechClientPortal.Web.Models
         public List<AccountIdLicenciamientoVm> AccountIdsGrupoActual { get; set; } = new();
         public List<LicenciaProductoResumenVm> ProductosRazonPadre { get; set; } = new();
         public List<ProductoSolicitudVm> ProductosSolicitud { get; set; } = new();
+        public List<LicenciaSinAsignarVm> LicenciasSinAsignar { get; set; } = new();
         public List<ClienteLicenciamientoVm> ClientesHijos { get; set; } = new();
         public List<SolicitudLicenciaVm> HistoricoSolicitudes { get; set; } = new();
 
@@ -35,10 +36,10 @@ namespace DigitalTechClientPortal.Web.Models
             ? ClienteNombre
             : GrupoEmpresarialNombre;
 
-        public decimal TotalPrefactura => ClientesHijos.Sum(x => x.TotalPrefactura);
+        public decimal TotalPrefactura => ClientesHijos.Sum(x => x.TotalPrefactura) + LicenciasSinAsignar.Sum(x => x.TotalMensualUsd);
         public int TotalLicenciasPadre => ProductosRazonPadre.Sum(x => x.CantidadTotal);
         public int TotalLicenciasAsignadas => ClientesHijos.Sum(x => x.TotalLicencias);
-        public int TotalLicenciasSinAsignar => 0;
+        public int TotalLicenciasSinAsignar => LicenciasSinAsignar.Sum(x => x.Cantidad);
         public int TotalClientesHijos => ClientesHijos.Count;
         public int TotalAccountIds => ClientesHijos.Sum(c => c.AccountIds.Count);
     }
@@ -68,6 +69,7 @@ namespace DigitalTechClientPortal.Web.Models
         public Guid SalesRecordId { get; set; }
         public Guid? ProductoId { get; set; }
         public string ProductoLogicalName { get; set; } = string.Empty;
+        public string ProductoKey { get; set; } = string.Empty;
         public string Producto { get; set; } = string.Empty;
         public int CantidadTotal { get; set; }
         public int CantidadAsignada { get; set; }
@@ -78,12 +80,25 @@ namespace DigitalTechClientPortal.Web.Models
         public List<string> AccountIds { get; set; } = new();
     }
 
+    public sealed class LicenciaSinAsignarVm
+    {
+        public string ProductoKey { get; set; } = string.Empty;
+        public Guid? ProductoId { get; set; }
+        public string ProductoLogicalName { get; set; } = string.Empty;
+        public string Producto { get; set; } = string.Empty;
+        public int Cantidad { get; set; }
+        public decimal PrecioUnitarioUsd { get; set; }
+        public int? DiaFacturacion { get; set; }
+        public decimal TotalMensualUsd => Math.Round(Cantidad * PrecioUnitarioUsd, 2);
+    }
+
     public sealed class ProductoSolicitudVm
     {
         public Guid SalesRecordId { get; set; }
         public Guid ClienteId { get; set; }
         public string ClienteNombre { get; set; } = string.Empty;
         public string Producto { get; set; } = string.Empty;
+        public int Cantidad { get; set; }
         public decimal PrecioUnitarioUsd { get; set; }
     }
 
@@ -142,12 +157,16 @@ namespace DigitalTechClientPortal.Web.Models
         public string Producto { get; set; } = string.Empty;
         public int CantidadNueva { get; set; }
         public decimal PrecioUnitarioUsd { get; set; }
+        public string TipoMovimiento { get; set; } = "Solicitud";
         public string Estado { get; set; } = "Pendiente";
     }
 
     public sealed class CrearSolicitudClienteVm
     {
         public Guid ClienteId { get; set; }
+
+        [Required]
+        public string Modo { get; set; } = "NuevaLicencia";
 
         [Required(ErrorMessage = "Selecciona el cliente hijo.")]
         public Guid ClienteHijoId { get; set; }
@@ -162,6 +181,34 @@ namespace DigitalTechClientPortal.Web.Models
 
         [Required(ErrorMessage = "Selecciona la fecha de aprovisionamiento.")]
         public DateTime FechaAprovisionamiento { get; set; }
+
+        public int Mes { get; set; }
+        public int Anio { get; set; }
+    }
+
+    public sealed class AsignarLicenciasSinAsignarVm
+    {
+        public Guid ClienteId { get; set; }
+
+        [Required(ErrorMessage = "Selecciona el cliente destino.")]
+        public Guid DestinoClienteId { get; set; }
+
+        [Required]
+        public string ProductoKey { get; set; } = string.Empty;
+
+        [Required]
+        public string Producto { get; set; } = string.Empty;
+
+        public Guid? ProductoId { get; set; }
+
+        public string ProductoLogicalName { get; set; } = string.Empty;
+
+        public decimal PrecioUnitarioUsd { get; set; }
+
+        public int? DiaFacturacion { get; set; }
+
+        [Range(1, 1000000, ErrorMessage = "La cantidad a asignar debe ser mayor a cero.")]
+        public int Cantidad { get; set; }
 
         public int Mes { get; set; }
         public int Anio { get; set; }
