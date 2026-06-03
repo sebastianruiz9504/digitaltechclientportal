@@ -599,7 +599,7 @@
             const isOther = !isUnassign && product.value === '__otro';
             record.value = isOther ? '' : product.value;
             manualWrap.classList.toggle('visible', isOther);
-            manual.required = isOther;
+            manual.required = false;
             if (!isOther) {
                 manual.value = '';
             }

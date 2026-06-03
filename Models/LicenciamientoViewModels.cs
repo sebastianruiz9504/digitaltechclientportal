@@ -174,7 +174,7 @@ namespace DigitalTechClientPortal.Web.Models
         public Guid? SalesRecordId { get; set; }
 
         [StringLength(250)]
-        public string ProductoManual { get; set; } = string.Empty;
+        public string? ProductoManual { get; set; }
 
         [Range(1, 1000000, ErrorMessage = "Solo puedes solicitar aumentos de una licencia o más.")]
         public int Cantidad { get; set; }
