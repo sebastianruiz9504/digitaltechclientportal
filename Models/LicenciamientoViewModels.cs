@@ -1,10 +1,88 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using System.Globalization;
 using System.Linq;
+using System.Text;
 
 namespace DigitalTechClientPortal.Web.Models
 {
+    internal static class LicenciamientoProductDisplay
+    {
+        private static readonly ProductDisplayRule[] Rules =
+        {
+            new("Enterprise Mobility + Security E3", "Enterprise", "Mobility", "Security", "E3"),
+            new("Exchange Online (Plan 1)", "Exchange", "Online", "Plan 1"),
+            new("Exchange Online (Plan 2)", "Exchange", "Online", "Plan 2"),
+            new("Microsoft 365 Business Basic", "Microsoft 365", "Business", "Basic"),
+            new("Microsoft 365 Business Premium", "Microsoft 365", "Business", "Premium"),
+            new("Microsoft 365 Business Standard", "Microsoft 365", "Business", "Standard"),
+            new("Microsoft Defender for Endpoint P2_XPLAT", "Defender", "Endpoint", "P2"),
+            new("Microsoft Defender for Office 365 (Plan 1)", "Defender", "Office 365", "Plan 1"),
+            new("Microsoft Defender for Office 365 (Plan 2)", "Defender", "Office 365", "Plan 2"),
+            new("Microsoft Teams Rooms Pro", "Teams", "Rooms", "Pro"),
+            new("Office 365 E3", "Office 365", "E3"),
+            new("Planner and Project Plan 3", "Project", "Plan 3"),
+            new("Power Apps Premium", "Power", "Apps", "Premium"),
+            new("Power Automate Premium", "Power", "Automate", "Premium"),
+            new("Power BI Pro", "Power", "BI", "Pro")
+        };
+
+        public static string Mask(string? productName)
+        {
+            var value = (productName ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return string.Empty;
+            }
+
+            var normalized = Normalize(value);
+            foreach (var rule in Rules)
+            {
+                if (rule.NormalizedTokens.All(token => normalized.Contains(token, StringComparison.Ordinal)))
+                {
+                    return rule.DisplayName;
+                }
+            }
+
+            return value;
+        }
+
+        private static string Normalize(string value)
+        {
+            var decomposed = value.Normalize(NormalizationForm.FormD);
+            var builder = new StringBuilder(decomposed.Length);
+
+            foreach (var ch in decomposed)
+            {
+                if (CharUnicodeInfo.GetUnicodeCategory(ch) == UnicodeCategory.NonSpacingMark)
+                {
+                    continue;
+                }
+
+                builder.Append(char.IsLetterOrDigit(ch)
+                    ? char.ToUpperInvariant(ch)
+                    : ' ');
+            }
+
+            return string.Join(' ', builder
+                .ToString()
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        }
+
+        private sealed class ProductDisplayRule
+        {
+            public ProductDisplayRule(string displayName, params string[] tokens)
+            {
+                DisplayName = displayName;
+                NormalizedTokens = tokens.Select(Normalize).ToArray();
+            }
+
+            public string DisplayName { get; }
+            public string[] NormalizedTokens { get; }
+        }
+    }
+
     public sealed class LicenciamientoViewModel
     {
         public Guid ClienteId { get; set; }
@@ -71,6 +149,7 @@ namespace DigitalTechClientPortal.Web.Models
         public string ProductoLogicalName { get; set; } = string.Empty;
         public string ProductoKey { get; set; } = string.Empty;
         public string Producto { get; set; } = string.Empty;
+        public string ProductoDisplay => LicenciamientoProductDisplay.Mask(Producto);
         public int CantidadTotal { get; set; }
         public int CantidadAsignada { get; set; }
         public int CantidadSinAsignar => CantidadTotal - CantidadAsignada;
@@ -86,6 +165,7 @@ namespace DigitalTechClientPortal.Web.Models
         public Guid? ProductoId { get; set; }
         public string ProductoLogicalName { get; set; } = string.Empty;
         public string Producto { get; set; } = string.Empty;
+        public string ProductoDisplay => LicenciamientoProductDisplay.Mask(Producto);
         public int Cantidad { get; set; }
         public decimal PrecioUnitarioUsd { get; set; }
         public int? DiaFacturacion { get; set; }
@@ -98,6 +178,7 @@ namespace DigitalTechClientPortal.Web.Models
         public Guid ClienteId { get; set; }
         public string ClienteNombre { get; set; } = string.Empty;
         public string Producto { get; set; } = string.Empty;
+        public string ProductoDisplay => LicenciamientoProductDisplay.Mask(Producto);
         public int Cantidad { get; set; }
         public decimal PrecioUnitarioUsd { get; set; }
     }
@@ -133,6 +214,7 @@ namespace DigitalTechClientPortal.Web.Models
         public Guid? ProductoId { get; set; }
         public string ProductoLogicalName { get; set; } = string.Empty;
         public string Producto { get; set; } = string.Empty;
+        public string ProductoDisplay => LicenciamientoProductDisplay.Mask(Producto);
         public int Cantidad { get; set; }
         public int DiasConsumo { get; set; }
         public int DiasMes { get; set; } = 30;
@@ -155,6 +237,7 @@ namespace DigitalTechClientPortal.Web.Models
         public string SubRazon { get; set; } = string.Empty;
         public string GrupoEmpresarial { get; set; } = string.Empty;
         public string Producto { get; set; } = string.Empty;
+        public string ProductoDisplay => LicenciamientoProductDisplay.Mask(Producto);
         public int CantidadNueva { get; set; }
         public decimal PrecioUnitarioUsd { get; set; }
         public string TipoMovimiento { get; set; } = "Solicitud";

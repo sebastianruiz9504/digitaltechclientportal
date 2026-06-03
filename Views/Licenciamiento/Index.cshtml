@@ -232,7 +232,7 @@
                         @foreach (var p in Model.ProductosRazonPadre)
                         {
                             <tr>
-                                <td>@p.Producto</td>
+                                <td>@p.ProductoDisplay</td>
                                 <td><span class="lic-pill">@p.CantidadTotal</span></td>
                                 <td>@p.CantidadAsignada</td>
                                 <td>@p.CantidadSinAsignar</td>
@@ -282,11 +282,11 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @foreach (var c in cliente.Consumo.OrderBy(x => x.Producto).ThenBy(x => x.EsProrrateoSolicitud))
+                                    @foreach (var c in cliente.Consumo.OrderBy(x => x.ProductoDisplay).ThenBy(x => x.EsProrrateoSolicitud))
                                     {
                                         <tr>
                                             <td>
-                                                @c.Producto
+                                                @c.ProductoDisplay
                                                 @if (c.EsProrrateoSolicitud)
                                                 {
                                                     <span class="lic-tag">prorrateo</span>
@@ -338,7 +338,7 @@
                     @foreach (var libre in Model.LicenciasSinAsignar)
                     {
                         <tr>
-                            <td>@libre.Producto</td>
+                            <td>@libre.ProductoDisplay</td>
                             <td><span class="lic-pill">@libre.Cantidad</span></td>
                             <td>@usd(libre.PrecioUnitarioUsd)</td>
                             <td>@usd(libre.TotalMensualUsd)</td>
@@ -410,7 +410,7 @@
                             <td>@h.SolicitadoPor</td>
                             <td>@h.ClienteHijo</td>
                             <td>@h.TipoMovimiento</td>
-                            <td>@h.Producto</td>
+                            <td>@h.ProductoDisplay</td>
                             <td>@(h.TipoMovimiento == "Desasignacion" ? "-" : "+")@h.CantidadNueva</td>
                             <td>@usd(h.PrecioUnitarioUsd)</td>
                             <td><span class="lic-status">@h.Estado</span></td>
@@ -461,7 +461,7 @@
                 @foreach (var producto in Model.ProductosSolicitud)
                 {
                     <option value="@producto.SalesRecordId" data-child="@producto.ClienteId">
-                        @producto.Producto · @producto.ClienteNombre · @producto.Cantidad lic. · @usd(producto.PrecioUnitarioUsd)
+                        @producto.ProductoDisplay · @producto.ClienteNombre · @producto.Cantidad lic. · @usd(producto.PrecioUnitarioUsd)
                     </option>
                 }
                 <option value="__otro" data-child="">Otro</option>
