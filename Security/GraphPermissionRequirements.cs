@@ -35,7 +35,7 @@ namespace DigitalTechClientPortal.Security
             "ServiceHealth.Read.All",
             "ServiceMessage.Read.All",
             "eDiscovery.Read.All",
-            "InformationProtectionPolicy.Read.All"
+            "InformationProtectionPolicy.Read"
         };
 
         public static readonly string[] SecurityPanelScopes =
@@ -60,7 +60,7 @@ namespace DigitalTechClientPortal.Security
             "ServiceHealth.Read.All",
             "ServiceMessage.Read.All",
             "eDiscovery.Read.All",
-            "InformationProtectionPolicy.Read.All"
+            "InformationProtectionPolicy.Read"
         };
 
         public static readonly string[] TenantReadScopes =
@@ -93,7 +93,7 @@ namespace DigitalTechClientPortal.Security
                 ["ServiceHealth.Read.All"] = "Leer salud de servicios Microsoft 365",
                 ["ServiceMessage.Read.All"] = "Leer Message Center",
                 ["eDiscovery.Read.All"] = "Leer senales eDiscovery",
-                ["InformationProtectionPolicy.Read.All"] = "Leer etiquetas de sensibilidad"
+                ["InformationProtectionPolicy.Read"] = "Leer etiquetas de sensibilidad"
             };
 
         public static string ToGraphScope(string scope)
